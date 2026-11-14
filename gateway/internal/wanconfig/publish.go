@@ -25,11 +25,20 @@ func Publish(ctx context.Context, log *slog.Logger, pub Publisher, gateway Gatew
 		log.ErrorContext(ctx, "wanconfig: projection failed", "err", err)
 		return fmt.Errorf("wanconfig: project configuration: %w", err)
 	}
+
 	if err := pub.ReplaceConfig(ctx, OwnedPaths, items); err != nil {
 		log.ErrorContext(ctx, "wanconfig: publish failed", "err", err, "items", len(items))
 		return fmt.Errorf("wanconfig: publish configuration: %w", err)
 	}
-	log.InfoContext(ctx, "wanconfig: configuration published",
-		"members", len(gateway.Members), "items", len(items))
+
+	log.InfoContext(
+		ctx,
+		"wanconfig: configuration published",
+		"members",
+		len(gateway.Members),
+		"items",
+		len(items),
+	)
+
 	return nil
 }

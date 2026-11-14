@@ -14,9 +14,11 @@ func (manager *Manager) SendReport(ctx context.Context, message mailer.Message) 
 	if !ok {
 		return errors.New("configure email delivery and alert_email for reports")
 	}
+
 	if err := sink.SendMessage(ctx, message); err != nil {
 		manager.log.WarnContext(ctx, "report email delivery failed", "error", err)
 		return fmt.Errorf("send report email: %w", err)
 	}
+
 	return nil
 }

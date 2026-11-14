@@ -55,17 +55,24 @@ func TestApplyCommitsBatchLargerThanDefaultReceiveBuffer(t *testing.T) {
 	members := make([]Member, 0, batchMemberCount)
 	for index := range batchMemberCount {
 		name := fmt.Sprintf("wan%d", index)
-		members = append(members, Member{
-			WANRef: ifmgr.WANRef{Name: name, Iface: name},
-			Mark:   uint32(index + 1),
-		})
+		members = append(
+			members,
+			Member{
+				WANRef: ifmgr.WANRef{Name: name, Iface: name},
+				Mark:   uint32(index + 1),
+			},
+		)
 	}
 	slots := balancer{Modulus: 2, Slots: []uint32{1, 2}}
 	rules := buildRules(ruleInput{
-		InternalIface: "lan", InternalNetV4: netip.MustParsePrefix("10.0.0.0/24"),
+		InternalIface:  "lan",
+		InternalNetV4:  netip.MustParsePrefix("10.0.0.0/24"),
 		InternalPrefix: netip.MustParsePrefix("fd00::/64"),
-		OpnsenseEdgeV6: netip.MustParseAddr("fd00::1"), Mode: hashModeRandom,
-		AssignV4: slots, AssignV6: slots, Members: members,
+		OpnsenseEdgeV6: netip.MustParseAddr("fd00::1"),
+		Mode:           hashModeRandom,
+		AssignV4:       slots,
+		AssignV6:       slots,
+		Members:        members,
 	})
 	mapRules := 0
 	for _, rule := range rules {
@@ -113,7 +120,14 @@ func useDefaultReceiveBuffer(t *testing.T) {
 // google/nftables. Count its JSON rule objects to verify the committed rules.
 func listedSteeringRules(t *testing.T) int {
 	t.Helper()
-	output, err := exec.Command("nft", "-j", "list", "table", "inet", steerTableName).CombinedOutput()
+	output, err := exec.Command(
+		"nft",
+		"-j",
+		"list",
+		"table",
+		"inet",
+		steerTableName,
+	).CombinedOutput()
 	if err != nil {
 		t.Fatalf("nft list table inet %s: %v\n%s", steerTableName, err, output)
 	}
@@ -130,7 +144,8 @@ func listedSteeringRules(t *testing.T) int {
 	}
 	count := 0
 	for _, object := range listing.Nftables {
-		if object.Rule != nil && object.Rule.Family == "inet" && object.Rule.Table == steerTableName {
+		if object.Rule != nil && object.Rule.Family == "inet" &&
+			object.Rule.Table == steerTableName {
 			count++
 		}
 	}

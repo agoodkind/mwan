@@ -27,34 +27,42 @@ func checkFirewall(path, schemaDir string, isolated bool, output, diagnostics io
 		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
+
 	desired, err := firewall.Compile(loaded.Firewall)
 	if err != nil {
 		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
+
 	if !loaded.Firewall.Enabled {
 		fmt.Fprintln(diagnostics, "firewall ownership is disabled")
 		return 1
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), firewallCheckTimeout)
 	defer cancel()
 	if !isolated {
 		return runFirewallCheckChild(ctx, path, schemaDir, output, diagnostics)
 	}
+
 	if err := verifyDifferentNamespace(); err != nil {
 		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
+
 	if err := firewall.Apply(ctx, desired); err != nil {
 		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
+
 	readback, err := firewall.Inspect(ctx, desired)
 	if err != nil {
 		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
+
 	fmt.Fprint(output, readback)
+
 	return 0
 }
 
@@ -64,15 +72,18 @@ func inspectFirewall(path, schemaDir string, output, diagnostics io.Writer) int 
 		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
+
 	if !loaded.Firewall.Enabled {
 		fmt.Fprintln(diagnostics, "firewall ownership is disabled")
 		return 1
 	}
+
 	desired, err := firewall.Compile(loaded.Firewall)
 	if err != nil {
 		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), firewallCheckTimeout)
 	defer cancel()
 	readback, err := firewall.Inspect(ctx, desired)
@@ -80,11 +91,19 @@ func inspectFirewall(path, schemaDir string, output, diagnostics io.Writer) int 
 		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
+
 	fmt.Fprint(output, readback)
+
 	return 0
 }
 
-func runFirewallCheckChild(ctx context.Context, path, schemaDir string, output, diagnostics io.Writer) int {
+func runFirewallCheckChild(
+	ctx context.Context,
+	path string,
+	schemaDir string,
+	output io.Writer,
+	diagnostics io.Writer,
+) int {
 	slog.InfoContext(ctx, "start isolated firewall check")
 	parentNamespace, err := os.Open("/proc/self/ns/net")
 	if err != nil {
@@ -97,11 +116,19 @@ func runFirewallCheckChild(ctx context.Context, path, schemaDir string, output, 
 		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
+
 	command := &exec.Cmd{
 		Path: "/usr/bin/unshare",
 		Args: []string{
-			"unshare", "--net", "--", binary,
-			"deploy", "check-firewall", path, schemaDir, "--isolated",
+			"unshare",
+			"--net",
+			"--",
+			binary,
+			"deploy",
+			"check-firewall",
+			path,
+			schemaDir,
+			"--isolated",
 		},
 	}
 	command.ExtraFiles = []*os.File{parentNamespace}
@@ -111,12 +138,14 @@ func runFirewallCheckChild(ctx context.Context, path, schemaDir string, output, 
 		fmt.Fprintf(diagnostics, "start isolated firewall check: %v\n", err)
 		return 1
 	}
+
 	stopKill := context.AfterFunc(ctx, func() { _ = command.Process.Kill() })
 	defer stopKill()
 	if err := command.Wait(); err != nil {
 		fmt.Fprintf(diagnostics, "isolated firewall check failed: %v\n", err)
 		return 1
 	}
+
 	return 0
 }
 
@@ -126,13 +155,17 @@ func verifyDifferentNamespace() error {
 		slog.Error("read caller network namespace failed", "err", err)
 		return fmt.Errorf("cannot verify caller network namespace: %w", err)
 	}
+
 	current, err := os.Readlink("/proc/self/ns/net")
 	if err != nil {
 		slog.Error("read isolated network namespace failed", "err", err)
 		return fmt.Errorf("cannot verify isolated network namespace: %w", err)
 	}
-	if !strings.HasPrefix(parent, "net:[") || !strings.HasPrefix(current, "net:[") || parent == current {
+
+	if !strings.HasPrefix(parent, "net:[") || !strings.HasPrefix(current, "net:[") ||
+		parent == current {
 		return fmt.Errorf("firewall check did not enter a separate network namespace")
 	}
+
 	return nil
 }

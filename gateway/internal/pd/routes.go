@@ -25,6 +25,7 @@ func (s *DefaultSource) prefixFromKernelRoutes(
 		log.WarnContext(ctx, "pd: netlink LinkByName failed", "iface", iface, "err", err)
 		return netip.Prefix{}, false, fmt.Errorf("LinkByName(%s): %w", iface, err)
 	}
+
 	filter := &netlink.Route{
 		LinkIndex: link.Attrs().Index,
 		Protocol:  unix.RTPROT_DHCP,
@@ -42,6 +43,7 @@ func (s *DefaultSource) prefixFromKernelRoutes(
 			return prefix, true, nil
 		}
 	}
+
 	return netip.Prefix{}, false, nil
 }
 
@@ -49,15 +51,19 @@ func prefixFromIPNet(ipNet *net.IPNet) (netip.Prefix, bool) {
 	if ipNet == nil {
 		return netip.Prefix{}, false
 	}
+
 	addrBytes := ipNet.IP.To16()
 	if addrBytes == nil || ipNet.IP.To4() != nil {
 		return netip.Prefix{}, false
 	}
+
 	ones, bits := ipNet.Mask.Size()
 	if bits != 128 || ones < 0 {
 		return netip.Prefix{}, false
 	}
+
 	var addr16 [16]byte
 	copy(addr16[:], addrBytes)
+
 	return netip.PrefixFrom(netip.AddrFrom16(addr16), ones).Masked(), true
 }

@@ -108,25 +108,36 @@ func NewDaemon(log *slog.Logger, cfg DaemonConfig) (*Daemon, error) {
 	if log == nil {
 		return nil, fmt.Errorf("ifmgr.NewDaemon: log is required")
 	}
+
 	if cfg.Role == "" {
 		return nil, fmt.Errorf("ifmgr.NewDaemon: cfg.Role is required")
 	}
+
 	if cfg.Iface == "" {
 		return nil, fmt.Errorf("ifmgr.NewDaemon: cfg.Iface is required")
 	}
+
 	var primaryConnection *interfaceintent.Connection
+
 	for i := range cfg.Connections {
 		if cfg.Connections[i].Name != cfg.Iface {
 			continue
 		}
+
 		if primaryConnection != nil {
-			return nil, fmt.Errorf("ifmgr.NewDaemon: multiple connections use interface %q", cfg.Iface)
+			return nil, fmt.Errorf(
+				"ifmgr.NewDaemon: multiple connections use interface %q",
+				cfg.Iface,
+			)
 		}
+
 		primaryConnection = &cfg.Connections[i]
 	}
+
 	if primaryConnection != nil && primaryConnection.Link == nil {
 		primaryConnection = nil
 	}
+
 	if cfg.ReconcileInterval == 0 {
 		cfg.ReconcileInterval = 60 * time.Second
 	}
@@ -134,10 +145,14 @@ func NewDaemon(log *slog.Logger, cfg DaemonConfig) (*Daemon, error) {
 	dlog := log.With("daemon", "ifmgr", "role", cfg.Role, "iface", cfg.Iface)
 	dlog.Info(
 		"ifmgr: NewDaemon entry",
-		"reconcile_interval", cfg.ReconcileInterval.String(),
-		"enable_dhcp", cfg.EnableDHCP,
-		"enable_ra", cfg.EnableRA,
-		"registered_modules", RegisteredNames(),
+		"reconcile_interval",
+		cfg.ReconcileInterval.String(),
+		"enable_dhcp",
+		cfg.EnableDHCP,
+		"enable_ra",
+		cfg.EnableRA,
+		"registered_modules",
+		RegisteredNames(),
 	)
 
 	names, err := modulesForRole(cfg.Role)
@@ -151,18 +166,30 @@ func NewDaemon(log *slog.Logger, cfg DaemonConfig) (*Daemon, error) {
 		ctor, ok := Lookup(name)
 		if !ok {
 			dlog.Warn("ifmgr: module not registered", "module", name)
+
 			return nil, fmt.Errorf(
 				"ifmgr: role %q references module %q which is not registered "+
-					"(registered: %v)", cfg.Role, name, RegisteredNames(),
+					"(registered: %v)",
+				cfg.Role,
+				name,
+				RegisteredNames(),
 			)
 		}
+
 		mcfg := cfg.ModuleConfigs[name]
 		mod, err := ctor(mcfg)
 		if err != nil {
 			dlog.Warn("ifmgr: construct module failed", "module", name, "err", err)
 			return nil, fmt.Errorf("construct module %q: %w", name, err)
 		}
-		dlog.Debug("ifmgr: module constructed", "module", name, "config_type", moduleConfigType(mcfg))
+
+		dlog.Debug(
+			"ifmgr: module constructed",
+			"module",
+			name,
+			"config_type",
+			moduleConfigType(mcfg),
+		)
 		modules = append(modules, mod)
 	}
 
@@ -181,6 +208,7 @@ func NewDaemon(log *slog.Logger, cfg DaemonConfig) (*Daemon, error) {
 		forwardingState:   forwardingready.State{IPv4: false, IPv6: false},
 	}
 	dlog.Info("ifmgr: Daemon ready", "module_count", len(modules))
+
 	return d, nil
 }
 
@@ -198,6 +226,7 @@ func (d *Daemon) Run(ctx context.Context) (resultErr error) {
 	if d.clock == nil {
 		d.clock = internalclock.Real{}
 	}
+
 	d.mu.Lock()
 	d.startedAt = d.clock.Now()
 	d.mu.Unlock()
@@ -212,13 +241,24 @@ func (d *Daemon) Run(ctx context.Context) (resultErr error) {
 			defer close(readinessDone)
 			defer func() {
 				if recovered := recover(); recovered != nil {
-					readinessError = fmt.Errorf("forwarding readiness server panicked: %v", recovered)
+					readinessError = fmt.Errorf(
+						"forwarding readiness server panicked: %v",
+						recovered,
+					)
 				}
 			}()
-			readinessError = forwardingready.Serve(readinessCtx, d.cfg.ForwardingReadySocket, d.cfg.ForwardingReadyTimeout, d.ForwardingReadiness)
+			readinessError = forwardingready.Serve(
+				readinessCtx,
+				d.cfg.ForwardingReadySocket,
+				d.cfg.ForwardingReadyTimeout,
+				d.ForwardingReadiness,
+			)
 		}()
 		defer func() {
-			d.setForwardingReadiness(forwardingready.State{IPv4: false, IPv6: false})
+			d.setForwardingReadiness(forwardingready.State{
+				IPv4: false,
+				IPv6: false,
+			})
 			cancelReadiness()
 			<-readinessDone
 		}()
@@ -226,7 +266,11 @@ func (d *Daemon) Run(ctx context.Context) (resultErr error) {
 
 	// Start the kernel event monitor first so any module Init that
 	// triggers a netlink change (rare but possible) sees its own event.
-	mon := netif.NewMonitor(ctx, d.log, netif.MonitorConfig{Iface: d.cfg.Iface, Connection: d.primaryConnection, ConnectionID: ""})
+	mon := netif.NewMonitor(
+		ctx,
+		d.log,
+		netif.MonitorConfig{Iface: d.cfg.Iface, Connection: d.primaryConnection, ConnectionID: ""},
+	)
 	d.log.DebugContext(ctx, "ifmgr: monitor started")
 
 	dhcp, err := d.startDHCP(ctx)
@@ -240,27 +284,39 @@ func (d *Daemon) Run(ctx context.Context) (resultErr error) {
 	if d.cfg.EnableRA {
 		ra, err := netif.NewRAClient(d.cfg.Iface, d.log)
 		if err != nil {
-			d.log.WarnContext(ctx, "ifmgr: RAClient open failed; modules will operate in passive RA mode",
-				"err", err)
+			d.log.WarnContext(
+				ctx,
+				"ifmgr: RAClient open failed; modules will operate in passive RA mode",
+				"err",
+				err,
+			)
 		} else {
 			raClient = ra
-			d.log.DebugContext(ctx, "ifmgr: RA client opened",
-				"link_local", ra.LinkLocal().String())
+			d.log.DebugContext(
+				ctx,
+				"ifmgr: RA client opened",
+				"link_local",
+				ra.LinkLocal().String(),
+			)
 		}
 	}
 
 	d.env = &Env{
-		Iface:                     d.cfg.Iface,
-		Connections:               d.cfg.Connections,
-		Sysctl:                    netif.NewProcSysctlRunner(d.log, false),
-		Log:                       d.log,
-		Alerts:                    WrapNotifier(d.cfg.Notifier),
-		Monitor:                   mon,
-		DHCP:                      dhcp.client,
-		DHCPRecoveryPending:       dhcp.cached,
-		RA:                        raClient,
-		RequestReconcile:          d.requestReconcile,
-		ForwardingChanges:         &ForwardingChanges{mu: sync.RWMutex{}, registration: nil, requestReconcile: d.requestReconcile},
+		Iface:               d.cfg.Iface,
+		Connections:         d.cfg.Connections,
+		Sysctl:              netif.NewProcSysctlRunner(d.log, false),
+		Log:                 d.log,
+		Alerts:              WrapNotifier(d.cfg.Notifier),
+		Monitor:             mon,
+		DHCP:                dhcp.client,
+		DHCPRecoveryPending: dhcp.cached,
+		RA:                  raClient,
+		RequestReconcile:    d.requestReconcile,
+		ForwardingChanges: &ForwardingChanges{
+			mu:               sync.RWMutex{},
+			registration:     nil,
+			requestReconcile: d.requestReconcile,
+		},
 		LiveState:                 d.cfg.LiveState,
 		OwnedLinks:                nil,
 		OwnedAddresses:            nil,
@@ -286,7 +342,16 @@ func (d *Daemon) Run(ctx context.Context) (resultErr error) {
 		return err
 	}
 
-	return d.runLoop(ctx, mon, dhcp.client, raClient, readinessDone, &readinessError, dhcp.store, dhcp.connectionID)
+	return d.runLoop(
+		ctx,
+		mon,
+		dhcp.client,
+		raClient,
+		readinessDone,
+		&readinessError,
+		dhcp.store,
+		dhcp.connectionID,
+	)
 }
 
 type dhcpStartup struct {
@@ -301,22 +366,32 @@ func (d *Daemon) startDHCP(ctx context.Context) (dhcpStartup, error) {
 	if !d.cfg.EnableDHCP {
 		return empty, d.retireDisabledDHCPLease(ctx)
 	}
+
 	var startup dhcpStartup
 	recoveryLoader, err := d.prepareRoleDHCPRecovery(ctx, &startup)
 	if err != nil {
 		return empty, err
 	}
+
 	dhcpConfig := netif.DHCPConfig{
-		Iface: d.cfg.Iface, InitialBackoff: d.cfg.DHCPInitial, MaxBackoff: d.cfg.DHCPMax,
-		DiscoverTimeout: 0, RequestTimeout: 0, RenewTimeout: 0, ClientID: nil,
-		CachedLease: nil, RestartWindow: 0,
+		Iface:           d.cfg.Iface,
+		InitialBackoff:  d.cfg.DHCPInitial,
+		MaxBackoff:      d.cfg.DHCPMax,
+		DiscoverTimeout: 0,
+		RequestTimeout:  0,
+		RenewTimeout:    0,
+		ClientID:        nil,
+		CachedLease:     nil,
+		RestartWindow:   0,
 	}
 	if recoveryLoader != nil {
 		startup.client = netif.StartDHCPClientWithRecovery(ctx, d.log, dhcpConfig, recoveryLoader)
 	} else {
 		startup.client = netif.StartDHCPClient(ctx, d.log, dhcpConfig)
 	}
+
 	d.log.DebugContext(ctx, "ifmgr: DHCP client started")
+
 	return startup, nil
 }
 
@@ -324,24 +399,33 @@ func (d *Daemon) retireDisabledDHCPLease(ctx context.Context) error {
 	if d.cfg.LeaseDirectory == "" {
 		return nil
 	}
+
 	store, err := netif.NewLeaseRecoveryStore(filepath.Join(d.cfg.LeaseDirectory, "roles"))
 	if err != nil {
 		return fmt.Errorf("configure DHCP lease recovery: %w", err)
 	}
-	if err := store.Delete(d.role+"/"+d.cfg.Iface, netif.LeaseProtocolDHCPv4); err != nil && !errors.Is(err, os.ErrNotExist) {
+
+	if err := store.Delete(d.role+"/"+d.cfg.Iface, netif.LeaseProtocolDHCPv4); err != nil &&
+		!errors.Is(err, os.ErrNotExist) {
 		d.log.WarnContext(ctx, "ifmgr: retire disabled DHCP lease failed", "err", err)
 	}
+
 	return nil
 }
 
-func (d *Daemon) prepareRoleDHCPRecovery(ctx context.Context, startup *dhcpStartup) (func(context.Context) (*netif.LeaseInfo, error), error) {
+func (d *Daemon) prepareRoleDHCPRecovery(
+	ctx context.Context,
+	startup *dhcpStartup,
+) (func(context.Context) (*netif.LeaseInfo, error), error) {
 	if d.cfg.LeaseDirectory == "" {
 		return nil, nil
 	}
+
 	store, err := netif.NewLeaseRecoveryStore(filepath.Join(d.cfg.LeaseDirectory, "roles"))
 	if err != nil {
 		return nil, fmt.Errorf("configure DHCP lease recovery: %w", err)
 	}
+
 	startup.store = store
 	startup.connectionID = d.role + "/" + d.cfg.Iface
 	startup.cached, err = store.Has(startup.connectionID, netif.LeaseProtocolDHCPv4)
@@ -349,29 +433,46 @@ func (d *Daemon) prepareRoleDHCPRecovery(ctx context.Context, startup *dhcpStart
 		d.log.WarnContext(ctx, "ifmgr: saved DHCP lease rejected", "iface", d.cfg.Iface, "err", err)
 		startup.cached = false
 	}
+
 	if !startup.cached {
 		return nil, nil
 	}
+
 	return func(loadContext context.Context) (*netif.LeaseInfo, error) {
 		link, linkErr := waitForDHCPInterface(loadContext, d.log, d.cfg.Iface)
 		if linkErr != nil {
 			return nil, linkErr
 		}
+
 		return store.LoadDHCPv4(startup.connectionID, link, nil)
 	}, nil
 }
 
-func waitForDHCPInterface(ctx context.Context, log *slog.Logger, iface string) (*net.Interface, error) {
+func waitForDHCPInterface(
+	ctx context.Context,
+	log *slog.Logger,
+	iface string,
+) (*net.Interface, error) {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
+
 	for {
 		link, err := net.InterfaceByName(iface)
 		if err == nil {
 			return link, nil
 		}
+
 		select {
 		case <-ctx.Done():
-			log.WarnContext(ctx, "ifmgr: DHCP recovery interface unavailable", "iface", iface, "err", ctx.Err())
+			log.WarnContext(
+				ctx,
+				"ifmgr: DHCP recovery interface unavailable",
+				"iface",
+				iface,
+				"err",
+				ctx.Err(),
+			)
+
 			return nil, fmt.Errorf("wait for interface %s: %w", iface, ctx.Err())
 		case <-ticker.C:
 		}
@@ -382,6 +483,7 @@ func waitForDHCPInterface(ctx context.Context, log *slog.Logger, iface string) (
 func (d *Daemon) ForwardingReadiness() forwardingready.State {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+
 	return d.forwardingState
 }
 
@@ -407,34 +509,51 @@ func (d *Daemon) initModules(ctx context.Context) error {
 		d.attemptedModules = append(d.attemptedModules, m)
 		err := m.Init(ctx, d.env)
 		if errors.Is(err, ErrModuleDisabled) {
-			mlog.DebugContext(ctx, "ifmgr: module disabled, skipping for daemon lifetime",
-				"reason", err.Error())
+			mlog.DebugContext(
+				ctx,
+				"ifmgr: module disabled, skipping for daemon lifetime",
+				"reason",
+				err.Error(),
+			)
 			continue
 		}
+
 		if err != nil {
 			mlog.WarnContext(ctx, "ifmgr: module init failed", "err", err)
 			return fmt.Errorf("module %s Init: %w", m.Name(), err)
 		}
+
 		enabledModules = append(enabledModules, m)
 	}
+
 	d.modules = enabledModules
+
 	return nil
 }
 
 func (d *Daemon) shutdownModules(ctx context.Context) error {
 	var failures error
+
 	for _, module := range slices.Backward(d.attemptedModules) {
 		if closer, ok := module.(ModuleShutdown); ok {
-			if err := closer.Shutdown(ctx, d.log.With("module", module.Name(), "phase", "shutdown")); err != nil {
-				failures = errors.Join(failures, fmt.Errorf("module %s Shutdown: %w", module.Name(), err))
+			if err := closer.Shutdown(
+				ctx,
+				d.log.With("module", module.Name(), "phase", "shutdown"),
+			); err != nil {
+				failures = errors.Join(
+					failures,
+					fmt.Errorf("module %s Shutdown: %w", module.Name(), err),
+				)
 			}
 		}
 	}
+
 	for _, module := range slices.Backward(d.attemptedModules) {
 		if worker, ok := module.(interface{ Wait() }); ok {
 			worker.Wait()
 		}
 	}
+
 	return failures
 }
 
@@ -442,16 +561,20 @@ func signalDHCPClient(client *netif.DHCPClient, ev netif.Event) {
 	if client == nil {
 		return
 	}
+
 	if ev.Kind == netif.EvUplinkReturned {
 		client.VerifyLease()
 		return
 	}
+
 	if ev.Kind != netif.EvLinkUp && ev.Kind != netif.EvLinkDown && ev.Kind != netif.EvResync {
 		return
 	}
+
 	if ev.Kind == netif.EvLinkDown || (ev.Kind == netif.EvResync && !ev.Snapshot.LinkUp) {
 		client.LinkDown()
 	}
+
 	client.LinkChanged()
 }
 
@@ -475,18 +598,21 @@ func (d *Daemon) runLoop(
 	defer tick.Stop()
 
 	d.log.InfoContext(ctx, "ifmgr: entering main loop")
+
 	for {
 		select {
 		case <-readinessDone:
 			if *readinessError != nil {
 				return fmt.Errorf("forwarding readiness socket: %w", *readinessError)
 			}
+
 			readinessDone = nil
 		case <-ctx.Done():
 			d.log.DebugContext(ctx, "ifmgr: ctx cancelled; exiting (kernel state preserved)")
 			if raClient != nil {
 				_ = raClient.Close()
 			}
+
 			return nil
 
 		case ev, ok := <-mon.Events:
@@ -494,17 +620,18 @@ func (d *Daemon) runLoop(
 				d.log.WarnContext(ctx, "ifmgr: monitor events channel closed")
 				continue
 			}
+
 			eventCtx := tracing.WithOperation(ctx, "kernel_event")
 			eventCtx = tracing.WithEvent(eventCtx, ev.Kind.String())
-			eventCtx = tracing.WithAttrs(
-				eventCtx,
-				slog.String("iface", ev.Iface),
-			)
+			eventCtx = tracing.WithAttrs(eventCtx, slog.String("iface", ev.Iface))
 			eventCtx, _ = tracing.StartTrace(eventCtx, "", "kernel_event")
 			elog := tracing.Logger(eventCtx, d.log).With(
-				"phase", "kernel-event",
-				"kind", ev.Kind.String(),
-				"iface", ev.Iface,
+				"phase",
+				"kernel-event",
+				"kind",
+				ev.Kind.String(),
+				"iface",
+				ev.Iface,
 			)
 			d.dispatchEvent(eventCtx, elog, ev)
 			signalDHCPClient(dhcpClient, ev)
@@ -516,12 +643,15 @@ func (d *Daemon) runLoop(
 			if !ok {
 				continue
 			}
+
 			leaseCtx := tracing.WithOperation(ctx, "dhcp_event")
 			leaseCtx = tracing.WithEvent(leaseCtx, lease.State.String())
 			leaseCtx, _ = tracing.StartTrace(leaseCtx, "", "dhcp_event")
 			llog := tracing.Logger(leaseCtx, d.log).With(
-				"phase", "dhcp-event",
-				"state", lease.State.String(),
+				"phase",
+				"dhcp-event",
+				"state",
+				lease.State.String(),
 			)
 			d.persistDHCPLease(leaseCtx, llog, recoveryStore, recoveryConnectionID, lease)
 			d.dispatchLease(leaseCtx, llog, lease)
@@ -545,20 +675,62 @@ func (d *Daemon) runLoop(
 	}
 }
 
-func (d *Daemon) persistDHCPLease(ctx context.Context, log *slog.Logger, store *netif.LeaseRecoveryStore, connectionID string, lease netif.LeaseInfo) {
+func (d *Daemon) persistDHCPLease(
+	ctx context.Context,
+	log *slog.Logger,
+	store *netif.LeaseRecoveryStore,
+	connectionID string,
+	lease netif.LeaseInfo,
+) {
 	if store == nil {
 		return
 	}
+
 	switch lease.State {
 	case netif.LeaseBound:
 		if err := store.SaveDHCPv4(connectionID, d.cfg.Iface, nil, lease); err != nil {
-			log.WarnContext(ctx, "ifmgr: save DHCP lease failed", "operation", "persist-lease", "dependency", "storage", "result", "failed", "role", d.role, "iface", d.cfg.Iface, "err", err)
+			log.WarnContext(
+				ctx,
+				"ifmgr: save DHCP lease failed",
+				"operation",
+				"persist-lease",
+				"dependency",
+				"storage",
+				"result",
+				"failed",
+				"role",
+				d.role,
+				"iface",
+				d.cfg.Iface,
+				"err",
+				err,
+			)
 		}
 	case netif.LeaseExpired:
-		if err := store.Delete(connectionID, netif.LeaseProtocolDHCPv4); err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.WarnContext(ctx, "ifmgr: delete expired DHCP lease failed", "operation", "persist-lease", "dependency", "storage", "result", "failed", "role", d.role, "iface", d.cfg.Iface, "err", err)
+		if err := store.Delete(connectionID, netif.LeaseProtocolDHCPv4); err != nil &&
+			!errors.Is(err, os.ErrNotExist) {
+			log.WarnContext(
+				ctx,
+				"ifmgr: delete expired DHCP lease failed",
+				"operation",
+				"persist-lease",
+				"dependency",
+				"storage",
+				"result",
+				"failed",
+				"role",
+				d.role,
+				"iface",
+				d.cfg.Iface,
+				"err",
+				err,
+			)
 		}
-	case netif.LeaseInit, netif.LeaseSelecting, netif.LeaseRequesting, netif.LeaseRenewing, netif.LeaseRebinding:
+	case netif.LeaseInit,
+		netif.LeaseSelecting,
+		netif.LeaseRequesting,
+		netif.LeaseRenewing,
+		netif.LeaseRebinding:
 	}
 }
 
@@ -587,8 +759,10 @@ func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
 	if d.cfg.LiveState != nil {
 		routingGeneration = d.cfg.LiveState.Snapshot().RoutingGeneration
 	}
+
 	var failed forwardingready.State
 	var routingFailure error
+
 	for _, m := range d.modules {
 		mlog := log.With("module", m.Name())
 		mlog.DebugContext(ctx, "ifmgr: Reconcile")
@@ -603,34 +777,53 @@ func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
 			}
 		}
 	}
+
 	if d.role != "wan" {
 		if d.cfg.ForwardingReadySocket != "" {
 			d.setForwardingReadiness(d.reportedForwardingReadiness())
 		}
+
 		return
 	}
+
 	if d.cfg.LiveState != nil {
 		snapshot := d.cfg.LiveState.Snapshot()
-		evaluation := newRoutingEvaluation(snapshot.RoutingGeneration != routingGeneration, routingFailure)
+		evaluation := newRoutingEvaluation(
+			snapshot.RoutingGeneration != routingGeneration,
+			routingFailure,
+		)
 		d.publishFamilyReadiness(snapshot, evaluation, failed)
+
 		for _, m := range d.modules {
 			if observer, ok := m.(FamilyReadinessObserver); ok {
 				observer.OnFamilyReadiness(ctx, log.With("module", m.Name()))
 			}
 		}
 	}
+
 	if d.cfg.ForwardingReadySocket == "" {
 		return
 	}
+
 	if d.cfg.LiveState == nil {
-		d.setForwardingReadiness(forwardingready.State{IPv4: false, IPv6: false})
+		d.setForwardingReadiness(forwardingready.State{
+			IPv4: false,
+			IPv6: false,
+		})
+
 		return
 	}
+
 	snapshot := d.cfg.LiveState.Snapshot()
 	if snapshot.RoutingGeneration == routingGeneration {
-		d.setForwardingReadiness(forwardingready.State{IPv4: false, IPv6: false})
+		d.setForwardingReadiness(forwardingready.State{
+			IPv4: false,
+			IPv6: false,
+		})
+
 		return
 	}
+
 	state := d.internalForwardingReadiness(forwardingReadiness(snapshot))
 	state.IPv4 = state.IPv4 && !failed.IPv4
 	state.IPv6 = state.IPv6 && !failed.IPv6
@@ -639,43 +832,53 @@ func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
 
 func (d *Daemon) internalForwardingReadiness(state forwardingready.State) forwardingready.State {
 	for _, connection := range d.cfg.Connections {
-		if connection.Owner != interfaceintent.OwnerMWAN || connection.Roles&interfaceintent.RoleInternal == 0 ||
+		if connection.Owner != interfaceintent.OwnerMWAN ||
+			connection.Roles&interfaceintent.RoleInternal == 0 ||
 			connection.Enabled != nil && !*connection.Enabled {
 			continue
 		}
+
 		linkReady := false
 		if d.env.OwnedLinks != nil {
 			result, found := d.env.OwnedLinks.Get(connection.ID.String())
 			linkReady = found && result.Status == netif.OwnedLinkReady
 		}
+
 		familyReady := func(family string, settings *interfaceintent.Family) bool {
 			if settings.Forwarding != nil && !*settings.Forwarding {
 				return false
 			}
-			return linkReady && d.env.OwnedAddresses != nil && d.env.OwnedAddresses.FamilyReady(connection.ID.String(), family)
+
+			return linkReady && d.env.OwnedAddresses != nil &&
+				d.env.OwnedAddresses.FamilyReady(connection.ID.String(), family)
 		}
 		if connection.IPv4 != nil {
 			state.IPv4 = state.IPv4 && familyReady("ipv4", &connection.IPv4.Family)
 		}
+
 		if connection.IPv6 != nil {
 			state.IPv6 = state.IPv6 && familyReady("ipv6", &connection.IPv6.Family)
 		}
 	}
+
 	return state
 }
 
 func forwardingReadiness(snapshot wanstate.Snapshot) forwardingready.State {
 	var state forwardingready.State
+
 	for name, routing := range snapshot.Routing {
 		// Steering cannot select an active tier for ordinary traffic without a selectable member.
 		if !routing.SelectionEnabled {
 			continue
 		}
+
 		health, known := snapshot.Health[name]
 		member := memberForwardingReadiness(routing, health, known)
 		state.IPv4 = state.IPv4 || member.IPv4
 		state.IPv6 = state.IPv6 || member.IPv6
 	}
+
 	return state
 }
 
@@ -714,6 +917,7 @@ func dhcpEvents(c *netif.DHCPClient) <-chan netif.LeaseInfo {
 	if c == nil {
 		return nil
 	}
+
 	return c.Events
 }
 
@@ -723,5 +927,6 @@ func moduleConfigType(cfg ModuleConfig) string {
 	if cfg == nil {
 		return "<nil>"
 	}
+
 	return cfg.ModuleConfigName()
 }

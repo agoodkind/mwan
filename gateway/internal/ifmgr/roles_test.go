@@ -17,6 +17,7 @@ func TestModulesForRoleOOB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("modulesForRole(\"oob\") returned err: %v", err)
 	}
+
 	want := []string{
 		"policy_rules",
 		"host_ipv6_policy",
@@ -29,6 +30,7 @@ func TestModulesForRoleOOB(t *testing.T) {
 	if len(got) != len(want) {
 		t.Fatalf("oob role module count = %d, want %d (got=%v)", len(got), len(want), got)
 	}
+
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("oob[%d] = %q, want %q (got=%v)", i, got[i], want[i], got)
@@ -45,6 +47,7 @@ func TestModulesForRoleFailover(t *testing.T) {
 	if err != nil {
 		t.Fatalf("modulesForRole(\"failover\") returned err: %v", err)
 	}
+
 	want := []string{
 		"slaac_health",
 		"bridge_probe",
@@ -55,6 +58,7 @@ func TestModulesForRoleFailover(t *testing.T) {
 	if len(got) != len(want) {
 		t.Fatalf("failover role module count = %d, want %d (got=%v)", len(got), len(want), got)
 	}
+
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("failover[%d] = %q, want %q (got=%v)", i, got[i], want[i], got)
@@ -71,6 +75,7 @@ func TestModulesForRoleWAN(t *testing.T) {
 	if err != nil {
 		t.Fatalf("modulesForRole(\"wan\") returned err: %v", err)
 	}
+
 	want := []string{
 		"links",
 		"autoconfiguration",
@@ -87,6 +92,7 @@ func TestModulesForRoleWAN(t *testing.T) {
 	if len(got) != len(want) {
 		t.Fatalf("wan role module count = %d, want %d (got=%v)", len(got), len(want), got)
 	}
+
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("wan[%d] = %q, want %q (got=%v)", i, got[i], want[i], got)
@@ -99,6 +105,7 @@ func TestModulesForRoleWAN(t *testing.T) {
 			return
 		}
 	}
+
 	t.Fatalf("KnownRoles does not contain wan (known=%v)", known)
 }
 
@@ -109,6 +116,7 @@ func TestKnownRolesDropsLegacyNames(t *testing.T) {
 
 	known := KnownRoles()
 	sort.Strings(known)
+
 	legacy := []string{
 		"vault-oob",
 		"suburban-oob",
@@ -121,13 +129,17 @@ func TestKnownRolesDropsLegacyNames(t *testing.T) {
 			}
 		}
 	}
+
 	_, err := modulesForRole("vault-oob")
 	if err == nil {
 		t.Error("modulesForRole(\"vault-oob\") returned nil err; legacy role should be gone")
 	}
+
 	_, err = modulesForRole("lxc-failover-backup")
 	if err == nil {
-		t.Error("modulesForRole(\"lxc-failover-backup\") returned nil err; legacy role should be gone")
+		t.Error(
+			"modulesForRole(\"lxc-failover-backup\") returned nil err; legacy role should be gone",
+		)
 	}
 }
 
@@ -141,7 +153,20 @@ func TestModulesForRoleExported(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ModulesForRole(\"wan\") returned err: %v", err)
 	}
-	want := []string{"links", "autoconfiguration", "addresses", "resolver", "health", "firewall", "npt", "wan.routes", "bgp_sessions", "steering", "nativeoffload"}
+
+	want := []string{
+		"links",
+		"autoconfiguration",
+		"addresses",
+		"resolver",
+		"health",
+		"firewall",
+		"npt",
+		"wan.routes",
+		"bgp_sessions",
+		"steering",
+		"nativeoffload",
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ModulesForRole(\"wan\") = %v, want %v", got, want)
 	}

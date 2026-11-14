@@ -84,44 +84,63 @@ func Render(connection interfaceintent.Connection, tableID int) (map[string]stri
 	if err != nil {
 		return nil, err
 	}
+
 	return files.serialize(connection.Name)
 }
 
 // render builds the sections of one link's files without serializing them,
 // so WriteDir can add the parent's VLAN line before the file is written.
-func render(connection interfaceintent.Connection, tableID int, preserveStatic bool) (*fileSet, error) {
+func render(
+	connection interfaceintent.Connection,
+	tableID int,
+	preserveStatic bool,
+) (*fileSet, error) {
 	if connection.Link == nil {
 		return nil, fmt.Errorf("%s: rendered interface has no link", connection.Name)
 	}
+
 	link := connection.Link
 	if link.VLAN != nil && link.HardwareAddress != "" {
 		// The address lands in the .link file and a VLAN has no device match
 		// to put in one; a .link file with no [Match] applies to every
 		// device.
-		return nil, fmt.Errorf("%s: hardware-address is set on a VLAN, which has no .link file to carry it", connection.Name)
+		return nil, fmt.Errorf(
+			"%s: hardware-address is set on a VLAN, which has no .link file to carry it",
+			connection.Name,
+		)
 	}
+
 	files := newFileSet()
 	if link.VLAN != nil {
 		files.add(FileNetdev, sectionNetDev, keyName, connection.Name)
 		files.add(FileNetdev, sectionNetDev, keyKind, kindVLAN)
 	}
+
 	files.add(FileNetwork, sectionMatch, keyName, connection.Name)
 	preserveStatic = preserveStatic && connection.Owner == interfaceintent.OwnerNetworkd
 	if preserveStatic {
 		files.add(FileNetwork, sectionNetwork, keyKeepConfiguration, "static")
 	}
+
 	for _, line := range typedLines(connection) {
 		where := placements[line.leaf]
 		files.add(where.File, where.Section, where.Key, line.value)
 	}
+
 	for _, family := range families(connection) {
 		files.appendSections(FileNetwork, staticRoutes(family, tableID)...)
 	}
+
 	for _, file := range connection.Networkd {
 		kind := FileKind(file.Kind)
 		if kind != FileLink && kind != FileNetwork && kind != FileNetdev {
-			return nil, fmt.Errorf("%s: networkd file kind %q is not link, network, or netdev", connection.Name, file.Kind)
+			return nil, fmt.Errorf(
+				"%s: networkd file kind %q is not link, network, or netdev",
+				connection.Name,
+				file.Kind,
+			)
 		}
+
 		for _, section := range file.Sections {
 			if preserveStatic && kind == FileNetwork && section.Name == sectionNetwork {
 				var err error
@@ -130,23 +149,34 @@ func render(connection interfaceintent.Connection, tableID int, preserveStatic b
 					return nil, err
 				}
 			}
+
 			files.merge(kind, section)
 		}
 	}
+
 	return files, nil
 }
 
-func staticPreservationEntries(iface string, entries []interfaceintent.UnitEntry) ([]interfaceintent.UnitEntry, error) {
+func staticPreservationEntries(
+	iface string,
+	entries []interfaceintent.UnitEntry,
+) ([]interfaceintent.UnitEntry, error) {
 	retained := make([]interfaceintent.UnitEntry, 0, len(entries))
 	for _, entry := range entries {
 		if entry.Key != keyKeepConfiguration {
 			retained = append(retained, entry)
 			continue
 		}
+
 		if entry.Value != "static" {
-			return nil, fmt.Errorf("%s: Network/KeepConfiguration=%s conflicts with NPT static preservation", iface, entry.Value)
+			return nil, fmt.Errorf(
+				"%s: Network/KeepConfiguration=%s conflicts with NPT static preservation",
+				iface,
+				entry.Value,
+			)
 		}
 	}
+
 	return retained, nil
 }
 
@@ -158,11 +188,22 @@ func (f *fileSet) serialize(iface string) (map[string]string, error) {
 	for _, kind := range f.kinds {
 		content, err := io.ReadAll(unit.SerializeSections(f.sections[kind]))
 		if err != nil {
-			slog.Error("networkd: serializing a unit file failed", "interface", iface, "kind", kind, "err", err)
+			slog.Error(
+				"networkd: serializing a unit file failed",
+				"interface",
+				iface,
+				"kind",
+				kind,
+				"err",
+				err,
+			)
+
 			return nil, fmt.Errorf("%s: serialize %s file: %w", iface, kind, err)
 		}
+
 		rendered[fileName(iface, kind)] = Marker + "\n" + string(content)
 	}
+
 	return rendered, nil
 }
 
@@ -180,6 +221,7 @@ func kindOfFile(name string) FileKind {
 	if kind != FileLink && kind != FileNetwork && kind != FileNetdev {
 		return ""
 	}
+
 	return kind
 }
 
@@ -204,30 +246,60 @@ type Change struct {
 // The whole set is rendered before anything is written, so a spec the
 // renderer refuses leaves the directory as it was: a partial set is a
 // gateway whose links come up differently after a reboot.
-func WriteDir(dir string, connections []interfaceintent.Connection, tables map[connectionid.ID]int, preserveStatic map[connectionid.ID]bool) ([]Change, error) {
+func WriteDir(
+	dir string,
+	connections []interfaceintent.Connection,
+	tables map[connectionid.ID]int,
+	preserveStatic map[connectionid.ID]bool,
+) ([]Change, error) {
 	rendered, err := renderAll(connections, tables, preserveStatic)
 	if err != nil {
 		return nil, err
 	}
+
 	var changes []Change
+
 	for name, file := range rendered {
-		written, err := installfile.Write(filepath.Join(dir, name), []byte(file.content), unitFileMode)
+		written, err := installfile.Write(
+			filepath.Join(dir, name),
+			[]byte(file.content),
+			unitFileMode,
+		)
 		if err != nil {
-			slog.Error("networkd: writing a unit file failed", "interface", file.iface, "file", name, "err", err)
+			slog.Error(
+				"networkd: writing a unit file failed",
+				"interface",
+				file.iface,
+				"file",
+				name,
+				"err",
+				err,
+			)
+
 			return nil, fmt.Errorf("%s: write %s: %w", file.iface, name, err)
 		}
+
 		if written {
-			changes = append(changes, Change{File: name, Kind: file.kind, Interface: file.iface, Removed: false})
+			changes = append(
+				changes,
+				Change{File: name, Kind: file.kind, Interface: file.iface, Removed: false},
+			)
 		}
 	}
+
 	removed, err := prune(dir, rendered)
 	if err != nil {
 		return nil, err
 	}
+
 	changes = append(changes, removed...)
-	slices.SortFunc(changes, func(a Change, b Change) int {
-		return strings.Compare(a.File, b.File)
-	})
+	slices.SortFunc(
+		changes,
+		func(a Change, b Change) int {
+			return strings.Compare(a.File, b.File)
+		},
+	)
+
 	return changes, nil
 }
 
@@ -244,46 +316,69 @@ type renderedFile struct {
 // and must be a rendered interface: a VLAN whose parent's file nothing
 // writes would be created by nothing, so it is refused rather than left
 // silently absent.
-func renderAll(connections []interfaceintent.Connection, tables map[connectionid.ID]int, preserveStatic map[connectionid.ID]bool) (map[string]renderedFile, error) {
+func renderAll(
+	connections []interfaceintent.Connection,
+	tables map[connectionid.ID]int,
+	preserveStatic map[connectionid.ID]bool,
+) (map[string]renderedFile, error) {
 	sets := make(map[string]*fileSet, len(connections))
 	for _, connection := range connections {
 		if connection.Owner != interfaceintent.OwnerNetworkd || connection.Link == nil {
 			continue
 		}
+
 		if _, seen := sets[connection.Name]; seen {
 			return nil, fmt.Errorf("%s: rendered twice", connection.Name)
 		}
+
 		files, err := render(connection, tables[connection.ID], preserveStatic[connection.ID])
 		if err != nil {
 			return nil, err
 		}
+
 		sets[connection.Name] = files
 	}
+
 	for _, connection := range connections {
-		if connection.Owner != interfaceintent.OwnerNetworkd || connection.Link == nil || connection.Link.VLAN == nil {
+		if connection.Owner != interfaceintent.OwnerNetworkd || connection.Link == nil ||
+			connection.Link.VLAN == nil {
 			continue
 		}
+
 		parent, rendered := sets[connection.Link.VLAN.Parent]
 		if !rendered {
-			return nil, fmt.Errorf("%s: vlan parent %s has no rendered .network file to name the VLAN in",
-				connection.Name, connection.Link.VLAN.Parent)
+			return nil, fmt.Errorf(
+				"%s: vlan parent %s has no rendered .network file to name the VLAN in",
+				connection.Name,
+				connection.Link.VLAN.Parent,
+			)
 		}
+
 		parent.add(FileNetwork, sectionNetwork, keyVLAN, connection.Name)
 	}
+
 	rendered := make(map[string]renderedFile, len(sets)*2)
+
 	for _, connection := range connections {
 		fileset, selected := sets[connection.Name]
 		if !selected {
 			continue
 		}
+
 		files, err := fileset.serialize(connection.Name)
 		if err != nil {
 			return nil, err
 		}
+
 		for name, content := range files {
-			rendered[name] = renderedFile{iface: connection.Name, kind: kindOfFile(name), content: content}
+			rendered[name] = renderedFile{
+				iface:   connection.Name,
+				kind:    kindOfFile(name),
+				content: content,
+			}
 		}
 	}
+
 	return rendered, nil
 }
 
@@ -294,6 +389,7 @@ func prune(dir string, rendered map[string]renderedFile) ([]Change, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	for _, change := range removed {
 		path := filepath.Join(dir, change.File)
 		if err := os.Remove(path); err != nil {
@@ -301,6 +397,7 @@ func prune(dir string, rendered map[string]renderedFile) ([]Change, error) {
 			return nil, fmt.Errorf("remove %s: %w", path, err)
 		}
 	}
+
 	return removed, nil
 }
 
@@ -310,23 +407,32 @@ func obsoleteFiles(dir string, rendered map[string]renderedFile) ([]Change, erro
 		slog.Error("networkd: reading the unit directory failed", "dir", dir, "err", err)
 		return nil, fmt.Errorf("read %s: %w", dir, err)
 	}
+
 	var removed []Change
+
 	for _, entry := range entries {
 		name := entry.Name()
 		if _, current := rendered[name]; current || !entry.Type().IsRegular() {
 			continue
 		}
+
 		path := filepath.Join(dir, name)
 		content, err := os.ReadFile(path)
 		if err != nil {
 			slog.Error("networkd: reading a unit file failed", "path", path, "err", err)
 			return nil, fmt.Errorf("read %s: %w", path, err)
 		}
+
 		if !strings.HasPrefix(string(content), Marker+"\n") {
 			continue
 		}
-		removed = append(removed, Change{File: name, Kind: kindOfFile(name), Interface: "", Removed: true})
+
+		removed = append(
+			removed,
+			Change{File: name, Kind: kindOfFile(name), Interface: "", Removed: true},
+		)
 	}
+
 	return removed, nil
 }
 
@@ -347,59 +453,92 @@ func typedLines(s interfaceintent.Connection) []typedLine {
 	if link.Match.Driver != "" {
 		lines = append(lines, typedLine{leaf: "match.driver", value: link.Match.Driver})
 	}
+
 	if link.Match.HardwareAddress != "" {
-		lines = append(lines, typedLine{leaf: "match.hardware-address", value: link.Match.HardwareAddress})
+		lines = append(
+			lines,
+			typedLine{leaf: "match.hardware-address", value: link.Match.HardwareAddress},
+		)
 	}
+
 	if link.VLAN == nil {
 		lines = append(lines, typedLine{leaf: "name", value: s.Name})
 	}
+
 	if link.HardwareAddress != "" {
 		lines = append(lines, typedLine{leaf: "hardware-address", value: link.HardwareAddress})
 	}
+
 	if link.MTU != nil {
 		lines = append(lines, typedLine{leaf: "mtu", value: decimal(uint64(*link.MTU))})
 	}
+
 	if link.VLAN != nil {
 		lines = append(lines, typedLine{leaf: "vlan.id", value: decimal(uint64(link.VLAN.ID))})
 	}
+
 	if link.BridgeMaster != "" {
 		lines = append(lines, typedLine{leaf: "bridge-master", value: link.BridgeMaster})
 	}
+
 	for _, family := range families(s) {
 		for _, address := range family.shared.Addresses {
-			lines = append(lines, typedLine{
-				leaf:  family.name + ".address",
-				value: address.Prefix.String(),
-			})
+			lines = append(
+				lines,
+				typedLine{
+					leaf:  family.name + ".address",
+					value: address.Prefix.String(),
+				},
+			)
 		}
 	}
+
 	lines = append(lines, resolverLines(s)...)
 	if dhcp, set := dhcpLine(s); set {
 		lines = append(lines, dhcp)
 	}
+
 	if s.IPv6 != nil && s.IPv6.AcceptRA != nil {
 		lines = append(lines, typedLine{leaf: "ipv6.accept-ra", value: yesNo(*s.IPv6.AcceptRA)})
 	}
+
 	for _, family := range families(s) {
 		if family.shared.Forwarding != nil {
-			lines = append(lines, typedLine{leaf: family.name + ".forwarding", value: yesNo(*family.shared.Forwarding)})
+			lines = append(
+				lines,
+				typedLine{
+					leaf:  family.name + ".forwarding",
+					value: yesNo(*family.shared.Forwarding),
+				},
+			)
 		}
 	}
+
 	if s.IPv4 != nil && leasesMetric(s.IPv4.Family) {
-		lines = append(lines, typedLine{leaf: "ipv4.route-metric", value: decimal(uint64(*s.IPv4.RouteMetric))})
+		lines = append(
+			lines,
+			typedLine{leaf: "ipv4.route-metric", value: decimal(uint64(*s.IPv4.RouteMetric))},
+		)
 	}
+
 	if s.IPv6 != nil && s.IPv6.Delegation != nil {
 		lines = append(lines, delegationLines(*s.IPv6.Delegation)...)
 	}
+
 	if s.IPv6 != nil && leasesMetric(s.IPv6.Family) {
-		lines = append(lines, typedLine{leaf: "ipv6.route-metric", value: decimal(uint64(*s.IPv6.RouteMetric))})
+		lines = append(
+			lines,
+			typedLine{leaf: "ipv6.route-metric", value: decimal(uint64(*s.IPv6.RouteMetric))},
+		)
 	}
+
 	return lines
 }
 
 func resolverLines(connection interfaceintent.Connection) []typedLine {
 	var lines []typedLine
 	var servers, domains []string
+
 	for _, family := range families(connection) {
 		for _, server := range family.shared.DNS {
 			value := server.String()
@@ -408,6 +547,7 @@ func resolverLines(connection interfaceintent.Connection) []typedLine {
 				lines = append(lines, typedLine{leaf: family.name + ".dns", value: value})
 			}
 		}
+
 		for _, domain := range family.shared.SearchDomains {
 			if !slices.Contains(domains, domain) {
 				domains = append(domains, domain)
@@ -415,6 +555,7 @@ func resolverLines(connection interfaceintent.Connection) []typedLine {
 			}
 		}
 	}
+
 	return lines
 }
 
@@ -431,15 +572,19 @@ func dhcpLine(s interfaceintent.Connection) (typedLine, bool) {
 		leaf = "ipv4.dhcp"
 		v4 = *s.IPv4.DHCP
 	}
+
 	if s.IPv6 != nil && s.IPv6.DHCP != nil {
 		if leaf == "" {
 			leaf = "ipv6.dhcp"
 		}
+
 		v6 = *s.IPv6.DHCP
 	}
+
 	if leaf == "" {
 		return none, false
 	}
+
 	value := valueNo
 	switch {
 	case v4 && v6:
@@ -449,6 +594,7 @@ func dhcpLine(s interfaceintent.Connection) (typedLine, bool) {
 	case v6:
 		value = valueIPv6
 	}
+
 	return typedLine{leaf: leaf, value: value}, true
 }
 
@@ -459,24 +605,39 @@ func delegationLines(delegation interfaceintent.Delegation) []typedLine {
 	if delegation.DUIDType != "" {
 		lines = append(lines, typedLine{leaf: "delegation.duid-type", value: delegation.DUIDType})
 	}
+
 	if delegation.DUID != "" {
 		lines = append(lines, typedLine{leaf: "delegation.duid", value: delegation.DUID})
 	}
+
 	if delegation.Hint.IsValid() {
 		lines = append(lines, typedLine{leaf: "delegation.hint", value: delegation.Hint.String()})
 	}
+
 	if delegation.WithoutRA != "" {
 		lines = append(lines, typedLine{leaf: "delegation.without-ra", value: delegation.WithoutRA})
 	}
+
 	if delegation.UseDelegatedPrefix != nil {
-		lines = append(lines, typedLine{leaf: "delegation.use-delegated-prefix", value: yesNo(*delegation.UseDelegatedPrefix)})
+		lines = append(
+			lines,
+			typedLine{
+				leaf:  "delegation.use-delegated-prefix",
+				value: yesNo(*delegation.UseDelegatedPrefix),
+			},
+		)
 	}
+
 	if delegation.RouterLifetimeSeconds != nil {
-		lines = append(lines, typedLine{
-			leaf:  "delegation.router-lifetime-seconds",
-			value: decimal(uint64(*delegation.RouterLifetimeSeconds)),
-		})
+		lines = append(
+			lines,
+			typedLine{
+				leaf:  "delegation.router-lifetime-seconds",
+				value: decimal(uint64(*delegation.RouterLifetimeSeconds)),
+			},
+		)
 	}
+
 	return lines
 }
 
@@ -492,15 +653,18 @@ func families(s interfaceintent.Connection) []namedFamily {
 	if s.IPv4 != nil {
 		families = append(families, namedFamily{name: "ipv4", shared: s.IPv4.Family})
 	}
+
 	if s.IPv6 != nil {
 		families = append(families, namedFamily{name: "ipv6", shared: s.IPv6.Family})
 	}
+
 	return families
 }
 
 // staticRoutes renders configured routes and the gateway shorthand's defaults.
 func staticRoutes(family namedFamily, tableID int) []*unit.UnitSection {
 	var configured []*unit.UnitSection
+
 	for _, route := range family.shared.Routes {
 		entries := []*unit.UnitEntry{
 			{Name: "Destination", Value: route.Destination.String()},
@@ -508,21 +672,31 @@ func staticRoutes(family namedFamily, tableID int) []*unit.UnitSection {
 			{Name: keyMetric, Value: decimal(uint64(route.Metric))},
 		}
 		if route.Gateway.IsValid() {
-			entries = append(entries, &unit.UnitEntry{Name: keyGateway, Value: route.Gateway.String()})
+			entries = append(
+				entries,
+				&unit.UnitEntry{Name: keyGateway, Value: route.Gateway.String()},
+			)
 		}
+
 		configured = append(configured, &unit.UnitSection{Section: sectionRoute, Entries: entries})
 	}
+
 	if !family.shared.Gateway.IsValid() {
 		return configured
 	}
+
 	gateway := family.shared.Gateway.String()
 	main := &unit.UnitSection{
 		Section: sectionRoute,
 		Entries: []*unit.UnitEntry{{Name: keyGateway, Value: gateway}},
 	}
 	if family.shared.RouteMetric != nil {
-		main.Entries = append(main.Entries, &unit.UnitEntry{Name: keyMetric, Value: decimal(uint64(*family.shared.RouteMetric))})
+		main.Entries = append(
+			main.Entries,
+			&unit.UnitEntry{Name: keyMetric, Value: decimal(uint64(*family.shared.RouteMetric))},
+		)
 	}
+
 	provider := &unit.UnitSection{
 		Section: sectionRoute,
 		Entries: []*unit.UnitEntry{
@@ -533,6 +707,7 @@ func staticRoutes(family namedFamily, tableID int) []*unit.UnitSection {
 	if tableID == 0 {
 		return append(configured, main)
 	}
+
 	return append(configured, main, provider)
 }
 
@@ -548,6 +723,7 @@ func yesNo(value bool) string {
 	if value {
 		return valueYes
 	}
+
 	return valueNo
 }
 
@@ -568,12 +744,14 @@ func newFileSet() *fileSet {
 // section order.
 func (f *fileSet) add(kind FileKind, section string, key string, value string) {
 	entry := &unit.UnitEntry{Name: key, Value: value}
+
 	for _, existing := range f.sections[kind] {
 		if existing.Section == section {
 			existing.Entries = append(existing.Entries, entry)
 			return
 		}
 	}
+
 	f.appendSections(kind, &unit.UnitSection{Section: section, Entries: []*unit.UnitEntry{entry}})
 }
 
@@ -582,9 +760,11 @@ func (f *fileSet) appendSections(kind FileKind, sections ...*unit.UnitSection) {
 	if len(sections) == 0 {
 		return
 	}
+
 	if _, seen := f.sections[kind]; !seen {
 		f.kinds = append(f.kinds, kind)
 	}
+
 	f.sections[kind] = append(f.sections[kind], sections...)
 }
 
@@ -596,17 +776,21 @@ func (f *fileSet) merge(kind FileKind, section interfaceintent.UnitSection) {
 	for _, entry := range section.Entries {
 		entries = append(entries, &unit.UnitEntry{Name: entry.Key, Value: entry.Value})
 	}
+
 	var carrier *unit.UnitSection
 	carriers := 0
+
 	for _, existing := range f.sections[kind] {
 		if existing.Section == section.Name {
 			carrier = existing
 			carriers++
 		}
 	}
+
 	if carriers == 1 {
 		carrier.Entries = append(carrier.Entries, entries...)
 		return
 	}
+
 	f.appendSections(kind, &unit.UnitSection{Section: section.Name, Entries: entries})
 }

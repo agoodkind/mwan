@@ -28,7 +28,11 @@ type outerPacket struct {
 	innerTarget string
 }
 
-func captureOuterPackets(t *testing.T, capture *packet.Conn, complete func([]outerPacket) bool) []outerPacket {
+func captureOuterPackets(
+	t *testing.T,
+	capture *packet.Conn,
+	complete func([]outerPacket) bool,
+) []outerPacket {
 	t.Helper()
 	if err := capture.SetReadDeadline(time.Now().Add(tunnelCaptureWindow)); err != nil {
 		t.Fatal(err)
@@ -50,7 +54,11 @@ func captureOuterPackets(t *testing.T, capture *packet.Conn, complete func([]out
 		if err != nil {
 			t.Fatalf("parse captured IPv4 header: %v", err)
 		}
-		captured := outerPacket{source: outer.Src.String(), destination: outer.Dst.String(), protocol: outer.Protocol}
+		captured := outerPacket{
+			source:      outer.Src.String(),
+			destination: outer.Dst.String(),
+			protocol:    outer.Protocol,
+		}
 		if outer.Protocol == unix.IPPROTO_IPV6 {
 			inner, err := ipv6.ParseHeader(buffer[outer.Len:length])
 			if err != nil {
@@ -63,7 +71,13 @@ func captureOuterPackets(t *testing.T, capture *packet.Conn, complete func([]out
 	return packets
 }
 
-func exchangeOverTunnel(t *testing.T, listenerNamespace netns.NsHandle, listenAddress string, dialerNamespace netns.NsHandle, home netns.NsHandle) {
+func exchangeOverTunnel(
+	t *testing.T,
+	listenerNamespace netns.NsHandle,
+	listenAddress string,
+	dialerNamespace netns.NsHandle,
+	home netns.NsHandle,
+) {
 	t.Helper()
 	if err := netns.Set(listenerNamespace); err != nil {
 		t.Fatal(err)
@@ -133,7 +147,8 @@ func TestOwnedTunnelCarriesIPv6InsideIPv4(t *testing.T) {
 		t.Fatal(err)
 	}
 	veth := &netlink.Veth{
-		LinkAttrs: netlink.LinkAttrs{Name: tunnelUnderlayName}, PeerName: "tun-peer",
+		LinkAttrs:     netlink.LinkAttrs{Name: tunnelUnderlayName},
+		PeerName:      "tun-peer",
 		PeerNamespace: netlink.NsFd(int(peerNamespace)),
 	}
 	if err := netlink.LinkAdd(veth); err != nil {
@@ -158,7 +173,10 @@ func TestOwnedTunnelCarriesIPv6InsideIPv4(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := peer.AddrAdd(peerUnderlay, mustTunnelAddress(t, tunnelRemoteOuter+"/30")); err != nil {
+	if err := peer.AddrAdd(
+		peerUnderlay,
+		mustTunnelAddress(t, tunnelRemoteOuter+"/30"),
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := peer.LinkSetUp(peerUnderlay); err != nil {
@@ -167,8 +185,11 @@ func TestOwnedTunnelCarriesIPv6InsideIPv4(t *testing.T) {
 	peerAttrs := netlink.NewLinkAttrs()
 	peerAttrs.Name = "peer6in4"
 	peerTunnel := &netlink.Sittun{
-		LinkAttrs: peerAttrs, Link: uint32(peerUnderlay.Attrs().Index), Proto: unix.IPPROTO_IPV6,
-		Local: net.ParseIP(tunnelRemoteOuter), Remote: net.ParseIP(tunnelLocalOuter),
+		LinkAttrs: peerAttrs,
+		Link:      uint32(peerUnderlay.Attrs().Index),
+		Proto:     unix.IPPROTO_IPV6,
+		Local:     net.ParseIP(tunnelRemoteOuter),
+		Remote:    net.ParseIP(tunnelLocalOuter),
 	}
 	if err := peer.LinkAdd(peerTunnel); err != nil {
 		t.Fatalf("create the peer sit device: %v", err)
@@ -185,9 +206,19 @@ func TestOwnedTunnelCarriesIPv6InsideIPv4(t *testing.T) {
 	}
 
 	reconciler := newTunnelReconciler(t, filepath.Join(t.TempDir(), "links.json"))
-	requireTunnelReady(t, reconcileTunnel(t, reconciler, externalConnection(tunnelUnderlayName),
-		tunnelConnection(tunnelUnderlayName, tunnelRemoteOuter, new(uint8(64)), nil)))
-	if err := netlink.AddrAdd(tunnelDevice(t, tunnelName), mustTunnelAddress(t, tunnelLocalInner+"/64")); err != nil {
+	requireTunnelReady(
+		t,
+		reconcileTunnel(
+			t,
+			reconciler,
+			externalConnection(tunnelUnderlayName),
+			tunnelConnection(tunnelUnderlayName, tunnelRemoteOuter, new(uint8(64)), nil),
+		),
+	)
+	if err := netlink.AddrAdd(
+		tunnelDevice(t, tunnelName),
+		mustTunnelAddress(t, tunnelLocalInner+"/64"),
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -227,7 +258,12 @@ func TestOwnedTunnelCarriesIPv6InsideIPv4(t *testing.T) {
 	}
 	for _, captured := range packets {
 		if captured.protocol != unix.IPPROTO_IPV6 {
-			t.Fatalf("underlay packet uses IPv4 protocol %d, want %d: %+v", captured.protocol, unix.IPPROTO_IPV6, captured)
+			t.Fatalf(
+				"underlay packet uses IPv4 protocol %d, want %d: %+v",
+				captured.protocol,
+				unix.IPPROTO_IPV6,
+				captured,
+			)
 		}
 	}
 }

@@ -25,6 +25,7 @@ func New(configuration ifmgr.ModuleConfig) (ifmgr.Module, error) {
 			return nil, fmt.Errorf("nativeoffload: invalid configuration type %T", configuration)
 		}
 	}
+
 	return &unavailableModule{BaseModule: ifmgr.NewBaseModule("nativeoffload"), cfg: settings}, nil
 }
 
@@ -32,6 +33,7 @@ func (module *unavailableModule) Init(_ context.Context, _ *ifmgr.Env) error {
 	if err := ValidateSupport(module.cfg); err != nil {
 		return err
 	}
+
 	return ifmgr.ErrModuleDisabled
 }
 

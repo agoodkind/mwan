@@ -36,19 +36,47 @@ func (b *builder) upstreamArchive(ctx context.Context, c component) (string, err
 	if err := os.RemoveAll(dir); err != nil {
 		return "", b.fail(ctx, "clear archive dir", err, slog.String("dir", dir))
 	}
-	download := cmd(programApkg, "get-archive", "--version", b.pinVersion(c), "--no-cache", "--result-dir", dir).
-		in(b.srcDir(c))
+
+	download := cmd(
+		programApkg,
+		"get-archive",
+		"--version",
+		b.pinVersion(c),
+		"--no-cache",
+		"--result-dir",
+		dir,
+	).
+		in(
+			b.srcDir(c),
+		)
 	if err := b.run(ctx, download); err != nil {
 		return "", err
 	}
+
 	archives, err := filepath.Glob(filepath.Join(dir, "*.tar.gz"))
 	if err != nil {
 		return "", b.fail(ctx, "list archives", err, slog.String("dir", dir))
 	}
+
 	if len(archives) != 1 {
-		return "", b.fail(ctx, "find archive", errArchiveCount, slog.String("dir", dir), slog.Int("count", len(archives)))
+		return "", b.fail(
+			ctx,
+			"find archive",
+			errArchiveCount,
+			slog.String("dir", dir),
+			slog.Int("count", len(archives)),
+		)
 	}
-	b.log.InfoContext(ctx, "wanconfigstack: upstream archive downloaded", "component", c.name, "archive", archives[0])
+
+	b.log.InfoContext(
+		ctx,
+		"wanconfigstack: upstream archive downloaded",
+		"component",
+		c.name,
+		"archive",
+		archives[0],
+	)
+
 	return archives[0], nil
 }
 
@@ -61,31 +89,65 @@ func (b *builder) portInstallFiles(ctx context.Context, templateDir string) erro
 	if err != nil {
 		return b.fail(ctx, "open template dir", err, slog.String("dir", templateDir))
 	}
+
 	defer func() { _ = root.Close() }()
 	installFiles, err := fs.Glob(root.FS(), "*"+installFileSuffix)
 	if err != nil {
 		return b.fail(ctx, "list install files", err, slog.String("dir", templateDir))
 	}
+
 	portedFiles := []string{}
+
 	for _, name := range installFiles {
 		content, err := root.ReadFile(name)
 		if err != nil {
-			return b.fail(ctx, "read install file", err, slog.String("dir", templateDir), slog.String("file", name))
+			return b.fail(
+				ctx,
+				"read install file",
+				err,
+				slog.String("dir", templateDir),
+				slog.String("file", name),
+			)
 		}
+
 		original := string(content)
 		ported := strings.ReplaceAll(original, amd64MultiarchSegment, anyMultiarchSegment)
 		if ported == original {
 			continue
 		}
+
 		info, err := root.Stat(name)
 		if err != nil {
-			return b.fail(ctx, "stat install file", err, slog.String("dir", templateDir), slog.String("file", name))
+			return b.fail(
+				ctx,
+				"stat install file",
+				err,
+				slog.String("dir", templateDir),
+				slog.String("file", name),
+			)
 		}
+
 		if err := root.WriteFile(name, []byte(ported), info.Mode().Perm()); err != nil {
-			return b.fail(ctx, "write install file", err, slog.String("dir", templateDir), slog.String("file", name))
+			return b.fail(
+				ctx,
+				"write install file",
+				err,
+				slog.String("dir", templateDir),
+				slog.String("file", name),
+			)
 		}
+
 		portedFiles = append(portedFiles, name)
 	}
-	b.log.InfoContext(ctx, "wanconfigstack: install files ported to the multiarch glob", "dir", templateDir, "ported", portedFiles)
+
+	b.log.InfoContext(
+		ctx,
+		"wanconfigstack: install files ported to the multiarch glob",
+		"dir",
+		templateDir,
+		"ported",
+		portedFiles,
+	)
+
 	return nil
 }

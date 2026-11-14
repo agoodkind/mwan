@@ -37,7 +37,9 @@ func TestOwnedStaticDaemonRuntime(t *testing.T) {
 	}
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^TestOwnedStaticDaemonRuntime$")
-	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
+	child.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS),
+	}
 	child.Env = append(os.Environ(), staticRuntimeChildEnv+"=1", staticRuntimeBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("isolated static daemon test: %v: %s", err, output)
@@ -76,27 +78,74 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 	if err := os.MkdirAll(staticStateDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = true\n", filepath.Join(root, "owned-links.json"), filepath.Join(staticStateDir, "owned-static.json"), filepath.Join(root, "kernel-policy.json"))
+	config := fmt.Sprintf(
+		"[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = true\n",
+		filepath.Join(root, "owned-links.json"),
+		filepath.Join(staticStateDir, "owned-static.json"),
+		filepath.Join(root, "kernel-policy.json"),
+	)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	setRuntimeLoopback(t)
-	management := newRuntimePeer(t, gateway, "enmgmt0", "mgmt-host", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
+	management := newRuntimePeer(
+		t,
+		gateway,
+		"enmgmt0",
+		"mgmt-host",
+		[]string{"203.0.113.1/24"},
+		[]string{"203.0.113.2/24"},
+		"",
+	)
 	defer management.namespace.Close()
-	lan := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29", "2001:db8:b01:fe::1/64"}, []string{"192.0.2.2/29", "2001:db8:b01:fe::2/64"}, "")
+	lan := newRuntimePeer(
+		t,
+		gateway,
+		"enmwanbr0",
+		"lan-host",
+		[]string{"192.0.2.1/29", "2001:db8:b01:fe::1/64"},
+		[]string{"192.0.2.2/29", "2001:db8:b01:fe::2/64"},
+		"",
+	)
 	defer lan.namespace.Close()
-	parentPeer := newRuntimePeer(t, gateway, "ownphys0", "owned-peer", nil, nil, ownedRuntimeParentMAC)
+	parentPeer := newRuntimePeer(
+		t,
+		gateway,
+		"ownphys0",
+		"owned-peer",
+		nil,
+		nil,
+		ownedRuntimeParentMAC,
+	)
 	defer parentPeer.namespace.Close()
 	setRuntimeNamespace(t, parentPeer.namespace)
 	parent, err := netlink.LinkByName("owned-peer")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "peer397", ParentIndex: parent.Attrs().Index}, VlanId: 397}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Vlan{
+		LinkAttrs: netlink.LinkAttrs{Name: "peer397", ParentIndex: parent.Attrs().Index},
+		VlanId:    397,
+	}); err != nil {
 		t.Fatal(err)
 	}
-	configureRuntimeLink(t, "peer397", []string{"10.39.7.2/24", "10.39.7.3/24", "10.39.9.2/24", "fd39:7::2/64", "fd39:7::3/64", "fd39:9::2/64"})
-	if err := os.WriteFile("/proc/sys/net/ipv4/conf/all/rp_filter", []byte("2"), 0o644); err != nil {
+	configureRuntimeLink(
+		t,
+		"peer397",
+		[]string{
+			"10.39.7.2/24",
+			"10.39.7.3/24",
+			"10.39.9.2/24",
+			"fd39:7::2/64",
+			"fd39:7::3/64",
+			"fd39:9::2/64",
+		},
+	)
+	if err := os.WriteFile(
+		"/proc/sys/net/ipv4/conf/all/rp_filter",
+		[]byte("2"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	// Loose reverse-path validation requires a return route for native downstream sources.
@@ -104,19 +153,33 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.RouteAdd(&netlink.Route{Dst: downstreamV4, Gw: net.ParseIP("10.39.7.1")}); err != nil {
+	if err := netlink.RouteAdd(&netlink.Route{
+		Dst: downstreamV4,
+		Gw:  net.ParseIP("10.39.7.1"),
+	}); err != nil {
 		t.Fatal(err)
 	}
 	setRuntimeNamespace(t, gateway)
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	reader, closeRepository, err := openPrivateRepository(ctx, slog.Default(), selftestFlags{repository: filepath.Join(root, "repository"), modelsDir: selftestModelsDir(t)})
+	reader, closeRepository, err := openPrivateRepository(
+		ctx,
+		slog.Default(),
+		selftestFlags{
+			repository: filepath.Join(root, "repository"),
+			modelsDir:  selftestModelsDir(t),
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer closeRepository()
 	read := func() string {
-		value, found, readErr := reader.ExportJSON(ctx, yangpub.DatastoreOperational, "/ietf-interfaces:*")
+		value, found, readErr := reader.ExportJSON(
+			ctx,
+			yangpub.DatastoreOperational,
+			"/ietf-interfaces:*",
+		)
 		if readErr != nil || !found {
 			return ""
 		}
@@ -126,13 +189,29 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 		}
 		return compact.String()
 	}
-	writeStaticRuntimeNetwork(t, networkDir, "10.39.7.1", "fd39:7::1", "10.39.7.2", "fd39:7::2", 398, 24, true)
+	writeStaticRuntimeNetwork(
+		t,
+		networkDir,
+		"10.39.7.1",
+		"fd39:7::1",
+		"10.39.7.2",
+		"fd39:7::2",
+		398,
+		24,
+		true,
+	)
 	_, isolatedDestination, err := net.ParseCIDR("10.39.9.0/24")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The fallback prevents a default route from hiding a missing configured route.
-	if err := netlink.RouteAdd(&netlink.Route{Dst: isolatedDestination, Table: unix.RT_TABLE_MAIN, Type: unix.RTN_BLACKHOLE, Priority: 10000, Protocol: unix.RTPROT_STATIC}); err != nil {
+	if err := netlink.RouteAdd(&netlink.Route{
+		Dst:      isolatedDestination,
+		Table:    unix.RT_TABLE_MAIN,
+		Type:     unix.RTN_BLACKHOLE,
+		Priority: 10000,
+		Protocol: unix.RTPROT_STATIC,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	binary := os.Getenv(staticRuntimeBinaryEnv)
@@ -145,7 +224,11 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 		setRuntimeNamespace(t, gateway)
 		output, commandErr := exec.Command("nft", "list", "ruleset").CombinedOutput()
 		t.Logf("failed packet rules: %s error=%v", output, commandErr)
-		routes, routeErr := netlink.RouteListFiltered(netlink.FAMILY_ALL, &netlink.Route{Table: unix.RT_TABLE_MAIN}, netlink.RT_FILTER_TABLE)
+		routes, routeErr := netlink.RouteListFiltered(
+			netlink.FAMILY_ALL,
+			&netlink.Route{Table: unix.RT_TABLE_MAIN},
+			netlink.RT_FILTER_TABLE,
+		)
 		t.Logf("failed packet main routes=%v error=%v", routes, routeErr)
 		t.Logf("failed packet public state=%s", read())
 	}()
@@ -185,7 +268,11 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 	if err := netlink.RuleAdd(selectedRoute); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", []byte("1"), 0o644); err != nil {
+	if err := os.WriteFile(
+		"/proc/sys/net/ipv6/conf/all/forwarding",
+		[]byte("1"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	setRuntimeNamespace(t, lan.namespace)
@@ -205,7 +292,13 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 	if err := netlink.RuleAdd(selectedRouteV6); err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.RouteAdd(&netlink.Route{Dst: selectedDestinationV6, Table: unix.RT_TABLE_MAIN, Type: unix.RTN_BLACKHOLE, Priority: 10000, Protocol: unix.RTPROT_STATIC}); err != nil {
+	if err := netlink.RouteAdd(&netlink.Route{
+		Dst:      selectedDestinationV6,
+		Table:    unix.RT_TABLE_MAIN,
+		Type:     unix.RTN_BLACKHOLE,
+		Priority: 10000,
+		Protocol: unix.RTPROT_STATIC,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	waitStaticRuntimeSelection(t, first, read)
@@ -218,9 +311,26 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 	waitConfiguredRuntimeRoute(t, first, "fd39:9::/64")
 	assertStaticRuntimePacket(t, lan.namespace, parentPeer.namespace, "udp6", "[fd39:9::2]:39804")
 	setRuntimeNamespace(t, gateway)
-	selection, selectionErr := exec.Command("nft", "list", "chain", "inet", "mwan_steer", "prerouting").CombinedOutput()
-	t.Logf("initial IPv4 packet selection: %s error=%v public state=%s", selection, selectionErr, read())
-	for _, path := range []string{"/proc/sys/net/ipv4/ip_forward", "/proc/sys/net/ipv4/conf/all/rp_filter", "/proc/sys/net/ipv4/conf/enmwanbr0/rp_filter", "/proc/sys/net/ipv4/conf/all/src_valid_mark"} {
+	selection, selectionErr := exec.Command(
+		"nft",
+		"list",
+		"chain",
+		"inet",
+		"mwan_steer",
+		"prerouting",
+	).CombinedOutput()
+	t.Logf(
+		"initial IPv4 packet selection: %s error=%v public state=%s",
+		selection,
+		selectionErr,
+		read(),
+	)
+	for _, path := range []string{
+		"/proc/sys/net/ipv4/ip_forward",
+		"/proc/sys/net/ipv4/conf/all/rp_filter",
+		"/proc/sys/net/ipv4/conf/enmwanbr0/rp_filter",
+		"/proc/sys/net/ipv4/conf/all/src_valid_mark",
+	} {
 		value, readErr := os.ReadFile(path)
 		t.Logf("initial IPv4 packet setting %s=%q error=%v", path, value, readErr)
 	}
@@ -248,7 +358,13 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unrelatedRoute := &netlink.Route{LinkIndex: link.Attrs().Index, Dst: foreignDestination, Table: unix.RT_TABLE_MAIN, Scope: netlink.SCOPE_LINK, Protocol: unix.RTPROT_STATIC}
+	unrelatedRoute := &netlink.Route{
+		LinkIndex: link.Attrs().Index,
+		Dst:       foreignDestination,
+		Table:     unix.RT_TABLE_MAIN,
+		Scope:     netlink.SCOPE_LINK,
+		Protocol:  unix.RTPROT_STATIC,
+	}
 	if err := netlink.RouteAdd(unrelatedRoute); err != nil {
 		t.Fatal(err)
 	}
@@ -261,13 +377,37 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 	if err := netlink.RouteDel(&configuredRoute); err != nil {
 		t.Fatal(err)
 	}
-	assertConfiguredRuntimePacketAbsent(t, gateway, lan.namespace, parentPeer.namespace, "udp4", "10.39.9.2:39706")
+	assertConfiguredRuntimePacketAbsent(
+		t,
+		gateway,
+		lan.namespace,
+		parentPeer.namespace,
+		"udp4",
+		"10.39.9.2:39706",
+	)
 	configuredRouteV6 = waitConfiguredRuntimeRoute(t, first, "fd39:9::/64")
 	if err := netlink.RouteDel(&configuredRouteV6); err != nil {
 		t.Fatal(err)
 	}
-	assertConfiguredRuntimePacketAbsent(t, gateway, lan.namespace, parentPeer.namespace, "udp6", "[fd39:9::2]:39806")
-	writeStaticRuntimeNetwork(t, networkDir, "10.39.7.4", "fd39:7::4", "10.39.7.3", "fd39:7::3", 400, 24, true)
+	assertConfiguredRuntimePacketAbsent(
+		t,
+		gateway,
+		lan.namespace,
+		parentPeer.namespace,
+		"udp6",
+		"[fd39:9::2]:39806",
+	)
+	writeStaticRuntimeNetwork(
+		t,
+		networkDir,
+		"10.39.7.4",
+		"fd39:7::4",
+		"10.39.7.3",
+		"fd39:7::3",
+		400,
+		24,
+		true,
+	)
 	second := startRuntimeDaemon(t, binary, configPath, root, "static-second")
 	defer killOwnedRuntimeDaemon(t, second)
 	waitRuntimeTable(t, second, "inet", "filter", 10*time.Second)
@@ -286,7 +426,9 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 	}
 	preservedRoute := false
 	for _, route := range routesAfterRestart {
-		preservedRoute = preservedRoute || route.Dst != nil && route.Dst.String() == "10.39.10.0/24" && route.Protocol == unix.RTPROT_STATIC
+		preservedRoute = preservedRoute ||
+			route.Dst != nil && route.Dst.String() == "10.39.10.0/24" &&
+				route.Protocol == unix.RTPROT_STATIC
 	}
 	if !preservedRoute {
 		t.Fatal("restart removed unrelated configured route")
@@ -311,14 +453,34 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 		t.Fatalf("late static link parent: link=%v parent=%v err=%v", lateLink, lateParent, err)
 	}
 	killOwnedRuntimeDaemon(t, second)
-	writeStaticRuntimeNetwork(t, networkDir, "10.39.7.4", "fd39:7::4", "10.39.7.3", "fd39:7::3", 402, 24, true)
+	writeStaticRuntimeNetwork(
+		t,
+		networkDir,
+		"10.39.7.4",
+		"fd39:7::4",
+		"10.39.7.3",
+		"fd39:7::3",
+		402,
+		24,
+		true,
+	)
 	metricOnly := startRuntimeDaemon(t, binary, configPath, root, "static-metric-only")
 	defer killOwnedRuntimeDaemon(t, metricOnly)
 	waitStaticRuntimeRoute(t, metricOnly, "ipv4", "10.39.7.3", 402, true)
 	waitStaticRuntimeRoute(t, metricOnly, "ipv4", "10.39.7.3", 400, false)
 	waitStaticRuntimeAddress(t, metricOnly, "owned397", "10.39.7.4/24", true)
 	killOwnedRuntimeDaemon(t, metricOnly)
-	writeStaticRuntimeNetwork(t, networkDir, "10.39.7.4", "fd39:7::4", "10.39.7.3", "fd39:7::3", 402, 25, true)
+	writeStaticRuntimeNetwork(
+		t,
+		networkDir,
+		"10.39.7.4",
+		"fd39:7::4",
+		"10.39.7.3",
+		"fd39:7::3",
+		402,
+		25,
+		true,
+	)
 	prefixChange := startRuntimeDaemon(t, binary, configPath, root, "static-prefix-change")
 	defer killOwnedRuntimeDaemon(t, prefixChange)
 	waitStaticRuntimeAddress(t, prefixChange, "owned397", "10.39.7.4/25", true)
@@ -326,23 +488,54 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 	waitStaticRuntimeAddress(t, prefixChange, "owned397", "10.39.7.99/24", true)
 	waitStaticRuntimeRoute(t, prefixChange, "ipv4", "10.39.7.3", 402, true)
 	killOwnedRuntimeDaemon(t, prefixChange)
-	foreignRoute := &netlink.Route{LinkIndex: link.Attrs().Index, Table: unix.RT_TABLE_MAIN, Family: unix.AF_INET, Gw: net.ParseIP("10.39.7.2"), Priority: 401, Protocol: unix.RTPROT_STATIC}
+	foreignRoute := &netlink.Route{
+		LinkIndex: link.Attrs().Index,
+		Table:     unix.RT_TABLE_MAIN,
+		Family:    unix.AF_INET,
+		Gw:        net.ParseIP("10.39.7.2"),
+		Priority:  401,
+		Protocol:  unix.RTPROT_STATIC,
+	}
 	if err := netlink.RouteAdd(foreignRoute); err != nil {
 		t.Fatal(err)
 	}
-	writeStaticRuntimeNetwork(t, networkDir, "10.39.7.4", "fd39:7::4", "10.39.7.3", "fd39:7::3", 401, 25, true)
+	writeStaticRuntimeNetwork(
+		t,
+		networkDir,
+		"10.39.7.4",
+		"fd39:7::4",
+		"10.39.7.3",
+		"fd39:7::3",
+		401,
+		25,
+		true,
+	)
 	conflict := startRuntimeDaemon(t, binary, configPath, root, "static-conflict")
 	defer killOwnedRuntimeDaemon(t, conflict)
 	waitStaticRuntimeLog(t, conflict, "default route metric 401 conflicts with an unowned route")
 	waitStaticRuntimeRoute(t, conflict, "ipv4", "10.39.7.3", 402, true)
 	waitStaticRuntimeRoute(t, conflict, "ipv4", "10.39.7.3", 401, false)
-	waitStaticRuntimeFamilyApply(t, conflict, read, "owned397", "ipv4", "failed", "default route metric 401 conflicts with an unowned route")
-	if routes, err := netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: unix.RT_TABLE_MAIN}, netlink.RT_FILTER_TABLE); err != nil {
+	waitStaticRuntimeFamilyApply(
+		t,
+		conflict,
+		read,
+		"owned397",
+		"ipv4",
+		"failed",
+		"default route metric 401 conflicts with an unowned route",
+	)
+	if routes, err := netlink.RouteListFiltered(
+		unix.AF_INET,
+		&netlink.Route{Table: unix.RT_TABLE_MAIN},
+		netlink.RT_FILTER_TABLE,
+	); err != nil {
 		t.Fatal(err)
 	} else {
 		found := false
 		for _, route := range routes {
-			found = found || route.Priority == 401 && route.Protocol == unix.RTPROT_STATIC && route.Gw.Equal(net.ParseIP("10.39.7.2"))
+			found = found ||
+				route.Priority == 401 && route.Protocol == unix.RTPROT_STATIC &&
+					route.Gw.Equal(net.ParseIP("10.39.7.2"))
 		}
 		if !found {
 			t.Fatal("foreign default route was changed")
@@ -356,14 +549,30 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 	third := startRuntimeDaemon(t, binary, configPath, root, "static-third")
 	defer killOwnedRuntimeDaemon(t, third)
 	waitRuntimeTable(t, third, "inet", "filter", 10*time.Second)
-	waitStaticRuntimeFamilyApply(t, third, read, "late397", "ipv4", "failed", "connection late397 link is not ready")
+	waitStaticRuntimeFamilyApply(
+		t,
+		third,
+		read,
+		"late397",
+		"ipv4",
+		"failed",
+		"connection late397 link is not ready",
+	)
 	waitStaticRuntimeAddress(t, third, "owned397", "10.39.7.4/25", false)
 	waitStaticRuntimeAddress(t, third, "owned397", "fd39:7::4/64", true)
 	waitStaticRuntimeAddress(t, third, "owned397", "10.39.7.99/24", true)
 	waitStaticRuntimeRoute(t, third, "ipv4", "10.39.7.3", 402, false)
 	waitStaticRuntimeRoute(t, third, "ipv6", "fd39:7::3", 400, true)
 	waitStaticRuntimePromotion(t, third, promotionPath, "0\n")
-	latePeer = newRuntimePeer(t, gateway, "latephys0", "late-peer-new", nil, nil, ownedRuntimeLateMAC)
+	latePeer = newRuntimePeer(
+		t,
+		gateway,
+		"latephys0",
+		"late-peer-new",
+		nil,
+		nil,
+		ownedRuntimeLateMAC,
+	)
 	defer latePeer.namespace.Close()
 	setRuntimeNamespace(t, gateway)
 	waitStaticRuntimeAddress(t, third, "late397", "10.39.8.1/24", true)
@@ -384,7 +593,13 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 			_ = unix.Unmount(staticStateDir, 0)
 		}
 	})
-	if err := unix.Mount("", staticStateDir, "", unix.MS_REMOUNT|unix.MS_BIND|unix.MS_RDONLY, ""); err != nil {
+	if err := unix.Mount(
+		"",
+		staticStateDir,
+		"",
+		unix.MS_REMOUNT|unix.MS_BIND|unix.MS_RDONLY,
+		"",
+	); err != nil {
 		t.Fatal(err)
 	}
 	failedRemoval := startRuntimeDaemon(t, binary, configPath, root, "static-remove-failed")
@@ -454,7 +669,17 @@ func removeStaticRuntimeConnection(t *testing.T, directory, name string) {
 	}
 }
 
-func writeStaticRuntimeNetwork(t *testing.T, directory, ipv4, ipv6, gateway4, gateway6 string, metric, prefixLength int, includeV4 bool) {
+func writeStaticRuntimeNetwork(
+	t *testing.T,
+	directory string,
+	ipv4 string,
+	ipv6 string,
+	gateway4 string,
+	gateway6 string,
+	metric int,
+	prefixLength int,
+	includeV4 bool,
+) {
 	t.Helper()
 	writeOwnedRuntimeNetwork(t, directory, false, true)
 	path := filepath.Join(directory, "network.json")
@@ -481,16 +706,35 @@ func writeStaticRuntimeNetwork(t *testing.T, directory, ipv4, ipv6, gateway4, ga
 		}
 		if name != "owned397" {
 			if name == "late397" {
-				entry["ietf-ip:ipv4"] = json.RawMessage(`{"address":[{"ip":"10.39.8.1","prefix-length":24}]}`)
+				entry["ietf-ip:ipv4"] = json.RawMessage(
+					`{"address":[{"ip":"10.39.8.1","prefix-length":24}]}`,
+				)
 			}
 			continue
 		}
 		entry["enabled"] = json.RawMessage("true")
 		if includeV4 {
-			entry["ietf-ip:ipv4"] = json.RawMessage(fmt.Sprintf(`{"address":[{"ip":%q,"prefix-length":%d}],"goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:translation":{"mode":"native"},"goodkind-mwan-steering:gateway":%q,"goodkind-mwan-steering:route-metric":%d,"goodkind-mwan-steering:route":[{"destination":"10.39.9.0/24"}]}`, ipv4, prefixLength, gateway4, metric))
+			entry["ietf-ip:ipv4"] = json.RawMessage(
+				fmt.Sprintf(
+					`{"address":[{"ip":%q,"prefix-length":%d}],"goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:translation":{"mode":"native"},"goodkind-mwan-steering:gateway":%q,"goodkind-mwan-steering:route-metric":%d,"goodkind-mwan-steering:route":[{"destination":"10.39.9.0/24"}]}`,
+					ipv4,
+					prefixLength,
+					gateway4,
+					metric,
+				),
+			)
 		}
-		entry["ietf-ip:ipv6"] = json.RawMessage(fmt.Sprintf(`{"address":[{"ip":%q,"prefix-length":64}],"goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:translation":{"mode":"native"},"goodkind-mwan-steering:gateway":%q,"goodkind-mwan-steering:route-metric":%d,"goodkind-mwan-steering:route":[{"destination":"fd39:9::/64"}]}`, ipv6, gateway6, metric))
-		entry["goodkind-mwan-steering:wan"] = json.RawMessage(`{"name":"static","table-id":397,"fw-mark":4,"fw-mark-prio":397,"from-prio":97}`)
+		entry["ietf-ip:ipv6"] = json.RawMessage(
+			fmt.Sprintf(
+				`{"address":[{"ip":%q,"prefix-length":64}],"goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:translation":{"mode":"native"},"goodkind-mwan-steering:gateway":%q,"goodkind-mwan-steering:route-metric":%d,"goodkind-mwan-steering:route":[{"destination":"fd39:9::/64"}]}`,
+				ipv6,
+				gateway6,
+				metric,
+			),
+		)
+		entry["goodkind-mwan-steering:wan"] = json.RawMessage(
+			`{"name":"static","table-id":397,"fw-mark":4,"fw-mark-prio":397,"from-prio":97}`,
+		)
 		entry["goodkind-mwan-steering:steering"] = json.RawMessage(`{"tier":0,"weight":1}`)
 	}
 	interfaces["interface"], err = json.Marshal(entries)
@@ -532,10 +776,18 @@ func waitStaticRuntimeSelection(t *testing.T, daemon *runtimeDaemon, read func()
 	var selection []byte
 	var err error
 	for time.Now().Before(deadline) {
-		selection, err = exec.Command("nft", "list", "chain", "inet", "mwan_steer", "prerouting").CombinedOutput()
+		selection, err = exec.Command(
+			"nft",
+			"list",
+			"chain",
+			"inet",
+			"mwan_steer",
+			"prerouting",
+		).CombinedOutput()
 		if err == nil {
 			for _, line := range strings.Split(string(selection), "\n") {
-				if strings.Contains(line, "ip6 saddr 2001:db8:b01:fe::2 ") && strings.Contains(line, "meta mark set 0x00000004") {
+				if strings.Contains(line, "ip6 saddr 2001:db8:b01:fe::2 ") &&
+					strings.Contains(line, "meta mark set 0x00000004") {
 					return
 				}
 			}
@@ -543,10 +795,21 @@ func waitStaticRuntimeSelection(t *testing.T, daemon *runtimeDaemon, read func()
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("IPv6 provider selection absent: %s; error=%v; public state=%s", selection, err, read())
+	t.Fatalf(
+		"IPv6 provider selection absent: %s; error=%v; public state=%s",
+		selection,
+		err,
+		read(),
+	)
 }
 
-func waitStaticRuntimeTranslation(t *testing.T, daemon *runtimeDaemon, read func() string, name, family string) {
+func waitStaticRuntimeTranslation(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	read func() string,
+	name string,
+	family string,
+) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
@@ -568,7 +831,8 @@ func waitStaticRuntimeTranslation(t *testing.T, daemon *runtimeDaemon, read func
 						} `json:"state"`
 					} `json:"goodkind-mwan-steering:translation"`
 				}
-				if json.Unmarshal(entry["ietf-ip:"+family], &state) == nil && state.Translation.State.Ready {
+				if json.Unmarshal(entry["ietf-ip:"+family], &state) == nil &&
+					state.Translation.State.Ready {
 					return
 				}
 			}
@@ -576,7 +840,13 @@ func waitStaticRuntimeTranslation(t *testing.T, daemon *runtimeDaemon, read func
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("%s %s translation readiness absent: %s; daemon: %s", name, family, read(), runtimeLogTail(t, daemon, 40))
+	t.Fatalf(
+		"%s %s translation readiness absent: %s; daemon: %s",
+		name,
+		family,
+		read(),
+		runtimeLogTail(t, daemon, 40),
+	)
 }
 
 func waitStaticRuntimeLog(t *testing.T, daemon *runtimeDaemon, expected string) {
@@ -592,7 +862,15 @@ func waitStaticRuntimeLog(t *testing.T, daemon *runtimeDaemon, expected string) 
 	t.Fatalf("daemon log lacks %q: %s", expected, runtimeLogTail(t, daemon, 40))
 }
 
-func waitStaticRuntimeFamilyApply(t *testing.T, daemon *runtimeDaemon, read func() string, name, family, result, reason string) {
+func waitStaticRuntimeFamilyApply(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	read func() string,
+	name string,
+	family string,
+	result string,
+	reason string,
+) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
@@ -624,10 +902,24 @@ func waitStaticRuntimeFamilyApply(t *testing.T, daemon *runtimeDaemon, read func
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("%s %s apply result=%s reason=%q absent from operational state: %s", name, family, result, reason, read())
+	t.Fatalf(
+		"%s %s apply result=%s reason=%q absent from operational state: %s",
+		name,
+		family,
+		result,
+		reason,
+		read(),
+	)
 }
 
-func waitStaticPendingRemoval(t *testing.T, daemon *runtimeDaemon, read func() string, id, family string, present bool) {
+func waitStaticPendingRemoval(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	read func() string,
+	id string,
+	family string,
+	present bool,
+) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
@@ -660,10 +952,23 @@ func waitStaticPendingRemoval(t *testing.T, daemon *runtimeDaemon, read func() s
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("pending removal %s/%s present=%t absent from operational state: %s; daemon: %s", id, family, present, read(), runtimeLogTail(t, daemon, 50))
+	t.Fatalf(
+		"pending removal %s/%s present=%t absent from operational state: %s; daemon: %s",
+		id,
+		family,
+		present,
+		read(),
+		runtimeLogTail(t, daemon, 50),
+	)
 }
 
-func waitStaticRuntimeAddress(t *testing.T, daemon *runtimeDaemon, name, prefix string, present bool) {
+func waitStaticRuntimeAddress(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	name string,
+	prefix string,
+	present bool,
+) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	var observed []netlink.Addr
@@ -696,17 +1001,32 @@ func waitStaticRuntimeAddress(t *testing.T, daemon *runtimeDaemon, name, prefix 
 	}
 	var relevant []string
 	for _, line := range strings.Split(runtimeDaemonLog(t, daemon), "\n") {
-		if strings.Contains(line, `"module":"addresses"`) || strings.Contains(line, `"module":"links"`) {
+		if strings.Contains(line, `"module":"addresses"`) ||
+			strings.Contains(line, `"module":"links"`) {
 			relevant = append(relevant, line)
 		}
 	}
 	if len(relevant) > 20 {
 		relevant = relevant[len(relevant)-20:]
 	}
-	t.Fatalf("address %s on %s present=%t not observed; current=%v: %s", prefix, name, present, observed, strings.Join(relevant, "\n"))
+	t.Fatalf(
+		"address %s on %s present=%t not observed; current=%v: %s",
+		prefix,
+		name,
+		present,
+		observed,
+		strings.Join(relevant, "\n"),
+	)
 }
 
-func waitStaticRuntimeRoute(t *testing.T, daemon *runtimeDaemon, family, gateway string, metric int, present bool) {
+func waitStaticRuntimeRoute(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	family string,
+	gateway string,
+	metric int,
+	present bool,
+) {
 	t.Helper()
 	addressFamily := unix.AF_INET
 	if family == "ipv6" {
@@ -714,13 +1034,18 @@ func waitStaticRuntimeRoute(t *testing.T, daemon *runtimeDaemon, family, gateway
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		routes, err := netlink.RouteListFiltered(addressFamily, &netlink.Route{Table: unix.RT_TABLE_MAIN}, netlink.RT_FILTER_TABLE)
+		routes, err := netlink.RouteListFiltered(
+			addressFamily,
+			&netlink.Route{Table: unix.RT_TABLE_MAIN},
+			netlink.RT_FILTER_TABLE,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
 		found := false
 		for _, route := range routes {
-			if route.Priority == metric && route.Gw.Equal(net.ParseIP(gateway)) && route.Protocol == netif.OwnedStaticRouteProtocol {
+			if route.Priority == metric && route.Gw.Equal(net.ParseIP(gateway)) &&
+				route.Protocol == netif.OwnedStaticRouteProtocol {
 				found = true
 			}
 		}
@@ -730,10 +1055,20 @@ func waitStaticRuntimeRoute(t *testing.T, daemon *runtimeDaemon, family, gateway
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("default route via %s metric %d present=%t not observed: %s", gateway, metric, present, runtimeLogTail(t, daemon, 40))
+	t.Fatalf(
+		"default route via %s metric %d present=%t not observed: %s",
+		gateway,
+		metric,
+		present,
+		runtimeLogTail(t, daemon, 40),
+	)
 }
 
-func waitConfiguredRuntimeRoute(t *testing.T, daemon *runtimeDaemon, destination string) netlink.Route {
+func waitConfiguredRuntimeRoute(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	destination string,
+) netlink.Route {
 	t.Helper()
 	metric := 0
 	if strings.Contains(destination, ":") {
@@ -741,12 +1076,18 @@ func waitConfiguredRuntimeRoute(t *testing.T, daemon *runtimeDaemon, destination
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		routes, err := netlink.RouteListFiltered(netlink.FAMILY_ALL, &netlink.Route{Table: unix.RT_TABLE_MAIN}, netlink.RT_FILTER_TABLE)
+		routes, err := netlink.RouteListFiltered(
+			netlink.FAMILY_ALL,
+			&netlink.Route{Table: unix.RT_TABLE_MAIN},
+			netlink.RT_FILTER_TABLE,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, route := range routes {
-			if route.Dst != nil && route.Dst.String() == destination && route.Protocol == netif.OwnedStaticRouteProtocol && route.Priority == metric {
+			if route.Dst != nil && route.Dst.String() == destination &&
+				route.Protocol == netif.OwnedStaticRouteProtocol &&
+				route.Priority == metric {
 				return route
 			}
 		}
@@ -781,7 +1122,13 @@ func captureStaticRuntimeFailure(t *testing.T) func() {
 	}
 }
 
-func assertStaticRuntimePacket(t *testing.T, gateway, peer netns.NsHandle, network, destination string) {
+func assertStaticRuntimePacket(
+	t *testing.T,
+	gateway netns.NsHandle,
+	peer netns.NsHandle,
+	network string,
+	destination string,
+) {
 	t.Helper()
 	setRuntimeNamespace(t, peer)
 	listener, err := net.ListenPacket(network, destination)
@@ -810,7 +1157,14 @@ func assertStaticRuntimePacket(t *testing.T, gateway, peer netns.NsHandle, netwo
 	}
 }
 
-func assertConfiguredRuntimePacketAbsent(t *testing.T, gateway, source, peer netns.NsHandle, network, destination string) {
+func assertConfiguredRuntimePacketAbsent(
+	t *testing.T,
+	gateway netns.NsHandle,
+	source netns.NsHandle,
+	peer netns.NsHandle,
+	network string,
+	destination string,
+) {
 	t.Helper()
 	setRuntimeNamespace(t, peer)
 	listener, err := net.ListenPacket(network, destination)

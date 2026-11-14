@@ -57,6 +57,7 @@ func newRoutingEvaluation(published bool, failure error) routingEvaluation {
 	case failure != nil:
 		return routingEvaluation{state: routingFailed, failure: failure}
 	}
+
 	return routingEvaluation{state: routingNotPublished, failure: nil}
 }
 
@@ -64,6 +65,7 @@ func (evaluation routingEvaluation) forMember(memberPublished bool) routingEvalu
 	if evaluation.state == routingPublished && !memberPublished {
 		evaluation.state = routingMemberAbsent
 	}
+
 	return evaluation
 }
 
@@ -76,8 +78,16 @@ const (
 	probePassed
 )
 
-func familyProbeState(probed bool, member wanstate.Health, result wanstate.ProbeResult, family wanstate.Health) probeState {
-	memberStates := map[wanstate.Health]probeState{wanstate.HealthHealthy: probePassed, wanstate.HealthUnhealthy: probeFailed}
+func familyProbeState(
+	probed bool,
+	member wanstate.Health,
+	result wanstate.ProbeResult,
+	family wanstate.Health,
+) probeState {
+	memberStates := map[wanstate.Health]probeState{
+		wanstate.HealthHealthy:   probePassed,
+		wanstate.HealthUnhealthy: probeFailed,
+	}
 	memberState, decided := memberStates[member]
 	familyState, familyDecided := memberStates[family]
 	familyProbed := result == wanstate.ProbePass || result == wanstate.ProbeFail
@@ -91,6 +101,7 @@ func familyProbeState(probed bool, member wanstate.Health, result wanstate.Probe
 	case !familyDecided:
 		return probePending
 	}
+
 	return familyState
 }
 
@@ -110,6 +121,7 @@ func enabledResult(enabled bool) wanstate.DependencyResult {
 	if enabled {
 		return met(pathDependencyFamilyEnabled)
 	}
+
 	return unmet(pathDependencyFamilyEnabled, pathReasonFamilyDisabled)
 }
 
@@ -124,6 +136,7 @@ func routingResult(evaluation routingEvaluation) wanstate.DependencyResult {
 	case routingMemberAbsent:
 		return unmet(pathDependencyRouting, pathReasonRoutingMemberAbsent)
 	}
+
 	return unmet(pathDependencyRouting, pathReasonRoutingFailed)
 }
 
@@ -136,6 +149,7 @@ func probeResult(state probeState) wanstate.DependencyResult {
 	case probeFailed:
 		return unmet(pathDependencyForwardingProbe, pathReasonProbeFailed)
 	}
+
 	return unmet(pathDependencyForwardingProbe, pathReasonProbeFailed)
 }
 
@@ -146,6 +160,7 @@ func firewallResult(protection string) wanstate.DependencyResult {
 	case firewallUnknown:
 		return pending(pathDependencyFirewall, pathReasonFirewallPending)
 	}
+
 	return unmet(pathDependencyFirewall, pathReasonFirewallNotReady)
 }
 
@@ -153,6 +168,7 @@ func flagResult(name, reason string, satisfied bool) wanstate.DependencyResult {
 	if satisfied {
 		return met(name)
 	}
+
 	return unmet(name, reason)
 }
 
@@ -160,31 +176,53 @@ func pathVerdict(ready bool, dependencies []wanstate.DependencyResult) wanstate.
 	if ready {
 		return wanstate.PathVerdict{State: wanstate.PathReady, Dependency: "", Reason: ""}
 	}
+
 	for _, dependency := range dependencies {
 		switch dependency.State {
 		case wanstate.DependencyPending:
-			return wanstate.PathVerdict{State: wanstate.PathStarting, Dependency: dependency.Name, Reason: dependency.Reason}
+			return wanstate.PathVerdict{
+				State:      wanstate.PathStarting,
+				Dependency: dependency.Name,
+				Reason:     dependency.Reason,
+			}
 		case wanstate.DependencyUnmet:
-			return wanstate.PathVerdict{State: wanstate.PathUnavailable, Dependency: dependency.Name, Reason: dependency.Reason}
+			return wanstate.PathVerdict{
+				State:      wanstate.PathUnavailable,
+				Dependency: dependency.Name,
+				Reason:     dependency.Reason,
+			}
 		case wanstate.DependencyMet, wanstate.DependencyNotEvaluated:
 		}
 	}
-	return wanstate.PathVerdict{State: wanstate.PathUnavailable, Dependency: pathDependencyForwarding, Reason: pathReasonForwarding}
+
+	return wanstate.PathVerdict{
+		State:      wanstate.PathUnavailable,
+		Dependency: pathDependencyForwarding,
+		Reason:     pathReasonForwarding,
+	}
 }
 
 func (d *Daemon) publishStartingPaths() {
 	if d.role != roleWAN || d.cfg.LiveState == nil {
 		return
 	}
-	verdict := wanstate.PathVerdict{State: wanstate.PathStarting, Dependency: pathDependencyStartup, Reason: pathReasonStartup}
+
+	verdict := wanstate.PathVerdict{
+		State:      wanstate.PathStarting,
+		Dependency: pathDependencyStartup,
+		Reason:     pathReasonStartup,
+	}
+
 	for _, connection := range d.cfg.Connections {
 		if connection.Roles&interfaceintent.RoleProvider == 0 {
 			continue
 		}
+
 		id := connection.ID.String()
 		if connection.IPv4 != nil {
 			d.cfg.LiveState.SetPathReadiness(id, familyNameIPv4, verdict)
 		}
+
 		if connection.IPv6 != nil {
 			d.cfg.LiveState.SetPathReadiness(id, familyNameIPv6, verdict)
 		}

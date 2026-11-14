@@ -73,33 +73,43 @@ func (store *LeaseStore) Save(record LeaseRecord) error {
 	if store == nil {
 		return errors.New("lease store is required")
 	}
+
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	if err := store.validatePath(); err != nil {
 		return err
 	}
+
 	if err := validateLeaseRecord(record); err != nil {
 		return err
 	}
+
 	encodedRecord, err := json.Marshal(record)
 	if err != nil {
 		return leaseStoreError("encode lease record", err)
 	}
+
 	sum := sha256.Sum256(encodedRecord)
 	envelope := leaseRecordEnvelope{
-		Version: leaseRecordVersion, ConnectionID: record.ConnectionID, Protocol: record.Protocol,
-		Checksum: hex.EncodeToString(sum[:]), Record: encodedRecord,
+		Version:      leaseRecordVersion,
+		ConnectionID: record.ConnectionID,
+		Protocol:     record.Protocol,
+		Checksum:     hex.EncodeToString(sum[:]),
+		Record:       encodedRecord,
 	}
 	encodedEnvelope, err := json.Marshal(envelope)
 	if err != nil {
 		return leaseStoreError("encode lease envelope", err)
 	}
+
 	if len(encodedEnvelope) > maxLeaseRecordSize {
 		return fmt.Errorf("lease record exceeds %d bytes", maxLeaseRecordSize)
 	}
+
 	if err := store.prepareDirectory(); err != nil {
 		return err
 	}
+
 	temporary, err := os.CreateTemp(filepath.Dir(store.path), ".lease-*")
 	if err != nil {
 		return leaseStoreError("create temporary lease record", err)
@@ -109,24 +119,31 @@ func (store *LeaseStore) Save(record LeaseRecord) error {
 		temporary.Close()
 		return leaseStoreError("set lease record permissions", err)
 	}
+
 	if _, err := temporary.Write(encodedEnvelope); err != nil {
 		temporary.Close()
 		return leaseStoreError("write lease record", err)
 	}
+
 	if err := temporary.Sync(); err != nil {
 		temporary.Close()
 		return leaseStoreError("sync lease record", err)
 	}
+
 	if err := temporary.Close(); err != nil {
 		return leaseStoreError("close lease record", err)
 	}
+
 	if err := os.Rename(temporary.Name(), store.path); err != nil {
 		return leaseStoreError("replace lease record", err)
 	}
+
 	if err := store.syncDirectory(); err != nil {
 		return err
 	}
+
 	slog.Debug("lease record saved", "path", store.path)
+
 	return nil
 }
 
@@ -135,16 +152,19 @@ func (store *LeaseStore) Load(connectionID string, protocol LeaseProtocol) (Leas
 	if store == nil {
 		return LeaseRecord{}, errors.New("lease store is required")
 	}
+
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	if err := store.validatePath(); err != nil {
 		return LeaseRecord{}, err
 	}
+
 	file, err := os.Open(store.path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return LeaseRecord{}, os.ErrNotExist
 		}
+
 		return LeaseRecord{}, leaseStoreError("open lease record", err)
 	}
 	defer file.Close()
@@ -152,44 +172,62 @@ func (store *LeaseStore) Load(connectionID string, protocol LeaseProtocol) (Leas
 	if err != nil {
 		return LeaseRecord{}, leaseStoreError("read lease record", err)
 	}
+
 	if len(data) > maxLeaseRecordSize {
 		return LeaseRecord{}, fmt.Errorf("lease record exceeds %d bytes", maxLeaseRecordSize)
 	}
+
 	var envelope leaseRecordEnvelope
-	if err := decodeStrictLeaseJSON(data, func(decoder *json.Decoder) error {
-		if err := decoder.Decode(&envelope); err != nil {
-			return leaseStoreError("decode envelope", err)
-		}
-		return nil
-	}); err != nil {
+	if err := decodeStrictLeaseJSON(
+		data,
+		func(decoder *json.Decoder) error {
+			if err := decoder.Decode(&envelope); err != nil {
+				return leaseStoreError("decode envelope", err)
+			}
+
+			return nil
+		},
+	); err != nil {
 		return LeaseRecord{}, leaseStoreError("decode lease envelope", err)
 	}
+
 	if envelope.Version != leaseRecordVersion {
 		return LeaseRecord{}, fmt.Errorf("unsupported lease record version %d", envelope.Version)
 	}
+
 	if envelope.ConnectionID != connectionID || envelope.Protocol != protocol {
 		return LeaseRecord{}, errors.New("lease record identity mismatch")
 	}
+
 	sum := sha256.Sum256(envelope.Record)
 	if envelope.Checksum != hex.EncodeToString(sum[:]) {
 		return LeaseRecord{}, errors.New("lease record checksum mismatch")
 	}
+
 	var record LeaseRecord
-	if err := decodeStrictLeaseJSON(envelope.Record, func(decoder *json.Decoder) error {
-		if err := decoder.Decode(&record); err != nil {
-			return leaseStoreError("decode record", err)
-		}
-		return nil
-	}); err != nil {
+	if err := decodeStrictLeaseJSON(
+		envelope.Record,
+		func(decoder *json.Decoder) error {
+			if err := decoder.Decode(&record); err != nil {
+				return leaseStoreError("decode record", err)
+			}
+
+			return nil
+		},
+	); err != nil {
 		return LeaseRecord{}, leaseStoreError("decode lease record", err)
 	}
+
 	if err := validateLeaseRecord(record); err != nil {
 		return LeaseRecord{}, err
 	}
+
 	if record.ConnectionID != envelope.ConnectionID || record.Protocol != envelope.Protocol {
 		return LeaseRecord{}, errors.New("lease record envelope identity mismatch")
 	}
+
 	slog.Debug("lease record loaded", "path", store.path)
+
 	return record, nil
 }
 
@@ -198,28 +236,37 @@ func (store *LeaseStore) Delete() error {
 	if store == nil {
 		return errors.New("lease store is required")
 	}
+
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	if err := store.validatePath(); err != nil {
 		return err
 	}
+
 	if err := os.Remove(store.path); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return os.ErrNotExist
 		}
+
 		return leaseStoreError("remove lease record", err)
 	}
+
 	if err := store.syncDirectory(); err != nil {
 		return err
 	}
+
 	slog.Debug("lease record deleted", "path", store.path)
+
 	return nil
 }
 
 func (store *LeaseStore) validatePath() error {
-	if store.path == "" || !filepath.IsAbs(store.path) || store.path != filepath.Clean(store.path) || filepath.Base(store.path) == string(filepath.Separator) {
+	if store.path == "" || !filepath.IsAbs(store.path) ||
+		store.path != filepath.Clean(store.path) ||
+		filepath.Base(store.path) == string(filepath.Separator) {
 		return errors.New("absolute lease record path is required")
 	}
+
 	leafDirectory := filepath.Dir(store.path)
 	for directory := leafDirectory; ; directory = filepath.Dir(directory) {
 		info, err := os.Lstat(directory)
@@ -230,10 +277,12 @@ func (store *LeaseStore) validatePath() error {
 		} else if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 			return fmt.Errorf("lease directory path component %q is not a directory", directory)
 		}
+
 		if directory == filepath.Dir(directory) {
 			break
 		}
 	}
+
 	return nil
 }
 
@@ -245,21 +294,27 @@ func (store *LeaseStore) prepareDirectory() error {
 		if err := os.Mkdir(directory, 0o700); err != nil {
 			return leaseStoreError("create lease directory", err)
 		}
+
 		created = true
 		if err := os.Chmod(directory, 0o700); err != nil {
 			return leaseStoreError("set lease directory permissions", err)
 		}
+
 		info, err = os.Lstat(directory)
 	}
+
 	if err != nil {
 		return leaseStoreError("inspect lease directory", err)
 	}
+
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || info.Mode().Perm() != 0o700 {
 		return errors.New("lease directory must have mode 0700")
 	}
+
 	if created {
 		return syncLeaseDirectory(filepath.Dir(directory))
 	}
+
 	return nil
 }
 
@@ -276,19 +331,26 @@ func syncLeaseDirectory(path string) error {
 	if err := directory.Sync(); err != nil {
 		return leaseStoreError("sync lease directory", err)
 	}
+
 	return nil
 }
 
 func validateLeaseRecord(record LeaseRecord) error {
-	if record.ConnectionID == "" || record.InterfaceName == "" || len(record.LinkHardwareAddr) == 0 || len(record.ProtocolIdentity) == 0 {
+	if record.ConnectionID == "" || record.InterfaceName == "" ||
+		len(record.LinkHardwareAddr) == 0 ||
+		len(record.ProtocolIdentity) == 0 {
 		return errors.New("lease record identity is incomplete")
 	}
+
 	if record.Protocol != LeaseProtocolDHCPv4 && record.Protocol != LeaseProtocolDHCPv6 {
 		return errors.New("unsupported lease protocol")
 	}
-	if record.Clock.WallTime.IsZero() || record.Clock.BootID == "" || record.Clock.Uptime < 0 || !json.Valid(record.Payload) {
+
+	if record.Clock.WallTime.IsZero() || record.Clock.BootID == "" || record.Clock.Uptime < 0 ||
+		!json.Valid(record.Payload) {
 		return errors.New("lease record clock or payload is invalid")
 	}
+
 	return nil
 }
 
@@ -298,12 +360,15 @@ func decodeStrictLeaseJSON(data []byte, decode func(*json.Decoder) error) error 
 	if err := decode(decoder); err != nil {
 		return err
 	}
+
 	if err := decoder.Decode(new(json.RawMessage)); err != io.EOF {
 		if err == nil {
 			return errors.New("trailing JSON value")
 		}
+
 		return leaseStoreError("decode trailing data", err)
 	}
+
 	return nil
 }
 

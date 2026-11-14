@@ -29,10 +29,13 @@ func (file File) Content(guest config.GuestType) ([]byte, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
+
 	if guest != config.GuestTypeLXC || !file.isSysctl() {
 		return content, true, nil
 	}
+
 	kept := namespacedSysctlSettings(content)
+
 	return kept, kept != nil, nil
 }
 
@@ -43,9 +46,11 @@ func (file File) Content(guest config.GuestType) ([]byte, bool, error) {
 // a setting. namespacedSysctlSettings returns nil when no net. setting remains.
 func namespacedSysctlSettings(content []byte) []byte {
 	var keptBlocks []string
+
 	for block := range strings.SplitSeq(strings.TrimSpace(string(content)), blockSeparator) {
 		var keptLines []string
 		var pendingComments []string
+
 		for line := range strings.SplitSeq(block, "\n") {
 			trimmed := strings.TrimSpace(line)
 			switch {
@@ -60,13 +65,17 @@ func namespacedSysctlSettings(content []byte) []byte {
 				pendingComments = nil
 			}
 		}
+
 		if len(keptLines) == 0 {
 			continue
 		}
+
 		keptBlocks = append(keptBlocks, strings.Join(keptLines, "\n"))
 	}
+
 	if len(keptBlocks) == 0 {
 		return nil
 	}
+
 	return []byte(strings.Join(keptBlocks, blockSeparator) + "\n")
 }

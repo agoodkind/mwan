@@ -80,32 +80,54 @@ func (section *IfMgrNativeOffloadSection) Resolve() (NativeOffloadProcessSetting
 	if section == nil || !section.Enabled {
 		return settings, nil
 	}
+
 	if section.CPU == nil || section.MemoryMiB == 0 {
-		return settings, fmt.Errorf("nativeoffload requires an explicit cpu and positive memory_mib")
+		return settings, fmt.Errorf(
+			"nativeoffload requires an explicit cpu and positive memory_mib",
+		)
 	}
-	if !filepath.IsAbs(section.HugepageDirectory) || len(section.HugepageDirectory) > nativeMaxHugepageDirectory {
-		return settings, fmt.Errorf("nativeoffload requires an absolute hugepage_directory of at most %d bytes", nativeMaxHugepageDirectory)
+
+	if !filepath.IsAbs(section.HugepageDirectory) ||
+		len(section.HugepageDirectory) > nativeMaxHugepageDirectory {
+		return settings, fmt.Errorf(
+			"nativeoffload requires an absolute hugepage_directory of at most %d bytes",
+			nativeMaxHugepageDirectory,
+		)
 	}
+
 	if section.FilePrefix == "" || len(section.FilePrefix) > nativeMaxFilePrefix {
-		return settings, fmt.Errorf("nativeoffload requires file_prefix with 1 to %d bytes", nativeMaxFilePrefix)
+		return settings, fmt.Errorf(
+			"nativeoffload requires file_prefix with 1 to %d bytes",
+			nativeMaxFilePrefix,
+		)
 	}
+
 	for _, value := range section.FilePrefix {
-		if value != '-' && value != '_' && (value < '0' || value > '9') && (value < 'A' || value > 'Z') && (value < 'a' || value > 'z') {
-			return settings, fmt.Errorf("nativeoffload file_prefix permits only ASCII letters, digits, hyphen and underscore")
+		if value != '-' && value != '_' && (value < '0' || value > '9') &&
+			(value < 'A' || value > 'Z') &&
+			(value < 'a' || value > 'z') {
+			return settings, fmt.Errorf(
+				"nativeoffload file_prefix permits only ASCII letters, digits, hyphen and underscore",
+			)
 		}
 	}
+
 	settings.CPU, settings.MemoryMiB = *section.CPU, section.MemoryMiB
 	settings.HugepageDirectory, settings.FilePrefix = section.HugepageDirectory, section.FilePrefix
 	if err := section.resolveLimits(&settings); err != nil {
 		return NativeOffloadProcessSettings{}, err
 	}
+
 	if err := section.resolveDurations(&settings); err != nil {
 		return NativeOffloadProcessSettings{}, err
 	}
+
 	return settings, nil
 }
 
-func (section *IfMgrNativeOffloadSection) resolveLimits(settings *NativeOffloadProcessSettings) error {
+func (section *IfMgrNativeOffloadSection) resolveLimits(
+	settings *NativeOffloadProcessSettings,
+) error {
 	for _, field := range []struct {
 		name     string
 		input    *uint32
@@ -113,29 +135,75 @@ func (section *IfMgrNativeOffloadSection) resolveLimits(settings *NativeOffloadP
 		maximum  uint32
 		output   *uint32
 	}{
-		{"pair_capacity", section.PairCapacity, nativeDefaultPairCapacity, nativeMaxPairCapacity, &settings.PairCapacity},
-		{"mbuf_count", section.MbufCount, nativeDefaultMbufCount, nativeMaxMbufCount, &settings.MbufCount},
-		{"flow_capacity", section.FlowCapacity, nativeDefaultFlowCapacity, math.MaxInt32, &settings.FlowCapacity},
-		{"event_capacity", section.EventCapacity, nativeDefaultEventCapacity, math.MaxInt32, &settings.EventCapacity},
-		{"observation_capacity", section.ObservationCapacity, nativeDefaultObservationCapacity, math.MaxInt32, &settings.ObservationCapacity},
-		{"socket_buffer_bytes", section.SocketBufferBytes, nativeDefaultSocketBufferBytes, math.MaxInt32, &settings.SocketBufferBytes},
+		{
+			"pair_capacity",
+			section.PairCapacity,
+			nativeDefaultPairCapacity,
+			nativeMaxPairCapacity,
+			&settings.PairCapacity,
+		},
+		{
+			"mbuf_count",
+			section.MbufCount,
+			nativeDefaultMbufCount,
+			nativeMaxMbufCount,
+			&settings.MbufCount,
+		},
+		{
+			"flow_capacity",
+			section.FlowCapacity,
+			nativeDefaultFlowCapacity,
+			math.MaxInt32,
+			&settings.FlowCapacity,
+		},
+		{
+			"event_capacity",
+			section.EventCapacity,
+			nativeDefaultEventCapacity,
+			math.MaxInt32,
+			&settings.EventCapacity,
+		},
+		{
+			"observation_capacity",
+			section.ObservationCapacity,
+			nativeDefaultObservationCapacity,
+			math.MaxInt32,
+			&settings.ObservationCapacity,
+		},
+		{
+			"socket_buffer_bytes",
+			section.SocketBufferBytes,
+			nativeDefaultSocketBufferBytes,
+			math.MaxInt32,
+			&settings.SocketBufferBytes,
+		},
 	} {
 		value := field.fallback
 		if field.input != nil {
 			value = *field.input
 		}
+
 		if value == 0 || value > field.maximum {
-			return fmt.Errorf("nativeoffload %s must be between 1 and %d", field.name, field.maximum)
+			return fmt.Errorf(
+				"nativeoffload %s must be between 1 and %d",
+				field.name,
+				field.maximum,
+			)
 		}
+
 		*field.output = value
 	}
+
 	if settings.FlowCapacity < settings.PairCapacity {
 		return fmt.Errorf("nativeoffload flow_capacity must be at least pair_capacity")
 	}
+
 	return nil
 }
 
-func (section *IfMgrNativeOffloadSection) resolveDurations(settings *NativeOffloadProcessSettings) error {
+func (section *IfMgrNativeOffloadSection) resolveDurations(
+	settings *NativeOffloadProcessSettings,
+) error {
 	for _, field := range []struct {
 		name     string
 		input    string
@@ -143,13 +211,55 @@ func (section *IfMgrNativeOffloadSection) resolveDurations(settings *NativeOfflo
 		minimum  time.Duration
 		output   *time.Duration
 	}{
-		{"observation_max_age", section.ObservationMaxAge, nativeDefaultObservationMaxAge, time.Nanosecond, &settings.ObservationMaxAge},
-		{"resync_interval", section.ResyncInterval, nativeDefaultResyncInterval, time.Nanosecond, &settings.ResyncInterval},
-		{"counter_interval", section.CounterInterval, nativeDefaultCounterInterval, time.Nanosecond, &settings.CounterInterval},
-		{"request_timeout", section.RequestTimeout, nativeDefaultRequestTimeout, time.Nanosecond, &settings.RequestTimeout},
-		{"resync_timeout", section.ResyncTimeout, nativeDefaultResyncTimeout, time.Nanosecond, &settings.ResyncTimeout},
-		{"shutdown_timeout", section.ShutdownTimeout, nativeDefaultShutdownTimeout, time.Nanosecond, &settings.ShutdownTimeout},
-		{"idle_timeout", section.IdleTimeout, nativeDefaultIdleTimeout, time.Nanosecond, &settings.IdleTimeout},
+		{
+			"observation_max_age",
+			section.ObservationMaxAge,
+			nativeDefaultObservationMaxAge,
+			time.Nanosecond,
+			&settings.ObservationMaxAge,
+		},
+		{
+			"resync_interval",
+			section.ResyncInterval,
+			nativeDefaultResyncInterval,
+			time.Nanosecond,
+			&settings.ResyncInterval,
+		},
+		{
+			"counter_interval",
+			section.CounterInterval,
+			nativeDefaultCounterInterval,
+			time.Nanosecond,
+			&settings.CounterInterval,
+		},
+		{
+			"request_timeout",
+			section.RequestTimeout,
+			nativeDefaultRequestTimeout,
+			time.Nanosecond,
+			&settings.RequestTimeout,
+		},
+		{
+			"resync_timeout",
+			section.ResyncTimeout,
+			nativeDefaultResyncTimeout,
+			time.Nanosecond,
+			&settings.ResyncTimeout,
+		},
+		{
+			"shutdown_timeout",
+			section.ShutdownTimeout,
+			nativeDefaultShutdownTimeout,
+			time.Nanosecond,
+			&settings.ShutdownTimeout,
+		},
+		{
+			"idle_timeout",
+			section.IdleTimeout,
+			nativeDefaultIdleTimeout,
+			time.Nanosecond,
+			&settings.IdleTimeout,
+		},
 		{"idle_wait", section.IdleWait, nativeDefaultIdleWait, 0, &settings.IdleWait},
 	} {
 		value := field.fallback
@@ -159,15 +269,20 @@ func (section *IfMgrNativeOffloadSection) resolveDurations(settings *NativeOfflo
 				slog.Warn("native offload duration invalid", "field", field.name, "err", err)
 				return fmt.Errorf("nativeoffload %s: %w", field.name, err)
 			}
+
 			value = parsed
 		}
+
 		if value < field.minimum {
 			return fmt.Errorf("nativeoffload %s must be at least %s", field.name, field.minimum)
 		}
+
 		*field.output = value
 	}
+
 	if settings.IdleTimeout <= settings.CounterInterval {
 		return fmt.Errorf("nativeoffload idle_timeout must exceed counter_interval")
 	}
+
 	return nil
 }

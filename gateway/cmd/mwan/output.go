@@ -23,7 +23,12 @@ func operatorLogger(diagnostics io.Writer, verbose bool) (*slog.Logger, io.Close
 	if verbose {
 		destination = diagnostics
 	}
-	return logging.New(logging.Config{Handlers: []slog.Handler{slog.NewTextHandler(destination, &slog.HandlerOptions{Level: slog.LevelDebug})}})
+
+	return logging.New(logging.Config{
+		Handlers: []slog.Handler{
+			slog.NewTextHandler(destination, &slog.HandlerOptions{Level: slog.LevelDebug}),
+		},
+	})
 }
 
 func outputFormatFlag(command *cobra.Command, format *string, defaultFormat string) {
@@ -32,6 +37,7 @@ func outputFormatFlag(command *cobra.Command, format *string, defaultFormat stri
 		if *format != "text" && *format != "json" {
 			return fmt.Errorf("invalid output format %q: choose text or json", *format)
 		}
+
 		return nil
 	}
 }
@@ -46,40 +52,58 @@ func WriteJSON[T outputValue](logger *slog.Logger, output io.Writer, value T) er
 		logger.Warn("encode JSON output failed", "err", err)
 		return fmt.Errorf("encode JSON: %w", err)
 	}
+
 	return nil
 }
 
 // WriteConfigStateText presents the shared configuration state for operators.
 func WriteConfigStateText(logger *slog.Logger, output io.Writer, state configstate.State) error {
-	_, err := fmt.Fprintf(output, "config hash: %s\nconfig manifest:\n%slast deploy epoch: %d\n", state.ConfigHash, state.ConfigManifest, state.LastDeployEpoch)
+	_, err := fmt.Fprintf(
+		output,
+		"config hash: %s\nconfig manifest:\n%slast deploy epoch: %d\n",
+		state.ConfigHash,
+		state.ConfigManifest,
+		state.LastDeployEpoch,
+	)
 	if err != nil {
 		logger.Warn("write configuration state failed", "err", err)
 		return fmt.Errorf("write config state: %w", err)
 	}
+
 	return nil
 }
 
 // WriteGatewayStatusText presents the shared gateway status for operators.
 func WriteGatewayStatusText(logger *slog.Logger, output io.Writer, status statuspush.Status) error {
-	if _, err := fmt.Fprintf(output, "sent at: %s\nactive tier: %d\nproviders:\n", status.SentAt.Format("2006-01-02T15:04:05.999999999Z07:00"), status.ActiveTier); err != nil {
+	if _, err := fmt.Fprintf(
+		output,
+		"sent at: %s\nactive tier: %d\nproviders:\n",
+		status.SentAt.Format("2006-01-02T15:04:05.999999999Z07:00"),
+		status.ActiveTier,
+	); err != nil {
 		logger.Warn("write gateway status failed", "err", err)
 		return fmt.Errorf("write gateway status: %w", err)
 	}
+
 	names := make([]string, 0, len(status.Providers))
 	for name := range status.Providers {
 		names = append(names, name)
 	}
+
 	sort.Strings(names)
 	writer := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
+
 	for _, name := range names {
 		if _, err := fmt.Fprintf(writer, "  %s\t%s\n", name, status.Providers[name]); err != nil {
 			logger.Warn("write provider failed", "err", err)
 			return fmt.Errorf("write provider: %w", err)
 		}
 	}
+
 	if err := writer.Flush(); err != nil {
 		logger.Warn("flush providers failed", "err", err)
 		return fmt.Errorf("flush providers: %w", err)
 	}
+
 	return nil
 }

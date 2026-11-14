@@ -22,14 +22,17 @@ type TierMember struct {
 func ActiveTier(members []TierMember, health HealthStates) (uint8, bool) {
 	active := uint8(0)
 	found := false
+
 	for _, member := range members {
 		if !HealthIsHealthy(health.State(member.Name)) {
 			continue
 		}
+
 		if !found || member.Tier < active {
 			active = member.Tier
 			found = true
 		}
 	}
+
 	return active, found
 }

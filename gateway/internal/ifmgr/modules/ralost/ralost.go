@@ -43,14 +43,17 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	if m.clock == nil {
 		m.clock = internalclock.Real{}
 	}
+
 	m.startedAt = m.clock.Now()
 	log.InfoContext(ctx, "ra_lost: Init", "ra_lost_after", m.cfg.RALostAfter.String())
 	if m.cfg.Iface == "" {
 		return fmt.Errorf("ra_lost: iface is required")
 	}
+
 	if m.cfg.RALostAfter <= 0 {
 		return fmt.Errorf("ra_lost: ra_lost_after must be > 0")
 	}
+
 	return nil
 }
 
@@ -64,9 +67,11 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		log.DebugContext(ctx, "ra_lost: FindMainRADefault failed (non-fatal)", "err", err)
 		return nil
 	}
+
 	if cur != nil {
 		m.markSeen()
 	}
+
 	return nil
 }
 
@@ -76,9 +81,11 @@ func (m *Module) OnKernelEvent(_ context.Context, _ *slog.Logger, ev netif.Event
 	if ev.Iface != m.cfg.Iface || ev.Family != "inet6" || ev.Dest != "default" {
 		return nil
 	}
+
 	if ev.Kind == netif.EvRouteAdded {
 		m.markSeen()
 	}
+
 	return nil
 }
 
@@ -95,11 +102,15 @@ func (m *Module) EvaluateAlerts(ctx context.Context, _ *slog.Logger, now time.Ti
 		reference = m.startedAt
 		lastSeen = slog.String("waiting_since", m.startedAt.Format(time.RFC3339))
 	}
+
 	age := now.Sub(reference)
 	if age > m.cfg.RALostAfter {
 		m.Env.Alerts.NotifyContext(
-			ctx, now, slog.LevelWarn,
-			"ra-lost", m.cfg.Iface,
+			ctx,
+			now,
+			slog.LevelWarn,
+			"ra-lost",
+			m.cfg.Iface,
 			"ra_lost: no RA observed within threshold",
 			lastSeen,
 			slog.Int("age_s", int(age.Seconds())),
@@ -107,7 +118,10 @@ func (m *Module) EvaluateAlerts(ctx context.Context, _ *slog.Logger, now time.Ti
 		)
 	} else if m.Env.Alerts.Active("ra-lost", m.cfg.Iface) {
 		m.Env.Alerts.ResolveContext(
-			ctx, now, "ra-lost", m.cfg.Iface,
+			ctx,
+			now,
+			"ra-lost",
+			m.cfg.Iface,
 			"ra_lost: RA observed again",
 			slog.String("last_seen", last.Format(time.RFC3339)),
 		)
@@ -131,11 +145,14 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		if !ok {
 			return nil, fmt.Errorf("ra_lost: invalid config type %T", cfg)
 		}
+
 		c = typedConfig
 	}
+
 	if c.RALostAfter == 0 {
 		c.RALostAfter = 5 * time.Minute
 	}
+
 	return &Module{
 		BaseModule: ifmgr.NewBaseModule("ra_lost"),
 		cfg:        c,

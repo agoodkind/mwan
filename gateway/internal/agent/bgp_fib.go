@@ -93,9 +93,12 @@ func configureBGPFIB(
 			log.ErrorContext(
 				ctx,
 				"network configuration unusable, BGP route installer cannot own the per-provider tables",
-				"path", networkPath,
-				"schema_dir", schemaDir,
-				"error", err,
+				"path",
+				networkPath,
+				"schema_dir",
+				schemaDir,
+				"error",
+				err,
 			)
 			return fmt.Errorf("load network configuration: %w", err)
 		}
@@ -103,12 +106,17 @@ func configureBGPFIB(
 	if cfg.BGP.LearnedRouteIface == "" {
 		return nil
 	}
-	speaker.SetFIB(bgp.NewFIB(bgp.FIBConfig{
-		Tables:         tablesFromConfig(cfg),
-		InternalIface:  cfg.BGP.LearnedRouteIface,
-		Metric:         0,
-		ResolveNextHop: false,
-	}, log))
+	speaker.SetFIB(
+		bgp.NewFIB(
+			bgp.FIBConfig{
+				Tables:         tablesFromConfig(cfg),
+				InternalIface:  cfg.BGP.LearnedRouteIface,
+				Metric:         0,
+				ResolveNextHop: false,
+			},
+			log,
+		),
+	)
 	startStaleSweepReconciler(ctx, speaker, log, realStaleSweepClock{})
 	return nil
 }
@@ -125,7 +133,12 @@ func startStaleSweepReconciler(
 		// sweep(), so this catches nothing short of a loop-level failure.
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.ErrorContext(ctx, "BGP stale sweep reconciler crashed", "error", fmt.Errorf("panic: %v", recovered))
+				log.ErrorContext(
+					ctx,
+					"BGP stale sweep reconciler crashed",
+					"error",
+					fmt.Errorf("panic: %v", recovered),
+				)
 			}
 		}()
 		reconciler.run(ctx)
@@ -148,7 +161,12 @@ func (r staleSweepReconciler) run(ctx context.Context) {
 func (r staleSweepReconciler) sweep(ctx context.Context) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			r.log.ErrorContext(ctx, "BGP stale sweep reconcile panic", "error", fmt.Errorf("panic: %v", recovered))
+			r.log.ErrorContext(
+				ctx,
+				"BGP stale sweep reconcile panic",
+				"error",
+				fmt.Errorf("panic: %v", recovered),
+			)
 		}
 	}()
 	if err := r.sweeper.SweepStale(ctx); err != nil {

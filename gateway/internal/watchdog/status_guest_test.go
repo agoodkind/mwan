@@ -35,11 +35,17 @@ func installGuestVerb(t *testing.T, verb string, stdout string, exitCode int) {
 	directory := t.TempDir()
 	script := fmt.Sprintf(
 		"#!/bin/sh\n[ \"$*\" = \"exec %s -- %s %s\" ] || exit %d\nprintf '%%s\\n' '%s'\nexit %d\n",
-		statusVMID, statusBinary, verb, argvMismatchExit, stdout, exitCode,
+		statusVMID,
+		statusBinary,
+		verb,
+		argvMismatchExit,
+		stdout,
+		exitCode,
 	)
 	if err := os.WriteFile(filepath.Join(directory, "pct"), []byte(script), 0o755); err != nil {
 		t.Fatalf("write pct: %v", err)
 	}
+
 	t.Setenv("PATH", directory)
 }
 
@@ -48,6 +54,7 @@ func newGuestStatusSource(t *testing.T) *watchdog.GuestStatusSource {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg := &watchdogconfig.Config{GuestType: watchdogconfig.GuestTypeLXC}
+
 	return watchdog.NewGuestStatusSource(
 		ops.NewRealOps(cfg, logger),
 		statusVMID,
@@ -65,16 +72,20 @@ func TestGuestStatusSourceDecodesTheCommandOutput(t *testing.T) {
 	if !ok {
 		t.Fatal("Latest reported no status for a command that printed one")
 	}
+
 	if status.ActiveTier != 2 {
 		t.Fatalf("active tier = %d, want 2", status.ActiveTier)
 	}
+
 	if got := status.Providers["webpass"]; got != "healthy" {
 		t.Fatalf("webpass verdict = %q, want healthy", got)
 	}
+
 	wantSentAt := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
 	if !status.SentAt.Equal(wantSentAt) {
 		t.Fatalf("sent_at = %s, want %s", status.SentAt, wantSentAt)
 	}
+
 	if receivedAt.IsZero() {
 		t.Fatal("received time is zero on a status that was read")
 	}
@@ -93,24 +104,30 @@ func TestGuestStatusSourceReportsNothingOnFailure(t *testing.T) {
 		{name: "the output is empty", stdout: "", exitCode: 0, missing: false},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			installGuestCommand(t, tc.stdout, tc.exitCode)
-			if tc.missing {
-				t.Setenv("PATH", t.TempDir())
-			}
-			source := newGuestStatusSource(t)
+		t.Run(
+			tc.name,
+			func(t *testing.T) {
+				installGuestCommand(t, tc.stdout, tc.exitCode)
+				if tc.missing {
+					t.Setenv("PATH", t.TempDir())
+				}
 
-			status, receivedAt, ok := source.Latest()
+				source := newGuestStatusSource(t)
 
-			if ok {
-				t.Fatalf("Latest reported a status for a failing command: %+v", status)
-			}
-			if len(status.Providers) != 0 || status.ActiveTier != 0 || !status.SentAt.IsZero() {
-				t.Fatalf("Latest returned a populated status with ok=false: %+v", status)
-			}
-			if !receivedAt.IsZero() {
-				t.Fatalf("received time = %s, want zero", receivedAt)
-			}
-		})
+				status, receivedAt, ok := source.Latest()
+
+				if ok {
+					t.Fatalf("Latest reported a status for a failing command: %+v", status)
+				}
+
+				if len(status.Providers) != 0 || status.ActiveTier != 0 || !status.SentAt.IsZero() {
+					t.Fatalf("Latest returned a populated status with ok=false: %+v", status)
+				}
+
+				if !receivedAt.IsZero() {
+					t.Fatalf("received time = %s, want zero", receivedAt)
+				}
+			},
+		)
 	}
 }

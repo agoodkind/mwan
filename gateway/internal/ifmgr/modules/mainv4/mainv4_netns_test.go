@@ -35,7 +35,9 @@ func TestMainDHCPv4AssignmentLifecycle(t *testing.T) {
 		return
 	}
 	const iface = "main-dhcp4"
-	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: iface}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{Name: iface},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	link, err := netlink.LinkByName(iface)
@@ -48,7 +50,10 @@ func TestMainDHCPv4AssignmentLifecycle(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	stateFile := filepath.Join(t.TempDir(), "main-dhcpv4.json")
-	moduleInterface, err := New(Config{Iface: iface, StateFile: stateFile})
+	moduleInterface, err := New(Config{
+		Iface:     iface,
+		StateFile: stateFile,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,28 +62,42 @@ func TestMainDHCPv4AssignmentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	lease := netif.LeaseInfo{
-		State:     netif.LeaseBound,
-		LinkIndex: link.Attrs().Index, LinkHardwareAddr: append(net.HardwareAddr(nil), link.Attrs().HardwareAddr...),
-		IP: net.IPv4(192, 0, 2, 8), PrefixLen: 24,
-		Routes: []netif.LeaseRoute{{
-			Destination: &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
-			Gateway:     net.IPv4(192, 0, 2, 1),
-		}},
+		State:            netif.LeaseBound,
+		LinkIndex:        link.Attrs().Index,
+		LinkHardwareAddr: append(net.HardwareAddr(nil), link.Attrs().HardwareAddr...),
+		IP:               net.IPv4(192, 0, 2, 8),
+		PrefixLen:        24,
+		Routes: []netif.LeaseRoute{
+			{
+				Destination: &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
+				Gateway:     net.IPv4(192, 0, 2, 1),
+			},
+		},
 	}
 	if err := module.OnDHCPLease(ctx, slog.Default(), lease); err != nil {
 		t.Fatal(err)
 	}
 	assertMainDHCPv4(t, link, false)
-	client := netif.StartDHCPClient(ctx, slog.Default(), netif.DHCPConfig{
-		Iface:           iface,
-		DiscoverTimeout: time.Minute,
+	client := netif.StartDHCPClient(
+		ctx,
+		slog.Default(),
+		netif.DHCPConfig{
+			Iface:           iface,
+			DiscoverTimeout: time.Minute,
+		},
+	)
+	moduleInterface, err = New(Config{
+		Iface:     iface,
+		StateFile: stateFile,
 	})
-	moduleInterface, err = New(Config{Iface: iface, StateFile: stateFile})
 	if err != nil {
 		t.Fatal(err)
 	}
 	module = moduleInterface.(*Module)
-	if err := module.Init(ctx, &ifmgr.Env{Iface: iface, Log: slog.Default(), DHCP: client}); err != nil {
+	if err := module.Init(
+		ctx,
+		&ifmgr.Env{Iface: iface, Log: slog.Default(), DHCP: client},
+	); err != nil {
 		t.Fatal(err)
 	}
 	oldAddress, err := netlink.ParseAddr("192.0.2.9/24")
@@ -95,9 +114,12 @@ func TestMainDHCPv4AssignmentLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.ContainsFunc(addresses, func(address netlink.Addr) bool {
-		return address.IPNet.String() == "192.0.2.9/24"
-	}) {
+	if !slices.ContainsFunc(
+		addresses,
+		func(address netlink.Addr) bool {
+			return address.IPNet.String() == "192.0.2.9/24"
+		},
+	) {
 		t.Fatal("unidentified legacy address was removed")
 	}
 	if err := netlink.AddrDel(link, oldAddress); err != nil {
@@ -114,12 +136,18 @@ func TestMainDHCPv4AssignmentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertMainDHCPv4(t, link, true)
-	recoveryInterface, err := New(Config{Iface: iface, StateFile: stateFile})
+	recoveryInterface, err := New(Config{
+		Iface:     iface,
+		StateFile: stateFile,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	recoveryModule := recoveryInterface.(*Module)
-	if err := recoveryModule.Init(ctx, &ifmgr.Env{Iface: iface, Log: slog.Default(), DHCP: client, DHCPRecoveryPending: true}); err != nil {
+	if err := recoveryModule.Init(
+		ctx,
+		&ifmgr.Env{Iface: iface, Log: slog.Default(), DHCP: client, DHCPRecoveryPending: true},
+	); err != nil {
 		t.Fatal(err)
 	}
 	startupExpiry := netif.LeaseInfo{State: netif.LeaseExpired}
@@ -127,12 +155,18 @@ func TestMainDHCPv4AssignmentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertMainDHCPv4(t, link, true)
-	moduleInterface, err = New(Config{Iface: iface, StateFile: stateFile})
+	moduleInterface, err = New(Config{
+		Iface:     iface,
+		StateFile: stateFile,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	module = moduleInterface.(*Module)
-	if err := module.Init(ctx, &ifmgr.Env{Iface: iface, Log: slog.Default(), DHCP: client}); err != nil {
+	if err := module.Init(
+		ctx,
+		&ifmgr.Env{Iface: iface, Log: slog.Default(), DHCP: client},
+	); err != nil {
 		t.Fatal(err)
 	}
 	assertMainDHCPv4(t, link, false)
@@ -175,10 +209,14 @@ func TestMainDHCPv4AssignmentLifecycle(t *testing.T) {
 	if err := netlink.LinkDel(link); err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "index-spacer"}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{Name: "index-spacer"},
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: iface}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{Name: iface},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	link, err = netlink.LinkByName(iface)
@@ -209,19 +247,31 @@ func TestMainDHCPv4AssignmentLifecycle(t *testing.T) {
 	}
 	assertMainDHCPv4(t, link, true)
 	const newIface = "main-new"
-	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: newIface}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{Name: newIface},
+	}); err != nil {
 		t.Fatal(err)
 	}
-	newClient := netif.StartDHCPClient(ctx, slog.Default(), netif.DHCPConfig{
-		Iface:           newIface,
-		DiscoverTimeout: time.Minute,
+	newClient := netif.StartDHCPClient(
+		ctx,
+		slog.Default(),
+		netif.DHCPConfig{
+			Iface:           newIface,
+			DiscoverTimeout: time.Minute,
+		},
+	)
+	moduleInterface, err = New(Config{
+		Iface:     newIface,
+		StateFile: stateFile,
 	})
-	moduleInterface, err = New(Config{Iface: newIface, StateFile: stateFile})
 	if err != nil {
 		t.Fatal(err)
 	}
 	module = moduleInterface.(*Module)
-	if err := module.Init(ctx, &ifmgr.Env{Iface: newIface, Log: slog.Default(), DHCP: newClient}); err != nil {
+	if err := module.Init(
+		ctx,
+		&ifmgr.Env{Iface: newIface, Log: slog.Default(), DHCP: newClient},
+	); err != nil {
 		t.Fatal(err)
 	}
 	assertMainDHCPv4(t, link, false)
@@ -240,17 +290,21 @@ func TestMainDHCPv4AssignmentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertMainDHCPv4(t, newLink, true)
-	foreignB := &netlink.Addr{IPNet: &net.IPNet{IP: net.IPv4(198, 51, 100, 9), Mask: net.CIDRMask(24, 32)}}
+	foreignB := &netlink.Addr{
+		IPNet: &net.IPNet{IP: net.IPv4(198, 51, 100, 9), Mask: net.CIDRMask(24, 32)},
+	}
 	if err := netlink.AddrAdd(newLink, foreignB); err != nil {
 		t.Fatal(err)
 	}
 	leaseB := leaseA
 	leaseB.InvalidationEpoch++
 	leaseB.IP = net.IPv4(198, 51, 100, 9)
-	leaseB.Routes = []netif.LeaseRoute{{
-		Destination: &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
-		Gateway:     net.IPv4(198, 51, 100, 1),
-	}}
+	leaseB.Routes = []netif.LeaseRoute{
+		{
+			Destination: &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
+			Gateway:     net.IPv4(198, 51, 100, 1),
+		},
+	}
 	if err := module.OnDHCPLease(ctx, slog.Default(), leaseB); err == nil {
 		t.Fatal("conflicting assignment after invalidation was accepted")
 	}
@@ -266,9 +320,12 @@ func TestMainDHCPv4AssignmentLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.ContainsFunc(addresses, func(address netlink.Addr) bool {
-		return address.IPNet.String() == "198.51.100.9/24"
-	}) {
+	if !slices.ContainsFunc(
+		addresses,
+		func(address netlink.Addr) bool {
+			return address.IPNet.String() == "198.51.100.9/24"
+		},
+	) {
 		t.Fatal("renewing snapshot did not retry the failed assignment")
 	}
 	moduleInterface, err = New(Config{StateFile: stateFile})
@@ -283,18 +340,29 @@ func TestMainDHCPv4AssignmentLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if slices.ContainsFunc(addresses, func(address netlink.Addr) bool {
-		return address.IPNet.String() == "198.51.100.9/24"
-	}) {
+	if slices.ContainsFunc(
+		addresses,
+		func(address netlink.Addr) bool {
+			return address.IPNet.String() == "198.51.100.9/24"
+		},
+	) {
 		t.Fatal("disabled DHCP retained prior address")
 	}
-	routes, err := netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: unix.RT_TABLE_MAIN}, netlink.RT_FILTER_TABLE)
+	routes, err := netlink.RouteListFiltered(
+		unix.AF_INET,
+		&netlink.Route{Table: unix.RT_TABLE_MAIN},
+		netlink.RT_FILTER_TABLE,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if slices.ContainsFunc(routes, func(route netlink.Route) bool {
-		return route.Protocol == netif.OwnedDHCPv4RouteProtocol && route.LinkIndex == newLink.Attrs().Index
-	}) {
+	if slices.ContainsFunc(
+		routes,
+		func(route netlink.Route) bool {
+			return route.Protocol == netif.OwnedDHCPv4RouteProtocol &&
+				route.LinkIndex == newLink.Attrs().Index
+		},
+	) {
 		t.Fatal("disabled DHCP retained prior route")
 	}
 }
@@ -311,7 +379,11 @@ func assertMainDHCPv4(t *testing.T, link netlink.Link, assigned bool) {
 			addressCount++
 		}
 	}
-	routes, err := netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: unix.RT_TABLE_MAIN}, netlink.RT_FILTER_TABLE)
+	routes, err := netlink.RouteListFiltered(
+		unix.AF_INET,
+		&netlink.Route{Table: unix.RT_TABLE_MAIN},
+		netlink.RT_FILTER_TABLE,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,6 +398,11 @@ func assertMainDHCPv4(t *testing.T, link netlink.Link, assigned bool) {
 		want = 1
 	}
 	if addressCount != want || routeCount != want {
-		t.Fatalf("owned address count %d and route count %d, want %d", addressCount, routeCount, want)
+		t.Fatalf(
+			"owned address count %d and route count %d, want %d",
+			addressCount,
+			routeCount,
+			want,
+		)
 	}
 }

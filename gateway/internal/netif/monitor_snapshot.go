@@ -15,23 +15,29 @@ func (m *Monitor) publishSnapshot(ctx context.Context, event Event, epoch uint64
 			m.stateMu.Unlock()
 			m.mu.Unlock()
 			m.dispatchMu.Unlock()
+
 			return false
 		}
+
 		if m.bindingEpoch != epoch || !m.ready[0] || !m.ready[1] || !m.ready[2] {
 			m.markStaleLocked("link binding changed during snapshot")
 			m.stateMu.Unlock()
 			m.mu.Unlock()
 			m.dispatchMu.Unlock()
+
 			return false
 		}
+
 		if m.dirty {
 			m.dirty = false
 			m.markStaleLocked("kernel changed during snapshot")
 			m.stateMu.Unlock()
 			m.mu.Unlock()
 			m.dispatchMu.Unlock()
+
 			return false
 		}
+
 		select {
 		case m.Events <- event:
 			if m.ifIndex != event.IfIndex || m.actualIface != event.ActualIface {
@@ -39,12 +45,14 @@ func (m *Monitor) publishSnapshot(ctx context.Context, event Event, epoch uint64
 				m.actualIface = event.ActualIface
 				m.bindingEpoch++
 			}
+
 			m.stale = false
 			m.failed = false
 			m.stateMu.Unlock()
 			m.mu.Unlock()
 			m.replaySnapshot(ctx, event.Snapshot)
 			m.dispatchMu.Unlock()
+
 			return true
 		default:
 			m.stateMu.Unlock()
@@ -62,6 +70,7 @@ func (m *Monitor) replaySnapshot(ctx context.Context, snapshot *Snapshot) {
 	if snapshot.IfIndex == 0 {
 		return
 	}
+
 	var base Event
 	base.Iface = snapshot.Iface
 	base.ConnectionID = snapshot.ConnectionID
@@ -76,6 +85,7 @@ func (m *Monitor) replaySnapshot(ctx context.Context, snapshot *Snapshot) {
 			return
 		}
 	}
+
 	for _, address := range snapshot.Addresses {
 		event := base
 		event.Kind = EvAddrAdded
@@ -90,6 +100,7 @@ func (m *Monitor) replaySnapshot(ctx context.Context, snapshot *Snapshot) {
 			return
 		}
 	}
+
 	for _, route := range snapshot.Routes {
 		event := base
 		event.Kind = EvRouteAdded
@@ -117,6 +128,7 @@ func (m *Monitor) sendReplay(ctx context.Context, event Event) bool {
 			m.stateMu.Unlock()
 			return false
 		}
+
 		select {
 		case m.Events <- event:
 			m.stateMu.Unlock()
@@ -124,6 +136,7 @@ func (m *Monitor) sendReplay(ctx context.Context, event Event) bool {
 		default:
 			m.stateMu.Unlock()
 		}
+
 		if !sleepMonitorRetry(ctx, 10*time.Millisecond) {
 			return false
 		}

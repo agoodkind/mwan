@@ -59,16 +59,19 @@ func reportHTTPServer(t *testing.T, address string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := &http.Server{ReadHeaderTimeout: time.Second, Handler: http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		defer request.Body.Close()
-		if _, err := io.Copy(io.Discard, request.Body); err != nil {
-			t.Error(err)
-			return
-		}
-		if _, err := io.WriteString(writer, "accepted"); err != nil {
-			t.Error(err)
-		}
-	})}
+	server := &http.Server{
+		ReadHeaderTimeout: time.Second,
+		Handler: http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			defer request.Body.Close()
+			if _, err := io.Copy(io.Discard, request.Body); err != nil {
+				t.Error(err)
+				return
+			}
+			if _, err := io.WriteString(writer, "accepted"); err != nil {
+				t.Error(err)
+			}
+		}),
+	}
 	t.Cleanup(func() { _ = server.Close() })
 	go func() {
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
@@ -88,7 +91,12 @@ func reportUpload(t *testing.T, address string) {
 	if err := connection.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "http://"+address+"/", bytes.NewReader(bytes.Repeat([]byte("report-data"), 100000)))
+	request, err := http.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"http://"+address+"/",
+		bytes.NewReader(bytes.Repeat([]byte("report-data"), 100000)),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,13 +146,24 @@ func testCollectorAccounting(t *testing.T, accountingInitiallyEnabled bool) {
 	if accountingInitiallyEnabled {
 		initialAccounting = "1"
 	}
-	if err := os.WriteFile("/proc/sys/net/netfilter/nf_conntrack_acct", []byte(initialAccounting), 0o600); err != nil {
+	if err := os.WriteFile(
+		"/proc/sys/net/netfilter/nf_conntrack_acct",
+		[]byte(initialAccounting),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile("/proc/sys/net/netfilter/nf_conntrack_events", []byte("1"), 0o600); err != nil {
+	if err := os.WriteFile(
+		"/proc/sys/net/netfilter/nf_conntrack_events",
+		[]byte("1"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
-	network := &networkjson.Config{InternalNetV4: "10.77.0.0/24", WAN: make(map[string]config.IfMgrWANEntry)}
+	network := &networkjson.Config{
+		InternalNetV4: "10.77.0.0/24",
+		WAN:           make(map[string]config.IfMgrWANEntry),
+	}
 	var peers []netns.NsHandle
 	for index := range 2 {
 		name := fmt.Sprintf("wan%d", index)
@@ -156,7 +175,12 @@ func testCollectorAccounting(t *testing.T, accountingInitiallyEnabled bool) {
 		reportHTTPServer(t, "203.0.113.9:45678")
 		setReportNS(t, gateway)
 		addReportDefault(t, name, prefix+".1", prefix+".2/32", 100+index)
-		network.WAN[name] = config.IfMgrWANEntry{Iface: name, TableID: 100 + index, FwMark: 11 + index, TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44}}
+		network.WAN[name] = config.IfMgrWANEntry{
+			Iface:         name,
+			TableID:       100 + index,
+			FwMark:        11 + index,
+			TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44},
+		}
 	}
 	client := reportPeer(t, gateway, "lan0", []string{"10.77.0.1/24"}, []string{"10.77.0.2/24"})
 	setReportNS(t, client)
@@ -170,20 +194,32 @@ func testCollectorAccounting(t *testing.T, accountingInitiallyEnabled bool) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := netlink.RouteReplace(&netlink.Route{LinkIndex: link.Attrs().Index, Gw: net.ParseIP("192.0.2.1"), Table: 254}); err != nil {
+		if err := netlink.RouteReplace(&netlink.Route{
+			LinkIndex: link.Attrs().Index,
+			Gw:        net.ParseIP("192.0.2.1"),
+			Table:     254,
+		}); err != nil {
 			t.Fatal(err)
 		}
 		setReportNS(t, client)
 		reportUpload(t, "203.0.113.9:45678")
 		setReportNS(t, gateway)
-		if err := os.WriteFile("/proc/sys/net/netfilter/nf_conntrack_acct", []byte("1"), 0o600); err != nil {
+		if err := os.WriteFile(
+			"/proc/sys/net/netfilter/nf_conntrack_acct",
+			[]byte("1"),
+			0o600,
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
 	settings := reportSettings(t)
 	settings.ProbeInterval = "100ms"
 	settings.ProbeTimeout = "100ms"
-	collector, err := reporting.NewCollector(settings, network, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	collector, err := reporting.NewCollector(
+		settings,
+		network,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +230,11 @@ func testCollectorAccounting(t *testing.T, accountingInitiallyEnabled bool) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := netlink.RouteReplace(&netlink.Route{LinkIndex: link.Attrs().Index, Gw: net.ParseIP(fmt.Sprintf("192.0.%d.1", index+2)), Table: 254}); err != nil {
+		if err := netlink.RouteReplace(&netlink.Route{
+			LinkIndex: link.Attrs().Index,
+			Gw:        net.ParseIP(fmt.Sprintf("192.0.%d.1", index+2)),
+			Table:     254,
+		}); err != nil {
 			t.Fatal(err)
 		}
 		setReportNS(t, client)
@@ -207,7 +247,8 @@ func testCollectorAccounting(t *testing.T, accountingInitiallyEnabled bool) {
 		}
 		var uploaded uint64
 		for _, usage := range minute.Talkers {
-			if usage.WAN == connectionid.ID(name) && usage.Client == netip.MustParseAddr("10.77.0.2") {
+			if usage.WAN == connectionid.ID(name) &&
+				usage.Client == netip.MustParseAddr("10.77.0.2") {
 				uploaded += usage.Uploaded
 			}
 		}
@@ -215,7 +256,11 @@ func testCollectorAccounting(t *testing.T, accountingInitiallyEnabled bool) {
 			if coverage.WAN != connectionid.ID("wan0") || index != 0 {
 				continue
 			}
-			if !accountingInitiallyEnabled && (coverage.Complete || !strings.Contains(coverage.Reason, "byte-counter attributes")) {
+			if !accountingInitiallyEnabled &&
+				(coverage.Complete || !strings.Contains(
+					coverage.Reason,
+					"byte-counter attributes",
+				)) {
 				t.Fatalf("a preexisting uncounted connection appeared complete: %+v", coverage)
 			}
 			if accountingInitiallyEnabled && !coverage.Complete {
@@ -223,11 +268,19 @@ func testCollectorAccounting(t *testing.T, accountingInitiallyEnabled bool) {
 			}
 		}
 		if uploaded < 1000000 {
-			t.Fatalf("%s did not attribute client TCP upload: %+v; coverage: %+v", name, minute.Talkers, minute.Attribution)
+			t.Fatalf(
+				"%s did not attribute client TCP upload: %+v; coverage: %+v",
+				name,
+				minute.Talkers,
+				minute.Attribution,
+			)
 		}
 	}
 	setReportNS(t, peers[0])
-	if err := netlink.RouteAdd(&netlink.Route{Dst: &net.IPNet{IP: net.ParseIP("10.77.0.0"), Mask: net.CIDRMask(24, 32)}, Gw: net.ParseIP("192.0.2.2")}); err != nil {
+	if err := netlink.RouteAdd(&netlink.Route{
+		Dst: &net.IPNet{IP: net.ParseIP("10.77.0.0"), Mask: net.CIDRMask(24, 32)},
+		Gw:  net.ParseIP("192.0.2.2"),
+	}); err != nil {
 		t.Fatal(err)
 	}
 	reportUpload(t, "192.0.2.2:45679")
@@ -239,12 +292,17 @@ func testCollectorAccounting(t *testing.T, accountingInitiallyEnabled bool) {
 	}
 	var downloaded uint64
 	for _, usage := range minute.Talkers {
-		if usage.WAN == connectionid.ID("wan0") && usage.Client == netip.MustParseAddr("10.77.0.2") {
+		if usage.WAN == connectionid.ID("wan0") &&
+			usage.Client == netip.MustParseAddr("10.77.0.2") {
 			downloaded += usage.Downloaded
 		}
 	}
 	if downloaded < 1000000 {
-		t.Fatalf("inbound port forwarding did not identify the LAN client: %+v; coverage: %+v", minute.Talkers, minute.Attribution)
+		t.Fatalf(
+			"inbound port forwarding did not identify the LAN client: %+v; coverage: %+v",
+			minute.Talkers,
+			minute.Attribution,
+		)
 	}
 }
 
@@ -276,14 +334,23 @@ func setReportNS(t *testing.T, namespace netns.NsHandle) {
 	}
 }
 
-func reportPeer(t *testing.T, gateway netns.NsHandle, name string, rootAddresses, peerAddresses []string) netns.NsHandle {
+func reportPeer(
+	t *testing.T,
+	gateway netns.NsHandle,
+	name string,
+	rootAddresses []string,
+	peerAddresses []string,
+) netns.NsHandle {
 	t.Helper()
 	peer, err := netns.New()
 	if err != nil {
 		t.Fatal(err)
 	}
 	setReportNS(t, gateway)
-	if err := netlink.LinkAdd(&netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: name}, PeerName: name + "peer"}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Veth{
+		LinkAttrs: netlink.LinkAttrs{Name: name},
+		PeerName:  name + "peer",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	link, err := netlink.LinkByName(name + "peer")
@@ -322,13 +389,34 @@ func serveReportDNS(t *testing.T, address string) {
 				continue
 			}
 			question := query.Questions[0]
-			reply := dnsmessage.Message{Header: dnsmessage.Header{ID: query.ID, Response: true, RecursionAvailable: true}, Questions: query.Questions}
-			header := dnsmessage.ResourceHeader{Name: question.Name, Type: question.Type, Class: dnsmessage.ClassINET, TTL: 60}
+			reply := dnsmessage.Message{
+				Header: dnsmessage.Header{
+					ID:                 query.ID,
+					Response:           true,
+					RecursionAvailable: true,
+				},
+				Questions: query.Questions,
+			}
+			header := dnsmessage.ResourceHeader{
+				Name:  question.Name,
+				Type:  question.Type,
+				Class: dnsmessage.ClassINET,
+				TTL:   60,
+			}
 			if question.Type == dnsmessage.TypeA {
-				reply.Answers = []dnsmessage.Resource{{Header: header, Body: &dnsmessage.AResource{A: [4]byte{203, 0, 113, 9}}}}
+				reply.Answers = []dnsmessage.Resource{
+					{Header: header, Body: &dnsmessage.AResource{A: [4]byte{203, 0, 113, 9}}},
+				}
 			}
 			if question.Type == dnsmessage.TypeAAAA {
-				reply.Answers = []dnsmessage.Resource{{Header: header, Body: &dnsmessage.AAAAResource{AAAA: netip.MustParseAddr("2001:db8:ffff::9").As16()}}}
+				reply.Answers = []dnsmessage.Resource{
+					{
+						Header: header,
+						Body: &dnsmessage.AAAAResource{
+							AAAA: netip.MustParseAddr("2001:db8:ffff::9").As16(),
+						},
+					},
+				}
 			}
 			data, err := reply.Pack()
 			if err != nil {
@@ -347,7 +435,11 @@ func addReportDefault(t *testing.T, iface, gateway, source string, table int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.RouteAdd(&netlink.Route{LinkIndex: link.Attrs().Index, Gw: net.ParseIP(gateway), Table: table}); err != nil {
+	if err := netlink.RouteAdd(&netlink.Route{
+		LinkIndex: link.Attrs().Index,
+		Gw:        net.ParseIP(gateway),
+		Table:     table,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	_, prefix, err := net.ParseCIDR(source)
@@ -367,7 +459,12 @@ func addReportDefault(t *testing.T, iface, gateway, source string, table int) {
 
 func runReportNFT(t *testing.T, path string) {
 	t.Helper()
-	if output, err := exec.CommandContext(t.Context(), "nft", "-f", path).CombinedOutput(); err != nil {
+	if output, err := exec.CommandContext(
+		t.Context(),
+		"nft",
+		"-f",
+		path,
+	).CombinedOutput(); err != nil {
 		t.Fatalf("nft: %v: %s", err, output)
 	}
 }
@@ -389,7 +486,13 @@ func TestCollectorBindsWANProbesAndDetectsBlackholes(t *testing.T) {
 		name := fmt.Sprintf("wan%d", index)
 		v4 := fmt.Sprintf("192.0.%d", index+2)
 		v6 := fmt.Sprintf("2001:db8:%d", index+1)
-		peer := reportPeer(t, gateway, name, []string{v4 + ".2/24", v6 + "::2/64"}, []string{v4 + ".1/24", v6 + "::1/64"})
+		peer := reportPeer(
+			t,
+			gateway,
+			name,
+			[]string{v4 + ".2/24", v6 + "::2/64"},
+			[]string{v4 + ".1/24", v6 + "::1/64"},
+		)
 		setReportNS(t, peer)
 		reportLink(t, "lo", "203.0.113.9/32", "2001:db8:ffff::9/128")
 		serveReportDNS(t, "203.0.113.9:53")
@@ -397,7 +500,13 @@ func TestCollectorBindsWANProbesAndDetectsBlackholes(t *testing.T) {
 		setReportNS(t, gateway)
 		addReportDefault(t, name, v4+".1", v4+".2/32", 100+index)
 		addReportDefault(t, name, v6+"::1", v6+"::2/128", 100+index)
-		network.WAN[name] = config.IfMgrWANEntry{Iface: name, TableID: 100 + index, FwMark: 10 + index, TranslationV4: &config.IPv4Translation{Mode: config.TranslationNative}, TranslationV6: &config.IPv6Translation{Mode: config.TranslationNative}}
+		network.WAN[name] = config.IfMgrWANEntry{
+			Iface:         name,
+			TableID:       100 + index,
+			FwMark:        10 + index,
+			TranslationV4: &config.IPv4Translation{Mode: config.TranslationNative},
+			TranslationV6: &config.IPv6Translation{Mode: config.TranslationNative},
+		}
 	}
 	settings := reportSettings(t)
 	settings.SampleInterval = "1s"
@@ -409,7 +518,11 @@ func TestCollectorBindsWANProbesAndDetectsBlackholes(t *testing.T) {
 	settings.MinProbeSeconds = 1
 	settings.DNSv4 = "203.0.113.9:53"
 	settings.DNSv6 = "[2001:db8:ffff::9]:53"
-	collector, err := reporting.NewCollector(settings, network, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	collector, err := reporting.NewCollector(
+		settings,
+		network,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -441,7 +554,13 @@ func TestCollectorBindsWANProbesAndDetectsBlackholes(t *testing.T) {
 			t.Fatalf("one WAN failure affected another WAN: %+v", probe)
 		}
 	}
-	session, err := netif.OpenEchoSession(t.Context(), "wan0", netip.MustParseAddr("192.0.2.2"), netip.MustParseAddr("192.0.2.1"), 47000)
+	session, err := netif.OpenEchoSession(
+		t.Context(),
+		"wan0",
+		netip.MustParseAddr("192.0.2.2"),
+		netip.MustParseAddr("192.0.2.1"),
+		47000,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

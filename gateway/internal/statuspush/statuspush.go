@@ -53,10 +53,13 @@ func NewStatus(
 		default:
 			verdict = netif.HealthStateUnknown
 		}
+
 		verdicts[member.Name] = verdict
 	}
+
 	// ActiveTier is meaningful only when at least one provider is healthy.
 	activeTier, _ := netif.ActiveTier(members, verdicts)
+
 	return Status{
 		SentAt:     sentAt,
 		ActiveTier: activeTier,
@@ -69,9 +72,11 @@ func UnmarshalStatus(line []byte) (Status, error) {
 	var status Status
 	if err := json.Unmarshal(line, &status); err != nil {
 		slog.Warn("statuspush: unmarshal status failed", "err", err)
+
 		return Status{SentAt: time.Time{}, ActiveTier: 0, Providers: nil},
 			fmt.Errorf("decode status: %w", err)
 	}
+
 	return status, nil
 }
 
@@ -93,14 +98,18 @@ type Listener struct {
 
 // NewListener configures a vsock listener. Run opens the socket.
 func NewListener(port uint32, log *slog.Logger) *Listener {
-	return NewListenerWithListen(func() (net.Listener, error) {
-		listener, err := vsock.Listen(port, nil)
-		if err != nil {
-			log.Warn("statuspush: vsock listen failed", "port", port, "err", err)
-			return nil, fmt.Errorf("vsock listen port %d: %w", port, err)
-		}
-		return listener, nil
-	}, log)
+	return NewListenerWithListen(
+		func() (net.Listener, error) {
+			listener, err := vsock.Listen(port, nil)
+			if err != nil {
+				log.Warn("statuspush: vsock listen failed", "port", port, "err", err)
+				return nil, fmt.Errorf("vsock listen port %d: %w", port, err)
+			}
+
+			return listener, nil
+		},
+		log,
+	)
 }
 
 // NewListenerWithListen defers socket creation until Run starts.
@@ -121,6 +130,7 @@ func NewListenerWithListen(listen ListenFunc, log *slog.Logger) *Listener {
 func (l *Listener) Latest() (Status, time.Time, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
 	return l.latest, l.received, l.seen
 }
 
@@ -128,6 +138,7 @@ func (l *Listener) Latest() (Status, time.Time, bool) {
 func (l *Listener) Address() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
 	return l.address
 }
 
@@ -138,6 +149,7 @@ func (l *Listener) Run(ctx context.Context) error {
 		l.log.WarnContext(ctx, "statuspush: listen failed", "err", err)
 		return fmt.Errorf("statuspush: listen: %w", err)
 	}
+
 	l.mu.Lock()
 	l.address = socket.Addr().String()
 	l.mu.Unlock()
@@ -145,8 +157,12 @@ func (l *Listener) Run(ctx context.Context) error {
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				l.log.ErrorContext(ctx, "statuspush: shutdown goroutine panic",
-					"err", fmt.Errorf("panic: %v", recovered))
+				l.log.ErrorContext(
+					ctx,
+					"statuspush: shutdown goroutine panic",
+					"err",
+					fmt.Errorf("panic: %v", recovered),
+				)
 			}
 		}()
 		<-ctx.Done()
@@ -159,9 +175,12 @@ func (l *Listener) Run(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return fmt.Errorf("statuspush: listener stopping: %w", ctx.Err())
 			}
+
 			l.log.WarnContext(ctx, "statuspush: accept failed", "err", acceptErr)
+
 			return fmt.Errorf("statuspush: accept: %w", acceptErr)
 		}
+
 		l.readOne(ctx, conn)
 	}
 }
@@ -175,20 +194,24 @@ func (l *Listener) readOne(ctx context.Context, conn net.Conn) {
 		l.log.WarnContext(ctx, "statuspush: set read deadline failed", "err", err)
 		return
 	}
+
 	reader := bufio.NewReader(io.LimitReader(conn, maxMessageBytes))
 	line, err := reader.ReadBytes('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		l.log.WarnContext(ctx, "statuspush: read status failed", "err", err)
 		return
 	}
+
 	if len(line) == 0 {
 		return
 	}
+
 	status, err := UnmarshalStatus(line)
 	if err != nil {
 		l.log.WarnContext(ctx, "statuspush: decode status failed", "err", err)
 		return
 	}
+
 	l.mu.Lock()
 	l.latest = status
 	l.received = l.clock.Now()
@@ -198,7 +221,9 @@ func (l *Listener) readOne(ctx context.Context, conn net.Conn) {
 	l.log.DebugContext(
 		ctx,
 		"statuspush: status received",
-		"active_tier", status.ActiveTier,
-		"provider_count", len(status.Providers),
+		"active_tier",
+		status.ActiveTier,
+		"provider_count",
+		len(status.Providers),
 	)
 }

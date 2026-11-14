@@ -11,6 +11,7 @@ func TestActiveTier(t *testing.T) {
 		{Name: "monkeybrains", Tier: 1},
 		{Name: "astount", Tier: 2},
 	}
+
 	cases := []struct {
 		name        string
 		health      HealthStates
@@ -26,8 +27,10 @@ func TestActiveTier(t *testing.T) {
 		{
 			name: "one healthy member in the first tier keeps it active",
 			health: HealthStates{
-				"att": HealthStateUnhealthy, "webpass": HealthStateHealthy,
-				"monkeybrains": HealthStateHealthy, "astount": HealthStateHealthy,
+				"att":          HealthStateUnhealthy,
+				"webpass":      HealthStateHealthy,
+				"monkeybrains": HealthStateHealthy,
+				"astount":      HealthStateHealthy,
 			},
 			wantTier:    0,
 			wantHealthy: true,
@@ -35,8 +38,10 @@ func TestActiveTier(t *testing.T) {
 		{
 			name: "the first tier going unhealthy activates the next one that is not",
 			health: HealthStates{
-				"att": HealthStateUnhealthy, "webpass": HealthStateUnhealthy,
-				"monkeybrains": HealthStateHealthy, "astount": HealthStateHealthy,
+				"att":          HealthStateUnhealthy,
+				"webpass":      HealthStateUnhealthy,
+				"monkeybrains": HealthStateHealthy,
+				"astount":      HealthStateHealthy,
 			},
 			wantTier:    1,
 			wantHealthy: true,
@@ -44,8 +49,10 @@ func TestActiveTier(t *testing.T) {
 		{
 			name: "an empty tier is skipped rather than activated",
 			health: HealthStates{
-				"att": HealthStateUnhealthy, "webpass": HealthStateUnhealthy,
-				"monkeybrains": HealthStateUnhealthy, "astount": HealthStateHealthy,
+				"att":          HealthStateUnhealthy,
+				"webpass":      HealthStateUnhealthy,
+				"monkeybrains": HealthStateUnhealthy,
+				"astount":      HealthStateHealthy,
 			},
 			wantTier:    2,
 			wantHealthy: true,
@@ -53,25 +60,31 @@ func TestActiveTier(t *testing.T) {
 		{
 			name: "no healthy member anywhere activates no tier",
 			health: HealthStates{
-				"att": HealthStateUnhealthy, "webpass": HealthStateUnhealthy,
-				"monkeybrains": HealthStateUnhealthy, "astount": HealthStateUnhealthy,
+				"att":          HealthStateUnhealthy,
+				"webpass":      HealthStateUnhealthy,
+				"monkeybrains": HealthStateUnhealthy,
+				"astount":      HealthStateUnhealthy,
 			},
 			wantTier:    0,
 			wantHealthy: false,
 		},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			tc.name,
+			func(t *testing.T) {
+				t.Parallel()
 
-			gotTier, gotHealthy := ActiveTier(members, tc.health)
-			if gotHealthy != tc.wantHealthy {
-				t.Fatalf("healthy = %v, want %v", gotHealthy, tc.wantHealthy)
-			}
-			if gotHealthy && gotTier != tc.wantTier {
-				t.Fatalf("active tier = %d, want %d", gotTier, tc.wantTier)
-			}
-		})
+				gotTier, gotHealthy := ActiveTier(members, tc.health)
+				if gotHealthy != tc.wantHealthy {
+					t.Fatalf("healthy = %v, want %v", gotHealthy, tc.wantHealthy)
+				}
+
+				if gotHealthy && gotTier != tc.wantTier {
+					t.Fatalf("active tier = %d, want %d", gotTier, tc.wantTier)
+				}
+			},
+		)
 	}
 }
 
@@ -107,6 +120,7 @@ func TestActiveTierPicksTheLowestTierRegardlessOfMemberOrder(t *testing.T) {
 	if !gotHealthy {
 		t.Fatal("healthy = false, want true")
 	}
+
 	if gotTier != 0 {
 		t.Fatalf("active tier = %d, want 0", gotTier)
 	}

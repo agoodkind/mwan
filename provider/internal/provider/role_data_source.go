@@ -71,29 +71,41 @@ func newRoleDataSource() datasource.DataSource {
 	return &roleDataSource{}
 }
 
-func (d *roleDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+func (d *roleDataSource) Metadata(
+	_ context.Context,
+	req datasource.MetadataRequest,
+	resp *datasource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_role"
 }
 
 func roleNames() []string {
 	roles := installspec.Roles()
+
 	names := make([]string, 0, len(roles))
 	for _, role := range roles {
 		names = append(names, string(role))
 	}
+
 	return names
 }
 
 func guestTypeNames() []string {
 	guests := watchdogconfig.GuestTypes()
+
 	names := make([]string, 0, len(guests))
 	for _, guest := range guests {
 		names = append(names, string(guest))
 	}
+
 	return names
 }
 
-func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (d *roleDataSource) Schema(
+	_ context.Context,
+	_ datasource.SchemaRequest,
+	resp *datasource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		Description: "The data source returns role files, service settings, YANG modules, and sysrepo imports. " +
 			"The installer and provider use shared definitions.",
@@ -117,9 +129,18 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 				Description: "The data source lists files in installation order with absolute destination paths.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"path":    schema.StringAttribute{Computed: true, Description: "The destination path is absolute."},
-						"content": schema.StringAttribute{Computed: true, Description: "The value contains the file content."},
-						"mode":    schema.StringAttribute{Computed: true, Description: "The file mode uses four octal digits, such as 0644."},
+						"path": schema.StringAttribute{
+							Computed:    true,
+							Description: "The destination path is absolute.",
+						},
+						"content": schema.StringAttribute{
+							Computed:    true,
+							Description: "The value contains the file content.",
+						},
+						"mode": schema.StringAttribute{
+							Computed:    true,
+							Description: "The file mode uses four octal digits, such as 0644.",
+						},
 					},
 				},
 			},
@@ -132,8 +153,14 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 				Description: "The list includes role services and system services that read installed files. It uses instance names instead of service templates.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"name":    schema.StringAttribute{Computed: true, Description: "The name identifies a systemd unit."},
-						"enabled": schema.BoolAttribute{Computed: true, Description: "The value specifies the desired service enablement state."},
+						"name": schema.StringAttribute{
+							Computed:    true,
+							Description: "The name identifies a systemd unit.",
+						},
+						"enabled": schema.BoolAttribute{
+							Computed:    true,
+							Description: "The value specifies the desired service enablement state.",
+						},
 						"active": schema.BoolAttribute{
 							Computed: true,
 							Description: "The value specifies the desired active state. It is false for a oneshot unit " +
@@ -154,9 +181,18 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 					"The data source returns an empty list for other roles.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"datastore": schema.StringAttribute{Computed: true, Description: "The datastore is startup or running."},
-						"module":    schema.StringAttribute{Computed: true, Description: "The import configures this sysrepo module."},
-						"content":   schema.StringAttribute{Computed: true, Description: "The value contains the XML configuration to import."},
+						"datastore": schema.StringAttribute{
+							Computed:    true,
+							Description: "The datastore is startup or running.",
+						},
+						"module": schema.StringAttribute{
+							Computed:    true,
+							Description: "The import configures this sysrepo module.",
+						},
+						"content": schema.StringAttribute{
+							Computed:    true,
+							Description: "The value contains the XML configuration to import.",
+						},
 					},
 				},
 			},
@@ -167,10 +203,22 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 					"The data source returns an empty list for other roles.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"file":    schema.StringAttribute{Computed: true, Description: "The filename includes the YANG module revision."},
-						"path":    schema.StringAttribute{Computed: true, Description: "The module destination path is absolute."},
-						"content": schema.StringAttribute{Computed: true, Description: "The value contains the YANG module source."},
-						"mode":    schema.StringAttribute{Computed: true, Description: "The file mode uses four octal digits."},
+						"file": schema.StringAttribute{
+							Computed:    true,
+							Description: "The filename includes the YANG module revision.",
+						},
+						"path": schema.StringAttribute{
+							Computed:    true,
+							Description: "The module destination path is absolute.",
+						},
+						"content": schema.StringAttribute{
+							Computed:    true,
+							Description: "The value contains the YANG module source.",
+						},
+						"mode": schema.StringAttribute{
+							Computed:    true,
+							Description: "The file mode uses four octal digits.",
+						},
 						"features": schema.ListAttribute{
 							Computed:    true,
 							ElementType: types.StringType,
@@ -187,15 +235,24 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 	}
 }
 
-func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+func (d *roleDataSource) Read(
+	ctx context.Context,
+	req datasource.ReadRequest,
+	resp *datasource.ReadResponse,
+) {
 	var model roleModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &model)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	spec, known := installspec.For(installspec.Role(model.Role.ValueString()))
 	if !known {
-		resp.Diagnostics.AddError("Unknown role", fmt.Sprintf("The role %q does not exist.", model.Role.ValueString()))
+		resp.Diagnostics.AddError(
+			"Unknown role",
+			fmt.Sprintf("The role %q does not exist.", model.Role.ValueString()),
+		)
+
 		return
 	}
 
@@ -206,6 +263,7 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 			resp.Diagnostics.AddError("Invalid guest type", parseErr.Error())
 			return
 		}
+
 		guest = parsedGuest
 	}
 
@@ -216,11 +274,14 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 			resp.Diagnostics.AddError("Cannot read an embedded file", err.Error())
 			return
 		}
+
 		if !install {
 			continue
 		}
+
 		model.Files = append(model.Files, newRoleFile(file.Dest, content))
 	}
+
 	model.YangModules = make([]yangModuleModel, 0, len(moduleschema.Modules()))
 	if spec.Schema || spec.ValidationSchema {
 		for _, module := range moduleschema.Modules() {
@@ -229,45 +290,65 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 				resp.Diagnostics.AddError("Cannot read an embedded YANG module", err.Error())
 				return
 			}
+
 			path := filepath.Join(moduleschema.InstallDir, module.File)
 			if !spec.Schema {
-				model.Files = append(model.Files, roleFileModel{
-					Path:    types.StringValue(path),
-					Content: types.StringValue(string(content)),
-					Mode:    types.StringValue(fmt.Sprintf(fileModeFormat, moduleschema.FileMode.Perm())),
-				})
+				model.Files = append(
+					model.Files,
+					roleFileModel{
+						Path:    types.StringValue(path),
+						Content: types.StringValue(string(content)),
+						Mode: types.StringValue(
+							fmt.Sprintf(fileModeFormat, moduleschema.FileMode.Perm()),
+						),
+					},
+				)
 				continue
 			}
+
 			features := module.Features
 			if features == nil {
 				features = []string{}
 			}
-			model.YangModules = append(model.YangModules, yangModuleModel{
-				File:     types.StringValue(module.File),
-				Path:     types.StringValue(path),
-				Content:  types.StringValue(string(content)),
-				Mode:     types.StringValue(fmt.Sprintf(fileModeFormat, moduleschema.FileMode.Perm())),
-				Features: features,
-				Update:   types.BoolValue(module.Update),
-			})
+
+			model.YangModules = append(
+				model.YangModules,
+				yangModuleModel{
+					File:    types.StringValue(module.File),
+					Path:    types.StringValue(path),
+					Content: types.StringValue(string(content)),
+					Mode: types.StringValue(
+						fmt.Sprintf(fileModeFormat, moduleschema.FileMode.Perm()),
+					),
+					Features: features,
+					Update:   types.BoolValue(module.Update),
+				},
+			)
 		}
 	}
+
 	model.StackYangModules = stackYangModuleModels(spec)
 	units, err := spec.Units()
 	if err != nil {
 		resp.Diagnostics.AddError("Cannot read the units", err.Error())
 		return
 	}
+
 	model.BinaryPath = types.StringValue(installspec.BinaryPath)
+
 	model.Units = make([]unitModel, 0, len(units))
 	for _, unit := range units {
-		model.Units = append(model.Units, unitModel{
-			Name:    types.StringValue(unit.Name),
-			Enabled: types.BoolValue(unit.Enabled),
-			Active:  types.BoolValue(unit.Active),
-			Files:   unit.Files,
-		})
+		model.Units = append(
+			model.Units,
+			unitModel{
+				Name:    types.StringValue(unit.Name),
+				Enabled: types.BoolValue(unit.Enabled),
+				Active:  types.BoolValue(unit.Active),
+				Files:   unit.Files,
+			},
+		)
 	}
+
 	var policy []byte
 	if spec.Schema {
 		policy, err = installspec.NACMPolicy()
@@ -276,15 +357,21 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 			return
 		}
 	}
+
 	imports := spec.SysrepoImports(policy)
+
 	model.SysrepoData = make([]sysrepoDataModel, 0, len(imports))
 	for _, entry := range imports {
-		model.SysrepoData = append(model.SysrepoData, sysrepoDataModel{
-			Datastore: types.StringValue(string(entry.Datastore)),
-			Module:    types.StringValue(entry.Module),
-			Content:   types.StringValue(string(entry.Content)),
-		})
+		model.SysrepoData = append(
+			model.SysrepoData,
+			sysrepoDataModel{
+				Datastore: types.StringValue(string(entry.Datastore)),
+				Module:    types.StringValue(entry.Module),
+				Content:   types.StringValue(string(entry.Content)),
+			},
+		)
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
@@ -295,8 +382,14 @@ func stackYangModulesAttribute() schema.ListNestedAttribute {
 			"The stack packages supply these files; mwan does not embed them.",
 		NestedObject: schema.NestedAttributeObject{
 			Attributes: map[string]schema.Attribute{
-				"name":     schema.StringAttribute{Computed: true, Description: "Sysrepo installs the module with this name."},
-				"revision": schema.StringAttribute{Computed: true, Description: "Sysrepo installs this schema revision."},
+				"name": schema.StringAttribute{
+					Computed:    true,
+					Description: "Sysrepo installs the module with this name.",
+				},
+				"revision": schema.StringAttribute{
+					Computed:    true,
+					Description: "Sysrepo installs this schema revision.",
+				},
 				"path": schema.StringAttribute{
 					Computed:    true,
 					Description: "The stack package installs the schema file at this absolute path.",
@@ -314,15 +407,20 @@ func stackYangModulesAttribute() schema.ListNestedAttribute {
 
 func stackYangModuleModels(spec installspec.Spec) []stackYangModuleModel {
 	stackModules := spec.StackYangModules()
+
 	models := make([]stackYangModuleModel, 0, len(stackModules))
 	for _, module := range stackModules {
-		models = append(models, stackYangModuleModel{
-			Name:     types.StringValue(module.Name),
-			Revision: types.StringValue(module.Revision),
-			Path:     types.StringValue(module.Path()),
-			Features: module.Features,
-		})
+		models = append(
+			models,
+			stackYangModuleModel{
+				Name:     types.StringValue(module.Name),
+				Revision: types.StringValue(module.Revision),
+				Path:     types.StringValue(module.Path()),
+				Features: module.Features,
+			},
+		)
 	}
+
 	return models
 }
 

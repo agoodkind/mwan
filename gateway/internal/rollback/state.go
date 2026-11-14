@@ -36,10 +36,12 @@ func ExtractLatestSnapshot(qmOutput []byte) string {
 	if len(pre) > 0 {
 		return pre[len(pre)-1]
 	}
+
 	kg := KnownGoodSnapRE.FindAllString(s, -1)
 	if len(kg) > 0 {
 		return kg[len(kg)-1]
 	}
+
 	return ""
 }
 
@@ -52,6 +54,7 @@ func SnapshotsAfter(qmOutput []byte, targetSnap string) []string {
 	lines := strings.Split(string(qmOutput), "\n")
 	var result []string
 	past := false
+
 	for _, line := range lines {
 		// qm listsnapshot lines look like: ` `-> snapname   timestamp   desc`
 		// The name is the first non-space/arrow token after whitespace.
@@ -59,26 +62,32 @@ func SnapshotsAfter(qmOutput []byte, targetSnap string) []string {
 		if trimmed == "" {
 			continue
 		}
+
 		// Extract just the snapshot name (first field).
 		fields := strings.Fields(trimmed)
 		if len(fields) == 0 {
 			continue
 		}
+
 		name := fields[0]
 		if name == "current" {
 			continue
 		}
+
 		if !past {
 			if name == targetSnap {
 				past = true
 			}
+
 			continue
 		}
+
 		// Only collect watchdog-managed snapshots; never touch user snapshots.
 		if PreDeploySnapRE.MatchString(name) || KnownGoodSnapRE.MatchString(name) {
 			result = append(result, name)
 		}
 	}
+
 	return result
 }
 
@@ -95,25 +104,32 @@ func parseRollbackStateFile(
 		if !errors.Is(err, os.ErrNotExist) {
 			slog.Warn("rollback: read state file failed", "path", path, "err", err)
 		}
+
 		return "", "", "", "", fmt.Errorf("read rollback state %s: %w", path, err)
 	}
+
 	kv := make(map[string]string)
+
 	for line := range strings.SplitSeq(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
+
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) != 2 {
 			continue
 		}
+
 		kv[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
 	}
+
 	// rollback_done may be "true" (legacy), "done", "failed", or "exhausted"
 	st := kv["rollback_done"]
 	if st == "true" {
 		st = "done"
 	}
+
 	return kv["deploy_timestamp"], st, kv["snapshot"], kv["rollback_attempts"], nil
 }
 
@@ -125,7 +141,8 @@ func parseRollbackStateFile(
 // A rollback counts as finished when it succeeded or when it exhausted its
 // attempts, because retrying an exhausted rollback would loop.
 func AlreadyDone(
-	statePath string, deployTS int64,
+	statePath string,
+	deployTS int64,
 ) (done bool, attempts int, err error) {
 	ds := strconv.FormatInt(deployTS, 10)
 	deployInFile, status, _, attStr, err := parseRollbackStateFile(statePath)
@@ -133,30 +150,46 @@ func AlreadyDone(
 		if errors.Is(err, os.ErrNotExist) {
 			return false, 0, nil
 		}
+
 		return false, 0, err
 	}
+
 	if deployInFile != ds {
 		return false, 0, nil
 	}
+
 	att, _ := strconv.Atoi(attStr)
+
 	return status == "done" || status == "exhausted", att, nil
 }
 
 // WriteState writes the rollback state to a file.
 func WriteState(
-	path string, deployTS int64, snapshot string,
-	attempts int, success bool, timestamp time.Time,
+	path string,
+	deployTS int64,
+	snapshot string,
+	attempts int,
+	success bool,
+	timestamp time.Time,
 ) error {
 	status := "failed"
 	if success {
 		status = "done"
 	}
-	slog.Info("rollback: WriteState",
-		"path", path,
-		"deploy_ts", deployTS,
-		"snapshot", snapshot,
-		"attempts", attempts,
-		"status", status)
+
+	slog.Info(
+		"rollback: WriteState",
+		"path",
+		path,
+		"deploy_ts",
+		deployTS,
+		"snapshot",
+		snapshot,
+		"attempts",
+		attempts,
+		"status",
+		status,
+	)
 	content := fmt.Sprintf(
 		"deploy_timestamp=%d\nrollback_done=%s\nrollback_timestamp=%d\nsnapshot=%s\nrollback_attempts=%d\n",
 		deployTS,
@@ -171,5 +204,6 @@ func WriteState(
 		slog.Error("rollback: write state failed", "path", path, "err", err)
 		return fmt.Errorf("write rollback state %s: %w", path, err)
 	}
+
 	return nil
 }

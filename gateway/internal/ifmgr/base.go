@@ -38,11 +38,14 @@ func (b *BaseModule) InitBase(env *Env, attrs ...string) *slog.Logger {
 		b.Log = env.Log
 		return b.Log
 	}
+
 	sattrs := make([]slog.Attr, 0, len(attrs)/2)
 	for i := 0; i+1 < len(attrs); i += 2 {
 		sattrs = append(sattrs, slog.String(attrs[i], attrs[i+1]))
 	}
+
 	b.Log = slog.New(env.Log.Handler().WithAttrs(sattrs))
+
 	return b.Log
 }
 

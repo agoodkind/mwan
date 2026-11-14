@@ -13,8 +13,10 @@ func (s *Session) installLocked(ctx context.Context, prefix netip.Prefix, nextHo
 		s.failInstallLocked(ctx, prefix, nextHop, err)
 		return true
 	}
+
 	previous, known := s.accepted[prefix]
 	s.acceptLocked(prefix, nextHop)
+
 	return !known || previous != nextHop
 }
 
@@ -22,12 +24,20 @@ func (s *Session) acceptLocked(prefix netip.Prefix, nextHop netip.Addr) {
 	delete(s.unresolved, prefix)
 	delete(s.retained, prefix)
 	s.accepted[prefix] = nextHop
-	s.rejected = slices.DeleteFunc(s.rejected, func(rejection Rejection) bool {
-		return rejection.Prefix == prefix
-	})
+	s.rejected = slices.DeleteFunc(
+		s.rejected,
+		func(rejection Rejection) bool {
+			return rejection.Prefix == prefix
+		},
+	)
 }
 
-func (s *Session) failInstallLocked(ctx context.Context, prefix netip.Prefix, nextHop netip.Addr, err error) {
+func (s *Session) failInstallLocked(
+	ctx context.Context,
+	prefix netip.Prefix,
+	nextHop netip.Addr,
+	err error,
+) {
 	s.log.ErrorContext(ctx, "install bgp session route failed", "prefix", prefix, "error", err)
 	// A failed replacement does not remove the earlier route for the prefix
 	// from the kernel. The peer no longer announces that route's next hop.
@@ -43,36 +53,49 @@ func (s *Session) RefreshRoutes(ctx context.Context) {
 		s.mu.Unlock()
 		return
 	}
+
 	changed := false
 	if !s.retaining && len(s.retained) > 0 {
 		before := len(s.retained)
 		s.dropRetainedLocked(ctx)
 		changed = len(s.retained) != before
 	}
+
 	for prefix, nextHop := range s.unresolved {
 		event := PathEvent{Peer: s.peerKey, Prefix: prefix, NextHop: nextHop, Withdrawn: false}
 		if err := s.fib.Apply(ctx, event); err != nil {
 			s.removeAcceptedLocked(ctx, prefix)
 			continue
 		}
+
 		s.acceptLocked(prefix, nextHop)
 		changed = true
 	}
+
 	rejected, err := s.fib.Refresh(ctx)
 	if err != nil {
-		s.log.WarnContext(ctx, "refresh bgp session routes failed; the installed routes stay", "error", err)
+		s.log.WarnContext(
+			ctx,
+			"refresh bgp session routes failed; the installed routes stay",
+			"error",
+			err,
+		)
 	}
+
 	for prefix, cause := range rejected {
 		nextHop, known := s.accepted[prefix]
 		if !known {
 			continue
 		}
+
 		s.failInstallLocked(ctx, prefix, nextHop, cause)
 		changed = true
 	}
+
 	if changed {
 		s.enqueueChangeLocked()
 	}
+
 	s.mu.Unlock()
 
 	s.deliverChanges()

@@ -18,9 +18,11 @@ func dhcpRestartNamespace(t *testing.T) bool {
 	if os.Getenv(childEnvironment) == "1" {
 		return true
 	}
+
 	if os.Geteuid() != 0 {
 		t.Skip("raw DHCP transport and network namespaces require root")
 	}
+
 	// Host link policies can replace a veth MAC after its first DHCP exchange.
 	child := exec.Command(os.Args[0], "-test.v", "-test.run=^TestDHCPRestartClientWithServer$")
 	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
@@ -29,9 +31,12 @@ func dhcpRestartNamespace(t *testing.T) bool {
 	if errors.Is(err, syscall.EPERM) {
 		t.Skipf("network namespace creation unavailable: %v", err)
 	}
+
 	if err != nil {
 		t.Fatalf("isolated DHCP restart test: %v: %s", err, output)
 	}
+
 	t.Logf("isolated DHCP restart result: %s", output)
+
 	return false
 }

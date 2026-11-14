@@ -22,28 +22,53 @@ const activeStateActive = "active"
 func ReloadIfRunning(ctx context.Context) error {
 	conn, err := systemddbus.NewSystemConnectionContext(ctx)
 	if errors.Is(err, os.ErrNotExist) {
-		slog.InfoContext(ctx, "networkd: system bus socket is absent, so networkd is not running and reads the unit files when it starts", "err", err)
+		slog.InfoContext(
+			ctx,
+			"networkd: system bus socket is absent, so networkd is not running and reads the unit files when it starts",
+			"err",
+			err,
+		)
+
 		return nil
 	}
+
 	if err != nil {
 		slog.ErrorContext(ctx, "networkd: connecting to systemd failed", "err", err)
 		return fmt.Errorf("connect to systemd: %w", err)
 	}
+
 	defer conn.Close()
 
 	statuses, err := conn.ListUnitsByNamesContext(ctx, []string{networkdUnit})
 	if err != nil {
-		slog.ErrorContext(ctx, "networkd: reading the unit state failed", "unit", networkdUnit, "err", err)
+		slog.ErrorContext(
+			ctx,
+			"networkd: reading the unit state failed",
+			"unit",
+			networkdUnit,
+			"err",
+			err,
+		)
+
 		return fmt.Errorf("read %s state: %w", networkdUnit, err)
 	}
+
 	running := false
+
 	for _, status := range statuses {
 		if status.Name == networkdUnit && status.ActiveState == activeStateActive {
 			running = true
 		}
 	}
+
 	if !running {
-		slog.InfoContext(ctx, "networkd: not running, so it reads the unit files when it starts", "unit", networkdUnit)
+		slog.InfoContext(
+			ctx,
+			"networkd: not running, so it reads the unit files when it starts",
+			"unit",
+			networkdUnit,
+		)
+
 		return nil
 	}
 
@@ -54,10 +79,16 @@ func ReloadIfRunning(ctx context.Context) error {
 	}
 	defer bus.Close()
 	manager := bus.Object("org.freedesktop.network1", "/org/freedesktop/network1")
-	if err := manager.CallWithContext(ctx, "org.freedesktop.network1.Manager.Reload", 0).Err; err != nil {
+	if err := manager.CallWithContext(
+		ctx,
+		"org.freedesktop.network1.Manager.Reload",
+		0,
+	).Err; err != nil {
 		slog.ErrorContext(ctx, "networkd: reload request failed", "unit", networkdUnit, "err", err)
 		return fmt.Errorf("reload %s: %w", networkdUnit, err)
 	}
+
 	slog.InfoContext(ctx, "networkd: reloaded", "unit", networkdUnit)
+
 	return nil
 }

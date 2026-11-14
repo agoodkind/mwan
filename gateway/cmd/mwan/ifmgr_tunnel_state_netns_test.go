@@ -67,7 +67,16 @@ func (entry tunnelRuntimeInterface) family(name string) tunnelRuntimeFamily {
 	return entry.V6
 }
 
-func waitTunnelRuntimeFamily(t *testing.T, daemon *runtimeDaemon, read func() string, name, family, routing, readiness string, window time.Duration) time.Duration {
+func waitTunnelRuntimeFamily(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	read func() string,
+	name string,
+	family string,
+	routing string,
+	readiness string,
+	window time.Duration,
+) time.Duration {
 	t.Helper()
 	started := time.Now()
 	deadline := started.Add(window)
@@ -84,12 +93,27 @@ func waitTunnelRuntimeFamily(t *testing.T, daemon *runtimeDaemon, read func() st
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("%s %s routing=%s readiness=%s absent after %s; published state=%+v; daemon=%s",
-		name, family, routing, readiness, window, last, tunnelRuntimeLog(t, daemon))
+	t.Fatalf(
+		"%s %s routing=%s readiness=%s absent after %s; published state=%+v; daemon=%s",
+		name,
+		family,
+		routing,
+		readiness,
+		window,
+		last,
+		tunnelRuntimeLog(t, daemon),
+	)
 	return 0
 }
 
-func waitTunnelRuntimeReason(t *testing.T, daemon *runtimeDaemon, read func() string, since time.Time, reason string, window time.Duration) {
+func waitTunnelRuntimeReason(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	read func() string,
+	since time.Time,
+	reason string,
+	window time.Duration,
+) {
 	t.Helper()
 	deadline := time.Now().Add(window)
 	var last tunnelRuntimeInterface
@@ -98,8 +122,10 @@ func waitTunnelRuntimeReason(t *testing.T, daemon *runtimeDaemon, read func() st
 		if found {
 			last = entry
 			for _, transition := range entry.Ownership.Transitions {
-				if transition.Family == "ipv6" && transition.Operation == "evaluate-routing" && transition.Current == "not-ready" &&
-					transition.Reason == reason && !transition.At.Before(since) {
+				if transition.Family == "ipv6" && transition.Operation == "evaluate-routing" &&
+					transition.Current == "not-ready" &&
+					transition.Reason == reason &&
+					!transition.At.Before(since) {
 					return
 				}
 			}
@@ -107,6 +133,11 @@ func waitTunnelRuntimeReason(t *testing.T, daemon *runtimeDaemon, read func() st
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("no IPv6 routing transition with reason %q after %s; transitions=%+v; daemon=%s",
-		reason, since.Format(time.RFC3339Nano), last.Ownership.Transitions, tunnelRuntimeLog(t, daemon))
+	t.Fatalf(
+		"no IPv6 routing transition with reason %q after %s; transitions=%+v; daemon=%s",
+		reason,
+		since.Format(time.RFC3339Nano),
+		last.Ownership.Transitions,
+		tunnelRuntimeLog(t, daemon),
+	)
 }

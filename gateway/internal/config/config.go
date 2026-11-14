@@ -280,7 +280,8 @@ func defaultConfigBase() Config {
 	cfg.Network = watchdogDefaults.Network
 	cfg.Report = DefaultReportSection()
 	cfg.Agent = AgentSection{
-		VsockPort: 50051, TCPAddr: "[::]:50052",
+		VsockPort:      50051,
+		TCPAddr:        "[::]:50052",
 		DeployFile:     "/var/lib/mwan/last-deploy",
 		DeployExpected: true,
 		LogFile:        "/var/log/mwan-agent.log",
@@ -291,6 +292,7 @@ func defaultConfigBase() Config {
 		RestartTime:         30,
 		NotificationEnabled: true,
 	}
+
 	return cfg
 }
 
@@ -299,6 +301,7 @@ func LoadPath(path string) (*Config, error) {
 	if path == "" {
 		path = watchdogconfig.DefaultPath()
 	}
+
 	return loadConfig(path)
 }
 
@@ -326,34 +329,41 @@ func loadConfig(path string) (*Config, error) {
 	if v := strings.TrimSpace(os.Getenv("OPNSENSE_API_SECRET")); v != "" {
 		cfg.OPNsense.APISecret = v
 	}
+
 	if err := watchdogconfig.ValidateGuestType(cfg.GuestType); err != nil {
 		slog.Error("validate guest type failed", "error", err)
 		return nil, fmt.Errorf("validate guest type: %w", err)
 	}
+
 	if cfg.IfMgr.Modules.Health != nil {
 		if _, _, err := cfg.IfMgr.Modules.Health.ParseMaxStateAge(); err != nil {
 			slog.Error("validate health max state age failed", "error", err)
 			return nil, fmt.Errorf("validate [ifmgr.modules.health]: %w", err)
 		}
 	}
+
 	if cfg.IfMgr.Modules.VPP != nil {
 		if err := cfg.IfMgr.Modules.VPP.Validate(); err != nil {
 			slog.Error("validate VPP process resources failed", "path", path, "error", err)
 			return nil, fmt.Errorf("validate [ifmgr.modules.vpp]: %w", err)
 		}
 	}
+
 	if err := validateBGPDynamicConfig(&cfg.BGP); err != nil {
 		slog.Error("validate BGP dynamic configuration failed", "error", err)
 		return nil, fmt.Errorf("validate BGP dynamic configuration: %w", err)
 	}
+
 	if _, err := cfg.IfMgr.Modules.NativeOffload.Resolve(); err != nil {
 		slog.Error("validate native offload process settings failed", "error", err)
 		return nil, fmt.Errorf("validate [ifmgr.modules.nativeoffload]: %w", err)
 	}
+
 	if err := validateBGPForwardingReadiness(&cfg); err != nil {
 		slog.Error("validate BGP forwarding readiness failed", "error", err)
 		return nil, fmt.Errorf("validate BGP forwarding readiness: %w", err)
 	}
+
 	return &cfg, nil
 }
 
@@ -364,9 +374,13 @@ func validateBGPDynamicConfig(b *BGPSection) error {
 	if err := validateBGPDynamicNeighbors(b.DynamicNeighbors); err != nil {
 		return err
 	}
+
 	if len(b.DynamicNeighbors) > 0 && b.LearnedRouteIface == "" {
-		return errors.New("[bgp] learned_route_iface is required when dynamic_neighbors is configured")
+		return errors.New(
+			"[bgp] learned_route_iface is required when dynamic_neighbors is configured",
+		)
 	}
+
 	return nil
 }
 
@@ -374,12 +388,23 @@ func validateBGPDynamicNeighbors(prefixes []string) error {
 	for index, prefixText := range prefixes {
 		prefix, err := netip.ParsePrefix(prefixText)
 		if err != nil {
-			return fmt.Errorf("[bgp] dynamic_neighbors[%d] %q must be a CIDR prefix: %s", index, prefixText, err.Error())
+			return fmt.Errorf(
+				"[bgp] dynamic_neighbors[%d] %q must be a CIDR prefix: %s",
+				index,
+				prefixText,
+				err.Error(),
+			)
 		}
+
 		if prefix.Bits() == 0 {
-			return fmt.Errorf("[bgp] dynamic_neighbors[%d] %q must not be a default route", index, prefixText)
+			return fmt.Errorf(
+				"[bgp] dynamic_neighbors[%d] %q must not be a default route",
+				index,
+				prefixText,
+			)
 		}
 	}
+
 	return nil
 }
 
@@ -388,25 +413,40 @@ func validateBGPForwardingReadiness(cfg *Config) error {
 	if !b.Enabled || !b.ForwardingReadinessEnabled() {
 		return nil
 	}
+
 	readiness := b.ForwardingReadiness
 	if !filepath.IsAbs(readiness.SocketPath) {
 		return errors.New("[bgp.forwarding_readiness] socket_path must be an absolute path")
 	}
+
 	if readiness.PollIntervalMilliseconds <= 0 {
-		return errors.New("[bgp.forwarding_readiness] poll_interval_milliseconds must be greater than zero")
+		return errors.New(
+			"[bgp.forwarding_readiness] poll_interval_milliseconds must be greater than zero",
+		)
 	}
+
 	if readiness.ReadTimeoutMilliseconds <= 0 {
-		return errors.New("[bgp.forwarding_readiness] read_timeout_milliseconds must be greater than zero")
+		return errors.New(
+			"[bgp.forwarding_readiness] read_timeout_milliseconds must be greater than zero",
+		)
 	}
+
 	if b.UseWanconfig {
 		return nil
 	}
+
 	probe := cfg.IfMgr.Modules.ConnectivityProbe
 	if len(b.Announce.IPv4) > 0 && (probe == nil || len(probe.TargetsV4) == 0) {
-		return errors.New("[ifmgr.modules.connectivity_probe] targets_v4 is required when [bgp.announce] ipv4 is configured and forwarding readiness is enabled without use_wanconfig")
+		return errors.New(
+			"[ifmgr.modules.connectivity_probe] targets_v4 is required when [bgp.announce] ipv4 is configured and forwarding readiness is enabled without use_wanconfig",
+		)
 	}
+
 	if len(b.Announce.IPv6) > 0 && (probe == nil || len(probe.TargetsV6) == 0) {
-		return errors.New("[ifmgr.modules.connectivity_probe] targets_v6 is required when [bgp.announce] ipv6 is configured and forwarding readiness is enabled without use_wanconfig")
+		return errors.New(
+			"[ifmgr.modules.connectivity_probe] targets_v6 is required when [bgp.announce] ipv6 is configured and forwarding readiness is enabled without use_wanconfig",
+		)
 	}
+
 	return nil
 }

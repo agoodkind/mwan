@@ -27,11 +27,13 @@ func (table RenderedTable) interfaceAbsent(iface string) bool {
 	if table.HasInterface(iface) {
 		return false
 	}
+
 	for _, unrecognized := range table.unrecognizedIfaces {
 		if unrecognized == "" || unrecognized == iface {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -40,16 +42,19 @@ func (table RenderedTable) interfaceAbsent(iface string) bool {
 func (table RenderedTable) HasInterface(iface string) bool {
 	inputToken := fmt.Sprintf(`iif %q`, iface)
 	outputToken := fmt.Sprintf(`oif %q`, iface)
+
 	for _, line := range table.Prerouting {
 		if strings.Contains(line, inputToken) {
 			return true
 		}
 	}
+
 	for _, line := range table.Postrouting {
 		if strings.Contains(line, outputToken) {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -74,6 +79,7 @@ func ifaceNameByIndex(index uint32) (string, bool) {
 	if err != nil || iface == nil || iface.Name == "" {
 		return "", false
 	}
+
 	return iface.Name, true
 }
 
@@ -83,6 +89,7 @@ func defaultNFTReadConn() (nftReadConn, error) {
 		slog.Warn("npt: open nftables read connection failed", "err", err)
 		return nil, fmt.Errorf("nftables.New: %w", err)
 	}
+
 	return conn, nil
 }
 
@@ -117,13 +124,16 @@ func (r *nftReader) renderTable(
 	if err != nil {
 		return emptyRenderedTable(), err
 	}
+
 	if err := ctx.Err(); err != nil {
 		return emptyRenderedTable(), fmt.Errorf("inspect ip6 nat table: %w", err)
 	}
+
 	postrouting, unknownPost, err := r.readChain(ctx, log, conn, table, post)
 	if err != nil {
 		return emptyRenderedTable(), err
 	}
+
 	return RenderedTable{
 		Prerouting:         prerouting,
 		Postrouting:        postrouting,
@@ -151,22 +161,28 @@ func (r *nftReader) readChain(
 		if isNFTObjectMissing(err) {
 			return nil, nil, nil
 		}
+
 		log.WarnContext(ctx, "npt: read nftables chain failed", "chain", chain.Name, "err", err)
+
 		return nil, nil, fmt.Errorf("get rules for %s: %w", chain.Name, err)
 	}
+
 	lines := r.renderRules(rules)
 	var unrecognized []string
+
 	for _, rule := range rules {
 		if rule != nil {
 			if _, ok := decodeRule(r.ifaceName, rule.Exprs); ok {
 				continue
 			}
+
 			_, iface, _ := decodeInterfaceMatch(r.ifaceName, rule.Exprs)
 			unrecognized = append(unrecognized, iface)
 		} else {
 			unrecognized = append(unrecognized, "")
 		}
 	}
+
 	return lines, unrecognized, nil
 }
 
@@ -174,7 +190,9 @@ func isNFTObjectMissing(err error) bool {
 	if errors.Is(err, unix.ENOENT) {
 		return true
 	}
+
 	message := strings.ToLower(err.Error())
+
 	return strings.Contains(message, "no such file or directory") ||
 		strings.Contains(message, "file does not exist") ||
 		strings.Contains(message, "enoent")
@@ -191,11 +209,10 @@ func (r *nftReader) renderRules(rules []*nftables.Rule) []string {
 				continue
 			}
 		}
-		lines = append(
-			lines,
-			fmt.Sprintf("# unrecognized rule (%d exprs)", expressionCount),
-		)
+
+		lines = append(lines, fmt.Sprintf("# unrecognized rule (%d exprs)", expressionCount))
 	}
+
 	return lines
 }
 
@@ -217,6 +234,7 @@ func decodeRule(
 	if !ok {
 		return emptyNatRule(), false
 	}
+
 	return natRule{
 		Chain:  chain,
 		Iface:  iface,
@@ -249,10 +267,12 @@ func decodeInterfaceMatch(
 	if len(expressions) < 2 {
 		return chainPostrouting, "", false
 	}
+
 	meta, ok := expressions[0].(*expr.Meta)
 	if !ok || meta.SourceRegister {
 		return chainPostrouting, "", false
 	}
+
 	compare, ok := expressions[1].(*expr.Cmp)
 	if !ok || compare.Op != expr.CmpOpEq || compare.Register != meta.Register {
 		return chainPostrouting, "", false
@@ -269,9 +289,11 @@ func decodeInterfaceMatch(
 	} else {
 		iface, ok = decodeInterfaceIndex(compare.Data, ifaceName)
 	}
+
 	if !ok {
 		return chainPostrouting, "", false
 	}
+
 	return chain, iface, true
 }
 
@@ -282,15 +304,19 @@ func chainForMetaKey(key expr.MetaKey) (ruleChain, bool, bool) {
 	if key == expr.MetaKeyIIFNAME {
 		return chainPrerouting, true, true
 	}
+
 	if key == expr.MetaKeyOIFNAME {
 		return chainPostrouting, true, true
 	}
+
 	if key == expr.MetaKeyIIF {
 		return chainPrerouting, false, true
 	}
+
 	if key == expr.MetaKeyOIF {
 		return chainPostrouting, false, true
 	}
+
 	return chainPostrouting, false, false
 }
 
@@ -299,6 +325,7 @@ func decodeInterfaceName(data []byte) (string, bool) {
 	if terminator < 1 || !allZero(data[terminator:]) {
 		return "", false
 	}
+
 	return string(data[:terminator]), true
 }
 
@@ -309,15 +336,18 @@ func decodeInterfaceIndex(
 	if len(data) != 4 {
 		return "", false
 	}
+
 	index := binaryutil.NativeEndian.Uint32(data)
 	if index == 0 {
 		return "", false
 	}
+
 	if ifaceName != nil {
 		if name, ok := ifaceName(index); ok {
 			return name, true
 		}
 	}
+
 	return fmt.Sprintf("index %d", index), true
 }
 
@@ -328,6 +358,7 @@ func decodeAddressMatch(
 	if len(expressions) < 2 {
 		return netip.Prefix{}, 0, false
 	}
+
 	payload, ok := expressions[0].(*expr.Payload)
 	if !ok || !knownAddressPayload(payload, chain) {
 		return netip.Prefix{}, 0, false
@@ -341,6 +372,7 @@ func decodeAddressMatch(
 		if !valid || len(expressions) < 3 {
 			return netip.Prefix{}, 0, false
 		}
+
 		compareIndex = 2
 	}
 
@@ -348,14 +380,17 @@ func decodeAddressMatch(
 	if !ok || compare.Op != expr.CmpOpEq || compare.Register != payload.DestRegister {
 		return netip.Prefix{}, 0, false
 	}
+
 	address, ok := decodeIPv6Address(compare.Data)
 	if !ok {
 		return netip.Prefix{}, 0, false
 	}
+
 	prefix := netip.PrefixFrom(address, prefixBits).Masked()
 	if prefix.Addr() != address {
 		return netip.Prefix{}, 0, false
 	}
+
 	return prefix, compareIndex + 1, true
 }
 
@@ -364,6 +399,7 @@ func knownAddressPayload(payload *expr.Payload, chain ruleChain) bool {
 	if chain == chainPrerouting {
 		offset = ip6DaddrOffset
 	}
+
 	return payload.OperationType == expr.PayloadLoad &&
 		payload.Base == expr.PayloadBaseNetworkHeader &&
 		payload.Offset == offset &&
@@ -378,10 +414,12 @@ func decodePrefixMask(bitwise *expr.Bitwise, register uint32) (int, bool) {
 		!allZero(bitwise.Xor) {
 		return 0, false
 	}
+
 	ones, bits := net.IPMask(bitwise.Mask).Size()
 	if bits != 128 || ones == 128 {
 		return 0, false
 	}
+
 	return ones, true
 }
 
@@ -391,15 +429,19 @@ func decodeAction(expressions []expr.Any) (natOp, netip.Addr, netip.Prefix, bool
 			return opMasquerade, netip.Addr{}, netip.Prefix{}, true
 		}
 	}
+
 	if isGuardAction(expressions) {
 		return opGuard, netip.Addr{}, netip.Prefix{}, true
 	}
+
 	if len(expressions) == 2 {
 		return decodeSingleNAT(expressions)
 	}
+
 	if len(expressions) == 3 {
 		return decodePrefixNAT(expressions)
 	}
+
 	return opGuard, netip.Addr{}, netip.Prefix{}, false
 }
 
@@ -407,12 +449,14 @@ func isGuardAction(expressions []expr.Any) bool {
 	if len(expressions) != 4 {
 		return false
 	}
+
 	ct, ok := expressions[0].(*expr.Ct)
 	if !ok ||
 		ct.SourceRegister ||
 		ct.Key != expr.CtKeySTATUS {
 		return false
 	}
+
 	bitwise, ok := expressions[1].(*expr.Bitwise)
 	if !ok ||
 		bitwise.SourceRegister != ct.Register ||
@@ -422,6 +466,7 @@ func isGuardAction(expressions []expr.Any) bool {
 		!bytes.Equal(bitwise.Xor, binaryutil.NativeEndian.PutUint32(0)) {
 		return false
 	}
+
 	compare, ok := expressions[2].(*expr.Cmp)
 	if !ok ||
 		compare.Op != expr.CmpOpNeq ||
@@ -429,7 +474,9 @@ func isGuardAction(expressions []expr.Any) bool {
 		!bytes.Equal(compare.Data, binaryutil.NativeEndian.PutUint32(0)) {
 		return false
 	}
+
 	verdict, ok := expressions[3].(*expr.Verdict)
+
 	return ok && verdict.Kind == expr.VerdictReturn
 }
 
@@ -440,6 +487,7 @@ func decodeSingleNAT(
 	if !ok {
 		return opGuard, netip.Addr{}, netip.Prefix{}, false
 	}
+
 	nat, ok := expressions[1].(*expr.NAT)
 	// A single-address NAT has no range: the applier leaves RegAddrMax zero,
 	// while the kernel echoes it back equal to RegAddrMin. Accept both.
@@ -451,14 +499,17 @@ func decodeSingleNAT(
 		!natHasNoExtraFlags(nat) {
 		return opGuard, netip.Addr{}, netip.Prefix{}, false
 	}
+
 	op, ok := decodeNATType(nat.Type, false)
 	if !ok {
 		return opGuard, netip.Addr{}, netip.Prefix{}, false
 	}
+
 	address, ok := decodeIPv6Address(immediate.Data)
 	if !ok {
 		return opGuard, netip.Addr{}, netip.Prefix{}, false
 	}
+
 	return op, address, netip.Prefix{}, true
 }
 
@@ -469,10 +520,12 @@ func decodePrefixNAT(
 	if !ok {
 		return opGuard, netip.Addr{}, netip.Prefix{}, false
 	}
+
 	maximum, ok := expressions[1].(*expr.Immediate)
 	if !ok {
 		return opGuard, netip.Addr{}, netip.Prefix{}, false
 	}
+
 	nat, ok := expressions[2].(*expr.NAT)
 	if !ok ||
 		nat.Family != unix.NFPROTO_IPV6 ||
@@ -483,22 +536,27 @@ func decodePrefixNAT(
 		!natHasNoExtraFlags(nat) {
 		return opGuard, netip.Addr{}, netip.Prefix{}, false
 	}
+
 	op, ok := decodeNATType(nat.Type, true)
 	if !ok {
 		return opGuard, netip.Addr{}, netip.Prefix{}, false
 	}
+
 	minimumAddress, ok := decodeIPv6Address(minimum.Data)
 	if !ok {
 		return opGuard, netip.Addr{}, netip.Prefix{}, false
 	}
+
 	maximumAddress, ok := decodeIPv6Address(maximum.Data)
 	if !ok {
 		return opGuard, netip.Addr{}, netip.Prefix{}, false
 	}
+
 	prefix, ok := prefixFromRange(minimumAddress, maximumAddress)
 	if !ok {
 		return opGuard, netip.Addr{}, netip.Prefix{}, false
 	}
+
 	return op, netip.Addr{}, prefix, true
 }
 
@@ -521,11 +579,13 @@ func decodeNATType(natType expr.NATType, prefix bool) (natOp, bool) {
 		if prefix {
 			return opSNATPrefix, true
 		}
+
 		return opSNAT, true
 	case expr.NATTypeDestNAT:
 		if prefix {
 			return opDNATPrefix, true
 		}
+
 		return opDNAT, true
 	default:
 		return opGuard, false
@@ -536,18 +596,22 @@ func prefixFromRange(minimum netip.Addr, maximum netip.Addr) (netip.Prefix, bool
 	minimumOctets := minimum.As16()
 	maximumOctets := maximum.As16()
 	prefixBits := 0
+
 	for i := range minimumOctets {
 		difference := minimumOctets[i] ^ maximumOctets[i]
 		if difference == 0 {
 			prefixBits += 8
 			continue
 		}
+
 		for bit := 7; bit >= 0; bit-- {
 			if difference&(1<<bit) != 0 {
 				break
 			}
+
 			prefixBits++
 		}
+
 		break
 	}
 
@@ -555,6 +619,7 @@ func prefixFromRange(minimum netip.Addr, maximum netip.Addr) (netip.Prefix, bool
 	if prefix.Addr() != minimum || lastAddr(prefix) != maximum {
 		return netip.Prefix{}, false
 	}
+
 	return prefix, true
 }
 
@@ -562,8 +627,10 @@ func decodeIPv6Address(data []byte) (netip.Addr, bool) {
 	if len(data) != int(ip6AddrLen) {
 		return netip.Addr{}, false
 	}
+
 	var octets [16]byte
 	copy(octets[:], data)
+
 	return netip.AddrFrom16(octets), true
 }
 
@@ -573,6 +640,7 @@ func allZero(data []byte) bool {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -603,6 +671,7 @@ func formatRule(rule natRule) string {
 		action = "masquerade"
 	case opGuard:
 	}
+
 	return fmt.Sprintf(
 		`%s %q ip6 %s %s %s`,
 		ifaceKeyword,

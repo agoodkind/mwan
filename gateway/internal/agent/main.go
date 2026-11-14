@@ -50,9 +50,12 @@ func Run(cfg *config.Config, options config.AgentSection) error {
 
 	logger.Info(
 		"mwan-agent starting",
-		"detail", version.BuildVersionString(),
-		"vsock_port", *vsockPort,
-		"tcp_addr", *tcpAddr,
+		"detail",
+		version.BuildVersionString(),
+		"vsock_port",
+		*vsockPort,
+		"tcp_addr",
+		*tcpAddr,
 	)
 
 	runCtx, cancel := context.WithCancel(context.Background())
@@ -80,8 +83,10 @@ func Run(cfg *config.Config, options config.AgentSection) error {
 		if vsockErr != nil {
 			logger.Warn(
 				"vsock listen failed, continuing without vsock",
-				"error", vsockErr,
-				"vsock_port", port,
+				"error",
+				vsockErr,
+				"vsock_port",
+				port,
 			)
 		}
 	}
@@ -110,7 +115,12 @@ func Run(cfg *config.Config, options config.AgentSection) error {
 		go func() {
 			defer func() {
 				if recovered := recover(); recovered != nil {
-					logger.ErrorContext(runCtx, "forwarding readiness poll panic", "error", recovered)
+					logger.ErrorContext(
+						runCtx,
+						"forwarding readiness poll panic",
+						"error",
+						recovered,
+					)
 				}
 			}()
 			agentServer.pollForwardingReady(runCtx)
