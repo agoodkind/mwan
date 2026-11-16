@@ -354,11 +354,6 @@ func loadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("validate BGP dynamic configuration: %w", err)
 	}
 
-	if _, err := cfg.IfMgr.Modules.NativeOffload.Resolve(); err != nil {
-		slog.Error("validate native offload process settings failed", "error", err)
-		return nil, fmt.Errorf("validate [ifmgr.modules.nativeoffload]: %w", err)
-	}
-
 	if err := validateBGPForwardingReadiness(&cfg); err != nil {
 		slog.Error("validate BGP forwarding readiness failed", "error", err)
 		return nil, fmt.Errorf("validate BGP forwarding readiness: %w", err)

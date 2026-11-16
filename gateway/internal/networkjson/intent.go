@@ -511,27 +511,6 @@ func unsupportedNetworkdIntent(connection interfaceintent.Connection) error {
 
 func buildIntentLink(entry ifaceEntry) (*interfaceintent.Link, error) {
 	wire := entry.Link
-	binding, err := buildNativeOffloadBinding(wire.NativeOffload)
-	if err != nil {
-		slog.Warn(
-			"networkjson: native hardware binding invalid",
-			"interface",
-			entry.Name,
-			"err",
-			err,
-		)
-
-		return nil, fmt.Errorf("interface %s: %w", entry.Name, err)
-	}
-
-	if binding != nil &&
-		(wire.VLAN != nil || wire.Tunnel != nil || wire.BridgeMaster != "" || entry.Type == "iana-if-type:bridge") {
-		return nil, fmt.Errorf(
-			"interface %s native offload requires an untagged physical link outside a bridge",
-			entry.Name,
-		)
-	}
-
 	link := &interfaceintent.Link{
 		Kind:            interfaceintent.KindPhysical,
 		Match:           interfaceintent.Match{Driver: "", HardwareAddress: ""},
@@ -540,7 +519,6 @@ func buildIntentLink(entry ifaceEntry) (*interfaceintent.Link, error) {
 		VLAN:            nil,
 		BridgeMaster:    wire.BridgeMaster,
 		Tunnel:          nil,
-		NativeOffload:   binding,
 	}
 	if wire.Tunnel != nil {
 		tunnel, err := buildIntentTunnel(entry)
@@ -894,8 +872,7 @@ func compileConnections(
 	for _, entry := range entries {
 		connection, err := buildConnection(entry, ids[entry.Name])
 		if err != nil {
-			if entry.WAN == nil || entry.Owner == string(interfaceintent.OwnerMWAN) ||
-				entry.Link != nil && entry.Link.NativeOffload != nil {
+			if entry.WAN == nil || entry.Owner == string(interfaceintent.OwnerMWAN) {
 				return nil, nil, err
 			}
 
@@ -1058,11 +1035,6 @@ func vlanParent(link *interfaceintent.Link) string {
 }
 
 func validateActiveDependencies(connections []interfaceintent.Connection) error {
-	if err := interfaceintent.ValidateNativeBindings(connections); err != nil {
-		slog.Warn("networkjson: native hardware graph invalid", "err", err)
-		return fmt.Errorf("native offload bindings: %w", err)
-	}
-
 	available := make(map[string]bool, len(connections))
 	for _, connection := range connections {
 		available[connection.Name] = true

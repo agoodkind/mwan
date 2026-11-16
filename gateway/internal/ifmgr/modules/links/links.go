@@ -198,11 +198,10 @@ func (module *Module) OnKernelEvent(
 
 // Reconcile applies owned links and publishes per-connection results.
 func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
-	ctx, finish, err := module.Env.BeginForwardingChange(ctx)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("prepare owned link change: %w", err)
 	}
-	defer finish()
+
 	module.Env.OwnedLinks.Replace(nil)
 	results, err := module.reconciler.Reconcile(
 		ctx,

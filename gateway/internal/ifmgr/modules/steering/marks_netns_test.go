@@ -28,7 +28,6 @@ import (
 
 	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/offload"
 	"goodkind.io/mwan/internal/wanstate"
 )
 
@@ -137,7 +136,6 @@ func testSteeringMapRoutes(t *testing.T, mode hashMode, family int) {
 		t.Fatal(err)
 	}
 	markProofPackets(t, ctx, input, sender, []netlink.Link{firstPeer, secondPeer}, destination)
-	markProofReadback(t, ctx, writer, policy, store.Snapshot())
 }
 
 func markProofPolicy(t *testing.T, mode hashMode, input, first, second netlink.Link) Config {
@@ -303,6 +301,11 @@ func markProofPackets(
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { unix.Close(senderSocket) })
+	connections, err := conntrack.Dial(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { connections.Close() })
 	seen := [2]bool{}
 	for address := uint16(2); address < markProofAddressEnd && (!seen[0] || !seen[1]); address++ {
 		source := netip.MustParseAddr("10.0.0.0")
@@ -338,7 +341,7 @@ func markProofPackets(
 			markProofFlowExpiry,
 			0,
 		)
-		current, err := offload.LookupConntrackFlow(ctx, flow.TupleOrig, 0)
+		current, err := connections.Get(flow)
 		expectedMark := []uint32{markProofFirstMark, markProofSecondMark}[provider]
 		if err != nil || current.Mark != expectedMark {
 			t.Fatalf(

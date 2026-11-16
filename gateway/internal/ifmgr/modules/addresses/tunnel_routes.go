@@ -27,11 +27,10 @@ func (module *Module) EnsureTunnelEndpointRoute(
 			)
 		}
 	}()
-	ctx, finish, err := module.Env.BeginForwardingChange(ctx)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("prepare tunnel endpoint route change: %w", err)
 	}
-	defer finish()
+
 	if err := module.reconciler.EnsureTunnelEndpointRoute(
 		ctx,
 		log,
@@ -60,11 +59,10 @@ func (module *Module) ReleaseTunnelEndpointRoutes(
 			)
 		}
 	}()
-	ctx, finish, err := module.Env.BeginForwardingChange(ctx)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("prepare tunnel endpoint route removal: %w", err)
 	}
-	defer finish()
+
 	if err := module.reconciler.ReleaseTunnelEndpointRoutes(ctx, log, keep); err != nil {
 		return fmt.Errorf("remove tunnel endpoint routes: %w", err)
 	}

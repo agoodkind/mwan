@@ -67,17 +67,10 @@ include ../build/wanconfig.mk
 # per-os/arch prefix before every gate, so the cgo files stay fully checked
 # on linux CI.
 GO_MK_CGO_DEPS := libyang sysrepo
-MWAN_NATIVE ?= 0
-ifeq ($(MWAN_NATIVE),1)
-GO_MK_CGO_DEPS += native
-export GOFLAGS += -tags=nativeoffload
-MWAN_NATIVE_RELEASE_TAG := ,nativeoffload
-endif
 
 GOVULNCHECK_INSTALL := golang.org/x/vuln/cmd/govulncheck@v1.9.0
 
 include bootstrap.mk
-include ../build/native.mk
 
 # The test gate runs the binary it just linked, which loads libyang and
 # libsysrepo at runtime from the per-target prefix.
@@ -88,7 +81,7 @@ export LD_LIBRARY_PATH := $(GO_MK_CGO_PREFIX)/lib$(if $(strip $(LD_LIBRARY_PATH)
 # build command. They attach to the release target only: a plain export
 # would hand a host tool the target's link flags, and building
 # golangci-lint on macOS then fails on a missing static libc.
-release: export GOFLAGS := -tags=osusergo,netgo$(MWAN_NATIVE_RELEASE_TAG)$(if $(strip $(filter-out -tags=nativeoffload,$(GOFLAGS))), $(filter-out -tags=nativeoffload,$(GOFLAGS)))
+release: export GOFLAGS := -tags=osusergo,netgo$(if $(strip $(GOFLAGS)), $(GOFLAGS))
 release: export CGO_LDFLAGS := -static
 
 .DEFAULT_GOAL := help
@@ -309,14 +302,10 @@ REPORTING_RRDTOOL_SHA256 := 24c345b5c077c1b2b2fcbc1a364f1da051650fb6743ad5213096
 
 # Each invocation owns a Compose project and temporary cache volumes. The
 # runner removes them on exit without removing images or host artifacts.
-MWAN_NATIVE_DPDK_CONTAINER_PREFIX ?= $(MWAN_NATIVE_DPDK_PREFIX)
 WANCONFIG_DOCKER_RUN := env \
 	WANCONFIG_DOCKER_SOURCE="$(REPO_ROOT)" \
 	WANCONFIG_DOCKER_ARCH="$(WANCONFIG_DOCKER_ARCH)" \
 	WANCONFIG_BUILDER_IMAGE="$(WANCONFIG_BUILDER_IMAGE)" \
-	MWAN_NATIVE="$(MWAN_NATIVE)" \
-	MWAN_NATIVE_DPDK_PREFIX="$(MWAN_NATIVE_DPDK_PREFIX)" \
-	MWAN_NATIVE_DPDK_CONTAINER_PREFIX="$(MWAN_NATIVE_DPDK_CONTAINER_PREFIX)" \
 	bash tools/wanconfigbuilder/run.sh
 
 # Every target builds the local image before Compose starts its container.
@@ -328,7 +317,6 @@ wanconfig-builder-image:
 		--build-arg RRDTOOL_SHA256=$(REPORTING_RRDTOOL_SHA256) \
 		--build-arg LIBYANG_VERSION=$(WANCONFIG_LIBYANG_VERSION) \
 		--build-arg SYSREPO_VERSION=$(WANCONFIG_SYSREPO_VERSION) \
-		--build-arg RUST_VERSION=$(MWAN_NATIVE_RUST_TOOLCHAIN) \
 		--build-arg "LIBYANG_CMAKE_FLAGS=$(WANCONFIG_LIBYANG_CMAKE_FLAGS)" \
 		--build-arg "SYSREPO_CMAKE_FLAGS=$(WANCONFIG_SYSREPO_CMAKE_FLAGS)" \
 		-t $(WANCONFIG_BUILDER_IMAGE) tools/wanconfigbuilder
@@ -448,7 +436,7 @@ endif
 # On macOS it runs them in a native linux/arm64 container. An amd64 container
 # on Apple Silicon runs under qemu, and qemu does not translate policy rule
 # netlink messages.
-NETNS_TEST_PACKAGES := ./internal/ifmgr/modules/wanroutes/... ./internal/ifmgr/modules/npt/... ./internal/ifmgr/modules/steering/... ./internal/ifmgr/modules/firewall/... ./internal/ifmgr/modules/links/... ./internal/ifmgr/modules/slaachealth/... ./internal/netif/... ./internal/bgp/... ./internal/ifmgr/modules/bgpsessions/... ./internal/offload/...
+NETNS_TEST_PACKAGES := ./internal/ifmgr/modules/wanroutes/... ./internal/ifmgr/modules/npt/... ./internal/ifmgr/modules/steering/... ./internal/ifmgr/modules/firewall/... ./internal/ifmgr/modules/links/... ./internal/ifmgr/modules/slaachealth/... ./internal/netif/... ./internal/bgp/... ./internal/ifmgr/modules/bgpsessions/...
 NETNS_GO_VERSION    := 1.27.3
 NETNS_RUNNER_IMAGE  := mwan-netns-runner
 NETNS_PROTOCOL_IMAGE := mwan-protocol-runner:$(WANCONFIG_DOCKER_ARCH)
@@ -574,10 +562,6 @@ GO_MK_CGO_CACHE_VERSIONS := \
 	nghttp2-asio=$(WANCONFIG_NGHTTP2_ASIO_VERSION) \
 	rousette=$(WANCONFIG_ROUSETTE_VERSION)
 GO_MK_CGO_CACHE_INPUTS := $(WANCONFIG_STACK_SOURCES)
-ifeq ($(MWAN_NATIVE),1)
-GO_MK_CGO_CACHE_VERSIONS += dpdk=$(MWAN_NATIVE_DPDK_VERSION)-$(MWAN_NATIVE_PATCH_SHA256)
-GO_MK_CGO_CACHE_INPUTS += $(MWAN_NATIVE_SOURCE_FILES) $(MWAN_NATIVE_PATCH) ../build/native.mk
-endif
 
 $(WANCONFIG_STACK_TOOL): $(WANCONFIG_STACK_SOURCES)
 	@mkdir -p $(WANCONFIG_STACK_CACHE)

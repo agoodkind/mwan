@@ -13,8 +13,6 @@ services:
       GIT_CONFIG_COUNT: "1"
       GIT_CONFIG_KEY_0: safe.directory
       GIT_CONFIG_VALUE_0: /src
-      MWAN_NATIVE: "${MWAN_NATIVE:-0}"
-      MWAN_NATIVE_DPDK_PREFIX: ""
     volumes:
       - type: bind
         source: ${WANCONFIG_DOCKER_SOURCE:?Set WANCONFIG_DOCKER_SOURCE}
