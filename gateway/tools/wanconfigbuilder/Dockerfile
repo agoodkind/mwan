@@ -48,7 +48,7 @@ RUN test -n "${RRDTOOL_VERSION}" && test -n "${RRDTOOL_SHA256}"
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        curl libcairo2-dev libpango1.0-dev libxml2-dev fontconfig \
+        curl jq libcairo2-dev libpango1.0-dev libxml2-dev fontconfig \
         fonts-liberation poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
