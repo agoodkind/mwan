@@ -6,45 +6,9 @@ import (
 	"log/slog"
 	"maps"
 	"slices"
-	"sync"
 
 	"goodkind.io/mwan/internal/nptpolicy"
 )
-
-// NPTGuard removes stale rules and fences admission for the changed connections.
-// Its completion function releases that fence after the writer publishes the result.
-type NPTGuard func(context.Context, []string) (func(), error)
-
-type nptGuardRegistration struct {
-	guard NPTGuard
-}
-
-// RegisterNPTGuard rejects a second owner. Unregistration waits for active changes.
-func (s *Store) RegisterNPTGuard(guard NPTGuard) (func(), error) {
-	if guard == nil {
-		return nil, fmt.Errorf("NPT mutation guard is required")
-	}
-
-	s.nptGuardMu.Lock()
-	defer s.nptGuardMu.Unlock()
-	if s.nptGuard != nil {
-		return nil, fmt.Errorf("NPT mutation guard already has an owner")
-	}
-
-	registration := &nptGuardRegistration{guard: guard}
-	s.nptGuard = registration
-	var once sync.Once
-
-	return func() {
-		once.Do(func() {
-			s.nptGuardMu.Lock()
-			defer s.nptGuardMu.Unlock()
-			if s.nptGuard == registration {
-				s.nptGuard = nil
-			}
-		})
-	}, nil
-}
 
 // BeginNPTChange keeps registration stable until the returned completion runs.
 // Callbacks may read Snapshot; the writer must publish success or failed readiness
@@ -65,13 +29,6 @@ func (s *Store) BeginNPTChange(
 			)
 		}
 	}()
-	s.nptGuardMu.RLock()
-	locked := true
-	defer func() {
-		if locked {
-			s.nptGuardMu.RUnlock()
-		}
-	}()
 	s.mu.RLock()
 	changed = changedNPTPolicies(s.nptPolicies, next)
 	s.mu.RUnlock()
@@ -83,45 +40,7 @@ func (s *Store) BeginNPTChange(
 		return changed, nil, fmt.Errorf("begin NPT policy change: %w", err)
 	}
 
-	var release func()
-	if s.nptGuard != nil {
-		var err error
-		release, err = s.nptGuard.guard(ctx, slices.Clone(changed))
-		if err != nil {
-			if release != nil {
-				release()
-			}
-
-			return changed, nil, fmt.Errorf("prepare NPT policy change: %w", err)
-		}
-
-		if release == nil {
-			return changed, nil, fmt.Errorf(
-				"NPT mutation guard did not supply its completion function",
-			)
-		}
-	}
-
-	if err := ctx.Err(); err != nil {
-		if release != nil {
-			release()
-		}
-
-		return changed, nil, fmt.Errorf("prepare NPT policy change: %w", err)
-	}
-
-	var once sync.Once
-	finish = func() {
-		once.Do(func() {
-			defer s.nptGuardMu.RUnlock()
-			if release != nil {
-				release()
-			}
-		})
-	}
-	locked = false
-
-	return changed, finish, nil
+	return changed, func() {}, nil
 }
 
 // SetNPTTranslation commits readiness and the applied pairs in one snapshot.

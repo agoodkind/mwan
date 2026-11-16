@@ -243,11 +243,10 @@ func (module *Module) verifyDHCPv4(iface string) {
 func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	module.reconcileMu.Lock()
 	defer module.reconcileMu.Unlock()
-	ctx, finish, err := module.Env.BeginForwardingChange(ctx)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("prepare owned address change: %w", err)
 	}
-	defer finish()
+
 	module.Env.OwnedAddresses.Replace()
 	desiredFamilies := make(map[string]map[string]bool)
 	var mappingErr error
@@ -273,7 +272,7 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		desiredFamilies[connection.ID.String()] = module.reconcileConnection(ctx, log, connection)
 	}
 
-	err = errors.Join(mappingErr, module.reconciler.PruneRemoved(desiredFamilies))
+	err := errors.Join(mappingErr, module.reconciler.PruneRemoved(desiredFamilies))
 	var pending []wanstate.PendingRemoval
 	if err != nil {
 		var failure *netif.OwnedStaticPruneError
@@ -488,7 +487,7 @@ func (module *Module) currentDHCPClient(
 	module.sessionMu.Unlock()
 	cached, recoveryRejected := module.loadDHCPv4Recovery(ctx, log, id, ready)
 	module.sessionMu.Lock()
-	clientContext, cancel := context.WithCancel(ifmgr.WithoutForwardingChange(ctx))
+	clientContext, cancel := context.WithCancel(ctx)
 	module.nextGeneration++
 	client := netif.StartDHCPClient(
 		clientContext,

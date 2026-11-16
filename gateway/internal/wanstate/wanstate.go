@@ -138,8 +138,6 @@ type Store struct {
 	translation         map[string]MemberTranslation
 	nptPolicies         map[string]nptpolicy.PrefixPair
 	nptPolicyGeneration uint64
-	nptGuardMu          sync.RWMutex
-	nptGuard            *nptGuardRegistration
 	routingGeneration   uint64
 	activeTier          uint8
 	tierValid           bool
@@ -171,8 +169,6 @@ func NewWithClock(wallClock clock.Clock) *Store {
 		translation:         map[string]MemberTranslation{},
 		nptPolicies:         map[string]nptpolicy.PrefixPair{},
 		nptPolicyGeneration: 0,
-		nptGuardMu:          sync.RWMutex{},
-		nptGuard:            nil,
 		routingGeneration:   0,
 		activeTier:          0,
 		tierValid:           false,

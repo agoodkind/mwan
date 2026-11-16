@@ -69,10 +69,6 @@ func runIfMgr(
 		return err
 	}
 
-	if err := validateNativeOffloadStartup(role, cfg.IfMgr); err != nil {
-		return err
-	}
-
 	logger := buildIfMgrLogger(cfg, flags.debug)
 	runID := tracing.NewID()
 	logger = logger.With(

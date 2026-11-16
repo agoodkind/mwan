@@ -10,30 +10,10 @@ if [ "$#" -eq 0 ]; then
     exit 64
 fi
 
-if [ -n "${MWAN_NATIVE_DPDK_PREFIX:-}" ]; then
-    if [[ "${MWAN_NATIVE_DPDK_PREFIX}" != /* ]]; then
-        printf '%s\n' 'MWAN_NATIVE_DPDK_PREFIX must be an absolute host directory.' >&2
-        exit 64
-    fi
-    export MWAN_NATIVE_DPDK_CONTAINER_PREFIX="${MWAN_NATIVE_DPDK_CONTAINER_PREFIX:-${MWAN_NATIVE_DPDK_PREFIX}}"
-    if [[ "${MWAN_NATIVE_DPDK_CONTAINER_PREFIX}" != /* ]]; then
-        printf '%s\n' 'MWAN_NATIVE_DPDK_CONTAINER_PREFIX must be an absolute container directory.' >&2
-        exit 64
-    fi
-else
-    if [ -n "${MWAN_NATIVE_DPDK_CONTAINER_PREFIX:-}" ]; then
-        printf '%s\n' 'Set MWAN_NATIVE_DPDK_PREFIX with MWAN_NATIVE_DPDK_CONTAINER_PREFIX.' >&2
-        exit 64
-    fi
-fi
-
 RUN_DIRECTORY=$(mktemp -d "${TMPDIR:-/tmp}/mwan-compose-XXXXXXXXXX")
 PROJECT_NAME=$(printf '%s' "${RUN_DIRECTORY##*/}" | LC_ALL=C tr '[:upper:]' '[:lower:]')
 COMPOSE_DIRECTORY="${BASH_SOURCE[0]%/*}"
 COMPOSE_COMMAND=(docker compose --project-name "${PROJECT_NAME}" --file "${COMPOSE_DIRECTORY}/compose.yaml")
-if [ -n "${MWAN_NATIVE_DPDK_PREFIX:-}" ]; then
-    COMPOSE_COMMAND+=(--file "${COMPOSE_DIRECTORY}/compose.sdk.yaml")
-fi
 RUNNER_PID=
 
 cleanup() {

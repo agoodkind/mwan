@@ -302,32 +302,26 @@ func (d *Daemon) Run(ctx context.Context) (resultErr error) {
 	}
 
 	d.env = &Env{
-		Iface:               d.cfg.Iface,
-		Connections:         d.cfg.Connections,
-		Sysctl:              netif.NewProcSysctlRunner(d.log, false),
-		Log:                 d.log,
-		Alerts:              WrapNotifier(d.cfg.Notifier),
-		Monitor:             mon,
-		DHCP:                dhcp.client,
-		DHCPRecoveryPending: dhcp.cached,
-		RA:                  raClient,
-		RequestReconcile:    d.requestReconcile,
-		ForwardingChanges: &ForwardingChanges{
-			mu:               sync.RWMutex{},
-			registration:     nil,
-			requestReconcile: d.requestReconcile,
-		},
-		LiveState:                 d.cfg.LiveState,
-		OwnedLinks:                nil,
-		OwnedAddresses:            nil,
-		NPTAddresses:              nil,
-		Delegations:               nil,
-		TunnelEndpointRoutes:      nil,
-		PrepareLocalIPv6:          nil,
-		InspectNativePacketPolicy: nil,
-		PrepareOwnedLink:          nil,
-		OwnedLinkUp:               &OwnedLinkUpHandler{mu: sync.RWMutex{}, handle: nil},
-		VerifyDHCPv4:              &OwnedLinkUpHandler{mu: sync.RWMutex{}, handle: nil},
+		Iface:                d.cfg.Iface,
+		Connections:          d.cfg.Connections,
+		Sysctl:               netif.NewProcSysctlRunner(d.log, false),
+		Log:                  d.log,
+		Alerts:               WrapNotifier(d.cfg.Notifier),
+		Monitor:              mon,
+		DHCP:                 dhcp.client,
+		DHCPRecoveryPending:  dhcp.cached,
+		RA:                   raClient,
+		RequestReconcile:     d.requestReconcile,
+		LiveState:            d.cfg.LiveState,
+		OwnedLinks:           nil,
+		OwnedAddresses:       nil,
+		NPTAddresses:         nil,
+		Delegations:          nil,
+		TunnelEndpointRoutes: nil,
+		PrepareLocalIPv6:     nil,
+		PrepareOwnedLink:     nil,
+		OwnedLinkUp:          &OwnedLinkUpHandler{mu: sync.RWMutex{}, handle: nil},
+		VerifyDHCPv4:         &OwnedLinkUpHandler{mu: sync.RWMutex{}, handle: nil},
 	}
 	if dhcp.client != nil {
 		d.env.VerifyDHCPv4.Set(func(iface string) {
@@ -753,8 +747,6 @@ func (d *Daemon) requestReconcile(reason string) {
 // returning an error is logged at WARN; the loop continues so that one
 // flaky module does not silence the others.
 func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
-	ctx, finish := forwardingReconcileContext(ctx)
-	defer finish()
 	var routingGeneration uint64
 	if d.cfg.LiveState != nil {
 		routingGeneration = d.cfg.LiveState.Snapshot().RoutingGeneration

@@ -73,13 +73,12 @@ const (
 // set on it, and the VLAN it is created as. The vlan container has presence,
 // so a pointer distinguishes absent from present.
 type linkIdentity struct {
-	Match           *linkMatch         `json:"match"`
-	HardwareAddress string             `json:"hardware-address"`
-	MTU             *uint32            `json:"mtu"`
-	VLAN            *linkVLAN          `json:"vlan"`
-	BridgeMaster    string             `json:"bridge-master"`
-	Tunnel          *linkTunnel        `json:"tunnel"`
-	NativeOffload   *nativeOffloadWire `json:"native-offload"`
+	Match           *linkMatch  `json:"match"`
+	HardwareAddress string      `json:"hardware-address"`
+	MTU             *uint32     `json:"mtu"`
+	VLAN            *linkVLAN   `json:"vlan"`
+	BridgeMaster    string      `json:"bridge-master"`
+	Tunnel          *linkTunnel `json:"tunnel"`
 }
 
 type linkTunnel struct {
@@ -474,12 +473,6 @@ func compileProviderProjections(
 	byName map[string]interfaceintent.Connection,
 	loaded *Config,
 ) error {
-	// Provider rejection must not hide malformed bindings from graph validation.
-	if err := interfaceintent.ValidateNativeBindings(loaded.Connections); err != nil {
-		slog.Warn("networkjson: declared native hardware graph invalid", "err", err)
-		return fmt.Errorf("native offload bindings: %w", err)
-	}
-
 	dscpOwners := make(map[int]string, len(entries))
 	for _, entry := range entries {
 		if entry.WAN == nil {

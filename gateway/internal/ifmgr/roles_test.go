@@ -87,7 +87,6 @@ func TestModulesForRoleWAN(t *testing.T) {
 		"wan.routes",
 		"bgp_sessions",
 		"steering",
-		"nativeoffload",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("wan role module count = %d, want %d (got=%v)", len(got), len(want), got)
@@ -165,7 +164,6 @@ func TestModulesForRoleExported(t *testing.T) {
 		"wan.routes",
 		"bgp_sessions",
 		"steering",
-		"nativeoffload",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ModulesForRole(\"wan\") = %v, want %v", got, want)

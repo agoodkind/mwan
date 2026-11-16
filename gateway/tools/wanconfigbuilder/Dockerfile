@@ -1,18 +1,7 @@
 # Build the Linux gateway with libyang and libsysrepo (MWAN-358).
 # Debian trixie matches the gateway's glibc and libsysrepo ABI.
 # The caller must supply pinned dependency versions as build arguments.
-ARG RUST_VERSION
-FROM rust:${RUST_VERSION}-slim-trixie AS native-rust-toolchain
-
 FROM golang:1.27.3-trixie
-
-COPY --from=native-rust-toolchain /usr/local/cargo/ /usr/local/cargo/
-COPY --from=native-rust-toolchain /usr/local/rustup/ /usr/local/rustup/
-ENV RUSTUP_HOME=/usr/local/rustup
-ENV CARGO_HOME=/usr/local/cargo
-ENV PATH=/usr/local/cargo/bin:${PATH}
-
-RUN rustup component add clippy rustfmt
 
 ARG LIBYANG_VERSION
 ARG SYSREPO_VERSION
@@ -26,7 +15,6 @@ RUN test -n "${LIBYANG_VERSION}" && test -n "${SYSREPO_VERSION}"
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential cmake pkg-config git libpcre2-dev nftables util-linux iputils-ping \
-        meson ninja-build python3-pyelftools libnuma-dev clang libclang-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # The YANG gates require yanglint. Development builds enable its tools;
