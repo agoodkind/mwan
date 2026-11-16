@@ -86,7 +86,13 @@ func removeModule(dir string, name string) error {
 		return schemaFailed("remove the dated schema module", name, err)
 	}
 
-	slog.Info("yangpub: removed dated schema module", "dir", dir, "name", name)
+	slog.Info(
+		"yangpub: The schema writer removed the dated schema module.",
+		"dir",
+		dir,
+		"name",
+		name,
+	)
 
 	return nil
 }

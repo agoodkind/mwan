@@ -23,12 +23,15 @@ func TestRevisionLock(t *testing.T) {
 	for line := range strings.Lines(string(lock)) {
 		fields := strings.Fields(line)
 		if len(fields) != 3 {
-			t.Fatalf("%q", line)
+			t.Fatalf(
+				"Revision lock entry %q must contain a module name, revision date, and SHA-256 hash.",
+				line,
+			)
 		}
 
 		key := fields[0] + " " + fields[1]
 		if _, found := sums[key]; found {
-			t.Fatalf("%s", key)
+			t.Fatalf("The revision lock contains duplicate entries for %s.", key)
 		}
 
 		sums[key] = fields[2]
@@ -55,7 +58,13 @@ func TestRevisionLock(t *testing.T) {
 
 		sum := sha256.Sum256(text)
 		if got, want := hex.EncodeToString(sum[:]), sums[name+" "+date]; got != want {
-			t.Errorf("%s %s: %s != %s", name, date, got, want)
+			t.Errorf(
+				"Module %s at revision %s has SHA-256 hash %s, but the revision lock requires %s.",
+				name,
+				date,
+				got,
+				want,
+			)
 		}
 	}
 }
