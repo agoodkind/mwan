@@ -729,7 +729,7 @@ func (p *publisher) InstallModules(
 			readErr := fmt.Errorf("yangpub: read module %q: %w", model.Path, err)
 			p.log.ErrorContext(
 				ctx,
-				"module revision read failed",
+				"The module revision read failed.",
 				"path",
 				model.Path,
 				"err",

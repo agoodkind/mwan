@@ -434,7 +434,11 @@ func TestInstallApplyUpdatesAnOlderSteeringRevision(t *testing.T) {
 
 	want := []string{filepath.Join(schemaDir, schema.SteeringFile)}
 	if !slices.Equal(steeringFiles, want) {
-		t.Fatalf("The schema directory contains steering files %v instead of %v.", steeringFiles, want)
+		t.Fatalf(
+			"The schema directory contains steering files %v instead of %v.",
+			steeringFiles,
+			want,
+		)
 	}
 
 	wantRevision := embeddedRevision(t, schema.SteeringFile)
