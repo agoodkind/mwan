@@ -890,10 +890,7 @@ func TestInstallPrintSchemaWritesEveryModule(t *testing.T) {
 			t.Fatalf("read %s: %v", path, err)
 		}
 
-		wantName, wantRevision, found := strings.Cut(strings.TrimSuffix(module.File, ".yang"), "@")
-		if !found {
-			t.Fatalf("module file %s carries no @revision", module.File)
-		}
+		wantName, wantRevision, _ := strings.Cut(strings.TrimSuffix(module.File, ".yang"), "@")
 
 		if !bytes.Contains(written, []byte("module "+wantName+" {")) {
 			t.Errorf("%s does not declare module %s", module.File, wantName)

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -136,10 +137,10 @@ func runSysrepoStep(step string, args []string) int {
 // seedFeatures gives a seeded module the features the embedded list names
 // for it, so the seeded repository is the one a deploy would have left.
 func seedFeatures(path string) []string {
-	name, _ := moduleFileNameRevision(filepath.Base(path))
+	name := moduleFileName(filepath.Base(path))
 
 	for _, module := range schema.Modules() {
-		if moduleName, _ := moduleFileNameRevision(module.File); moduleName == name {
+		if moduleFileName(module.File) == name {
 			return module.Features
 		}
 	}
@@ -327,10 +328,12 @@ func TestInstallApplyInstallsTheSchemaIntoSysrepo(t *testing.T) {
 	implemented := implementedModules(t, root, "a")
 
 	for _, module := range modules {
-		name, revision := moduleFileNameRevision(module.File)
+		name := moduleFileName(module.File)
 		if !slices.Contains(gatewayModules, name) {
 			continue
 		}
+
+		revision := embeddedRevision(t, module.File)
 
 		got, found := implemented[name]
 		if !found {
@@ -407,9 +410,38 @@ func TestInstallApplyUpdatesAnOlderSteeringRevision(t *testing.T) {
 		t.Fatalf("seeded steering revision = %q, want 2026-09-13", got)
 	}
 
+	older, err := os.ReadFile(olderSteeringFixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	schemaDir := filepath.Join(root, networkjson.DefaultSchemaDir)
+	if err := os.MkdirAll(schemaDir, schema.DirMode); err != nil {
+		t.Fatal(err)
+	}
+
+	dated := filepath.Join(schemaDir, filepath.Base(olderSteeringFixture))
+	if err := os.WriteFile(dated, older, schema.FileMode); err != nil {
+		t.Fatal(err)
+	}
+
 	output := runInstallChild(t, root)
 
-	_, wantRevision := moduleFileNameRevision(schema.SteeringFile)
+	steeringFiles, err := filepath.Glob(filepath.Join(schemaDir, "goodkind-mwan-steering*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{filepath.Join(schemaDir, schema.SteeringFile)}
+	if !slices.Equal(steeringFiles, want) {
+		t.Fatalf(
+			"The schema directory contains steering files %v instead of %v.",
+			steeringFiles,
+			want,
+		)
+	}
+
+	wantRevision := embeddedRevision(t, schema.SteeringFile)
 	got := implementedModules(t, root, "after")["goodkind-mwan-steering"]
 	if got.revision != wantRevision {
 		t.Fatalf("steering revision after the run = %q, want %q", got.revision, wantRevision)
@@ -434,7 +466,7 @@ func TestInstallApplyUpdatesSteeringForMasquerade(t *testing.T) {
 	)
 	before := exportStoredSession(t, root, "before")
 	output := runInstallChild(t, root)
-	_, wantRevision := moduleFileNameRevision(schema.SteeringFile)
+	wantRevision := embeddedRevision(t, schema.SteeringFile)
 	if got := implementedModules(
 		t,
 		root,
@@ -482,7 +514,7 @@ func TestInstallApplyUpdatesSteeringRevisionWithStoredBGPSession(t *testing.T) {
 
 	output := runInstallChild(t, root)
 
-	_, wantRevision := moduleFileNameRevision(schema.SteeringFile)
+	wantRevision := embeddedRevision(t, schema.SteeringFile)
 	wantLine := "updated module goodkind-mwan-steering from 2026-10-12 to " + wantRevision
 	if !strings.Contains(output, wantLine) {
 		t.Fatalf("run output:\n%s\nwant a line %q", output, wantLine)
@@ -534,7 +566,7 @@ func seedSteeringRevision(t *testing.T, root string, fixture string) {
 	seedArgs := []string{olderDir}
 
 	for _, model := range models {
-		if strings.HasPrefix(filepath.Base(model.Path), "goodkind-mwan-steering@") {
+		if filepath.Base(model.Path) == schema.SteeringFile {
 			if err := os.Remove(model.Path); err != nil {
 				t.Fatalf("remove the embedded steering model: %v", err)
 			}
@@ -549,7 +581,24 @@ func seedSteeringRevision(t *testing.T, root string, fixture string) {
 	runChild(t, sysrepoChildEnv(t, root, "seed", "seed"), seedArgs...)
 }
 
-func moduleFileNameRevision(file string) (name string, revision string) {
-	name, revision, _ = strings.Cut(strings.TrimSuffix(file, filepath.Ext(file)), "@")
-	return name, revision
+func moduleFileName(file string) string {
+	name, _, _ := strings.Cut(strings.TrimSuffix(file, filepath.Ext(file)), "@")
+	return name
+}
+
+func embeddedRevision(t *testing.T, file string) string {
+	t.Helper()
+	text, err := schema.Read(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	statement := regexp.MustCompile(`(?m)^\s*revision\s+"?(\d{4}-\d{2}-\d{2})`)
+	revision := ""
+
+	for _, match := range statement.FindAllSubmatch(text, -1) {
+		revision = max(revision, string(match[1]))
+	}
+
+	return revision
 }

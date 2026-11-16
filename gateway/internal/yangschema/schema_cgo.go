@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"unsafe"
@@ -88,8 +89,9 @@ func lyFailed(result C.LY_ERR) bool {
 }
 
 func moduleName(file string) (string, error) {
-	name, _, found := strings.Cut(file, revisionSeparator)
-	if !found || name == "" {
+	base := strings.TrimSuffix(file, filepath.Ext(file))
+	name, _, _ := strings.Cut(base, revisionSeparator)
+	if name == "" {
 		err := fmt.Errorf("yangschema: module file %s has no name before its revision", file)
 		slog.Error("yangschema: module name parse failed", "file", file, "err", err)
 		return "", err

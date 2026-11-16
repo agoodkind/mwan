@@ -21,13 +21,13 @@ const (
 	FileMode fs.FileMode = 0o644
 	// DirMode permits directory traversal by module readers.
 	DirMode fs.FileMode = 0o755
-	// SteeringFile identifies the embedded steering module revision.
-	SteeringFile = "goodkind-mwan-steering@2026-11-15.yang"
+	// SteeringFile omits the revision date because the module declares its
+	// revision.
+	SteeringFile = "goodkind-mwan-steering.yang"
 )
 
 // Module defines an embedded YANG file and its installation options.
 type Module struct {
-	// File includes the module revision in the YANG filename.
 	File string
 	// Features selects optional YANG features during installation.
 	Features []string
