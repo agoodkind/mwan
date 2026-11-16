@@ -181,7 +181,7 @@ WANCONFIG_SYSREPO_REPO_PATH := /etc/sysrepo
 # Only the archives and headers are wanted. libyang's own executables link
 # against the static archive without naming pcre2 and libm, so building
 # them fails the install.
-WANCONFIG_LIBYANG_CMAKE_FLAGS := -DENABLE_TOOLS=OFF
+WANCONFIG_LIBYANG_CMAKE_FLAGS := -DENABLE_TOOLS=OFF -DCMAKE_DISABLE_FIND_PACKAGE_XXHash=ON
 
 # The static libyang archive needs pcre2 and libm after it. Its generated
 # pkg-config file omits them, so the recipe writes them onto the Libs line
