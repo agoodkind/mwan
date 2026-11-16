@@ -63,10 +63,17 @@ func (section VPPSection) Endpoints() (vpp.Endpoints, error) {
 	if err != nil {
 		return vpp.Endpoints{}, errors.New("VPP request_timeout: " + err.Error())
 	}
-	settings := vpp.Endpoints{APISocket: section.APISocket, StatsSocket: section.StatsSocket, ExpectedVersion: section.ExpectedVersion, Timeout: timeout}
+
+	settings := vpp.Endpoints{
+		APISocket:       section.APISocket,
+		StatsSocket:     section.StatsSocket,
+		ExpectedVersion: section.ExpectedVersion,
+		Timeout:         timeout,
+	}
 	if err := settings.Validate(); err != nil {
 		return settings, errors.New("validate VPP transport settings: " + err.Error())
 	}
+
 	return settings, nil
 }
 
@@ -82,9 +89,11 @@ func (section VPPSection) ValidatedEndpoints() (vpp.Endpoints, error) {
 	if err != nil {
 		return settings, err
 	}
+
 	if err := section.validateResources(); err != nil {
 		return settings, err
 	}
+
 	return settings, nil
 }
 
@@ -92,43 +101,66 @@ func (section VPPSection) validateResources() error {
 	if !filepath.IsAbs(section.StateFile) {
 		return fmt.Errorf("VPP state_file must be an absolute path")
 	}
+
 	if section.ProfileQueuePolling && !section.Profile {
 		return fmt.Errorf("VPP profile_queue_polling requires profile = true")
 	}
+
 	if section.Profile {
 		if !filepath.IsAbs(section.ProfileExecutable) {
-			return fmt.Errorf("VPP profile_executable must be an absolute path when profiling is enabled")
+			return fmt.Errorf(
+				"VPP profile_executable must be an absolute path when profiling is enabled",
+			)
 		}
+
 		duration, err := time.ParseDuration(section.ProfileDuration)
 		if err != nil || duration <= 0 {
-			return fmt.Errorf("VPP profile_duration must be a positive duration when profiling is enabled")
+			return fmt.Errorf(
+				"VPP profile_duration must be a positive duration when profiling is enabled",
+			)
 		}
 	}
+
 	ids := make(map[uint32]bool, len(section.Interface))
+
 	connections := make(map[string]bool, len(section.Interface))
 	for _, resource := range section.Interface {
-		if resource.ConnectionID == "" || resource.HostConnectionID == "" || resource.ConnectionID == resource.HostConnectionID {
+		if resource.ConnectionID == "" || resource.HostConnectionID == "" ||
+			resource.ConnectionID == resource.HostConnectionID {
 			return fmt.Errorf("VPP TAP requires distinct connection_id and host_connection_id")
 		}
+
 		if ids[resource.ID] || connections[resource.ConnectionID] {
 			return fmt.Errorf("VPP TAP IDs and connection IDs must be unique")
 		}
+
 		ids[resource.ID] = true
 		connections[resource.ConnectionID] = true
-		if resource.RXRingSize == 0 || resource.TXRingSize == 0 || resource.RXQueues == 0 || resource.TXQueues == 0 {
-			return fmt.Errorf("VPP TAP %d requires positive ring sizes and queue counts", resource.ID)
+		if resource.RXRingSize == 0 || resource.TXRingSize == 0 || resource.RXQueues == 0 ||
+			resource.TXQueues == 0 {
+			return fmt.Errorf(
+				"VPP TAP %d requires positive ring sizes and queue counts",
+				resource.ID,
+			)
 		}
+
 		switch resource.RXMode {
 		case VPPRXPolling, VPPRXInterrupt, VPPRXAdaptive:
 		default:
-			return fmt.Errorf("VPP TAP %d rx_mode must be polling, interrupt, or adaptive", resource.ID)
+			return fmt.Errorf(
+				"VPP TAP %d rx_mode must be polling, interrupt, or adaptive",
+				resource.ID,
+			)
 		}
 	}
+
 	if section.NAT64 != nil {
 		resource := section.NAT64
-		if resource.BIBBuckets == 0 || resource.BIBMemorySize == 0 || resource.STBuckets == 0 || resource.STMemorySize == 0 {
+		if resource.BIBBuckets == 0 || resource.BIBMemorySize == 0 || resource.STBuckets == 0 ||
+			resource.STMemorySize == 0 {
 			return fmt.Errorf("VPP NAT64 requires positive BIB and session table resource sizes")
 		}
 	}
+
 	return nil
 }

@@ -51,12 +51,21 @@ func New() (*Translator, error) {
 }
 
 func newTranslator(pinDirectory string) (*Translator, error) {
-	translator := &Translator{mu: sync.Mutex{}, objects: nptObjects{NptEgress: nil, NptIngress: nil, Policies: nil}, previous: nil, pinDirectory: pinDirectory, pinsReplaced: false, closed: false}
+	translator := &Translator{
+		mu:           sync.Mutex{},
+		objects:      nptObjects{NptEgress: nil, NptIngress: nil, Policies: nil},
+		previous:     nil,
+		pinDirectory: pinDirectory,
+		pinsReplaced: false,
+		closed:       false,
+	}
 	if err := loadNptObjects(&translator.objects, nil); err != nil {
 		slog.Error("NPTv6 eBPF programs could not be loaded", "err", err)
 		return nil, fmt.Errorf("load NPTv6 programs: %w", err)
 	}
+
 	translator.adoptPinnedObjects()
+
 	return translator, nil
 }
 
@@ -66,22 +75,30 @@ func policyValue(policy InterfacePolicy, link netlink.Link) (nptPolicy, error) {
 	if pairCount > MaxPairs {
 		return value, fmt.Errorf("interface %d exceeds %d prefix pairs", policy.IfIndex, MaxPairs)
 	}
+
 	value.Count = uint32(pairCount)
 	if policy.Internal {
 		value.Internal = 1
 	}
+
 	switch packetHeader(link.Attrs().EncapType) {
 	case headerEthernet, headerLoopback:
 		value.Ethernet = 1
 	case headerNone, headerTunnel, headerTunnel6, headerSIT, headerIPIP, headerPPP, headerRawIP:
 	default:
-		return value, fmt.Errorf("interface %d has unsupported packet header %q", policy.IfIndex, link.Attrs().EncapType)
+		return value, fmt.Errorf(
+			"interface %d has unsupported packet header %q",
+			policy.IfIndex,
+			link.Attrs().EncapType,
+		)
 	}
+
 	identities := make(map[uint16]struct{}, len(policy.Pairs))
 	for index, pair := range policy.Pairs {
 		if _, exists := identities[pair.ID]; exists {
 			return value, fmt.Errorf("interface %d repeats pair %d", policy.IfIndex, pair.ID)
 		}
+
 		identities[pair.ID] = struct{}{}
 		mapped, err := pairValue(pair)
 		if err != nil {
@@ -92,12 +109,20 @@ func policyValue(policy InterfacePolicy, link netlink.Link) (nptPolicy, error) {
 		value.IngressOrder[index] = uint8(index)
 		value.EgressOrder[index] = uint8(index)
 	}
-	sort.SliceStable(value.IngressOrder[:len(policy.Pairs)], func(i, j int) bool {
-		return value.Pairs[value.IngressOrder[i]].ExternalBits > value.Pairs[value.IngressOrder[j]].ExternalBits
-	})
-	sort.SliceStable(value.EgressOrder[:len(policy.Pairs)], func(i, j int) bool {
-		return value.Pairs[value.EgressOrder[i]].InternalBits > value.Pairs[value.EgressOrder[j]].InternalBits
-	})
+
+	sort.SliceStable(
+		value.IngressOrder[:len(policy.Pairs)],
+		func(i, j int) bool {
+			return value.Pairs[value.IngressOrder[i]].ExternalBits > value.Pairs[value.IngressOrder[j]].ExternalBits
+		},
+	)
+	sort.SliceStable(
+		value.EgressOrder[:len(policy.Pairs)],
+		func(i, j int) bool {
+			return value.Pairs[value.EgressOrder[i]].InternalBits > value.Pairs[value.EgressOrder[j]].InternalBits
+		},
+	)
+
 	return value, nil
 }
 
@@ -107,10 +132,12 @@ func pairValue(pair nptpolicy.PrefixPair) (nptPair, error) {
 		slog.Error("NPTv6 pair validation failed", "err", err)
 		return mapped, fmt.Errorf("validate NPTv6 pair: %w", err)
 	}
+
 	internalBits, externalBits := pair.Internal.Bits(), pair.External.Bits()
 	if internalBits < 0 || internalBits > 64 || externalBits < 0 || externalBits > 64 {
 		return mapped, fmt.Errorf("pair %d has an unencodable prefix length", pair.ID)
 	}
+
 	mapped.Internal = pair.Internal.Addr().As16()
 	mapped.External = pair.External.Addr().As16()
 	mapped.ID = pair.ID
@@ -118,17 +145,21 @@ func pairValue(pair nptpolicy.PrefixPair) (nptPair, error) {
 	mapped.ExternalBits = uint8(externalBits)
 	mapped.ForwardAdjustment = nptpolicy.Adjustment(pair.Internal, pair.External)
 	mapped.ReverseAdjustment = nptpolicy.Adjustment(pair.External, pair.Internal)
+
 	for bit := range max(internalBits, externalBits) {
 		mapped.Mask[bit/8] |= 1 << (7 - bit%8)
 	}
+
 	for i, address := range pair.SourceExceptions {
 		mapped.SourceExceptions[i] = address.As16()
 		mapped.SourceCount++
 	}
+
 	for i, address := range pair.DestinationExceptions {
 		mapped.DestinationExceptions[i] = address.As16()
 		mapped.DestinationCount++
 	}
+
 	return mapped, nil
 }
 
@@ -136,6 +167,7 @@ func filterParent(direction Direction) uint32 {
 	if direction == Ingress {
 		return netlink.HANDLE_MIN_INGRESS
 	}
+
 	return netlink.HANDLE_MIN_EGRESS
 }
 
@@ -143,34 +175,82 @@ func filterName(direction Direction) string { return "mwan-npt-" + string(direct
 
 func ownedFilter(filter netlink.Filter, direction Direction) bool {
 	bpfFilter, ok := filter.(*netlink.BpfFilter)
-	return ok && bpfFilter.Name == filterName(direction) && bpfFilter.Handle == filterHandle && bpfFilter.Priority == filterPriority
+
+	return ok && bpfFilter.Name == filterName(direction) && bpfFilter.Handle == filterHandle &&
+		bpfFilter.Priority == filterPriority
 }
 
-func installFilter(link netlink.Link, direction Direction, program *ebpf.Program, policies *ebpf.Map) error {
+func installFilter(
+	link netlink.Link,
+	direction Direction,
+	program *ebpf.Program,
+	policies *ebpf.Map,
+) error {
 	identity, err := ReadNativeProgramID(program, policies)
 	if err != nil {
 		return err
 	}
+
 	filters, err := netlink.FilterList(link, filterParent(direction))
 	if err != nil {
-		slog.Error("NPTv6 filters could not be read", "interface", link.Attrs().Index, "direction", direction, "err", err)
+		slog.Error(
+			"NPTv6 filters could not be read",
+			"interface",
+			link.Attrs().Index,
+			"direction",
+			direction,
+			"err",
+			err,
+		)
+
 		return fmt.Errorf("list NPTv6 filters: %w", err)
 	}
+
 	for _, filter := range filters {
 		if filter.Attrs().Priority == filterPriority && !ownedFilter(filter, direction) {
-			return fmt.Errorf("interface %d %s priority %d is already used", link.Attrs().Index, direction, filterPriority)
+			return fmt.Errorf(
+				"interface %d %s priority %d is already used",
+				link.Attrs().Index,
+				direction,
+				filterPriority,
+			)
 		}
-		if actual, ok := filter.(*netlink.BpfFilter); ok && ownedFilter(actual, direction) && actual.Id == int(identity) && actual.DirectAction && actual.Protocol == unix.ETH_P_ALL && actual.ClassId == 0 && (actual.Chain == nil || *actual.Chain == 0) {
+
+		if actual, ok := filter.(*netlink.BpfFilter); ok && ownedFilter(actual, direction) &&
+			actual.Id == int(identity) &&
+			actual.DirectAction &&
+			actual.Protocol == unix.ETH_P_ALL &&
+			actual.ClassId == 0 &&
+			(actual.Chain == nil || *actual.Chain == 0) {
 			return nil
 		}
 	}
+
 	if err := netlink.FilterReplace(&netlink.BpfFilter{
-		FilterAttrs: netlink.FilterAttrs{LinkIndex: link.Attrs().Index, Parent: filterParent(direction), Handle: filterHandle, Priority: filterPriority, Protocol: unix.ETH_P_ALL},
-		Fd:          program.FD(), Name: filterName(direction), DirectAction: true,
+		FilterAttrs: netlink.FilterAttrs{
+			LinkIndex: link.Attrs().Index,
+			Parent:    filterParent(direction),
+			Handle:    filterHandle,
+			Priority:  filterPriority,
+			Protocol:  unix.ETH_P_ALL,
+		},
+		Fd:           program.FD(),
+		Name:         filterName(direction),
+		DirectAction: true,
 	}); err != nil {
-		slog.Error("NPTv6 filter replacement failed", "interface", link.Attrs().Index, "direction", direction, "err", err)
+		slog.Error(
+			"NPTv6 filter replacement failed",
+			"interface",
+			link.Attrs().Index,
+			"direction",
+			direction,
+			"err",
+			err,
+		)
+
 		return fmt.Errorf("replace NPTv6 filter: %w", err)
 	}
+
 	return nil
 }
 
@@ -180,63 +260,124 @@ func readFilter(link netlink.Link, direction Direction, program *ebpf.Program) e
 		slog.Error("NPTv6 program identity could not be read", "err", err)
 		return fmt.Errorf("read NPTv6 program identity: %w", err)
 	}
+
 	expectedID, ok := info.ID()
 	if !ok {
 		return fmt.Errorf("kernel did not report NPTv6 program identity")
 	}
+
 	filters, err := netlink.FilterList(link, filterParent(direction))
 	if err != nil {
-		slog.Error("NPTv6 filters could not be read", "interface", link.Attrs().Index, "direction", direction, "err", err)
+		slog.Error(
+			"NPTv6 filters could not be read",
+			"interface",
+			link.Attrs().Index,
+			"direction",
+			direction,
+			"err",
+			err,
+		)
+
 		return fmt.Errorf("list NPTv6 filters: %w", err)
 	}
+
 	for _, filter := range filters {
 		actual, ok := filter.(*netlink.BpfFilter)
 		if ok && ownedFilter(actual, direction) {
-			if actual.Id != int(expectedID) || !actual.DirectAction || actual.Protocol != unix.ETH_P_ALL {
-				return fmt.Errorf("interface %d %s NPTv6 program differs from desired program", link.Attrs().Index, direction)
+			if actual.Id != int(expectedID) || !actual.DirectAction ||
+				actual.Protocol != unix.ETH_P_ALL {
+				return fmt.Errorf(
+					"interface %d %s NPTv6 program differs from desired program",
+					link.Attrs().Index,
+					direction,
+				)
 			}
+
 			return nil
 		}
 	}
+
 	return fmt.Errorf("interface %d %s NPTv6 attachment is absent", link.Attrs().Index, direction)
 }
 
 func ensureClsact(link netlink.Link) error {
 	qdiscs, err := netlink.QdiscList(link)
 	if err != nil {
-		slog.Error("NPTv6 queue disciplines could not be read", "interface", link.Attrs().Index, "err", err)
+		slog.Error(
+			"NPTv6 queue disciplines could not be read",
+			"interface",
+			link.Attrs().Index,
+			"err",
+			err,
+		)
+
 		return fmt.Errorf("list queue disciplines: %w", err)
 	}
+
 	for _, qdisc := range qdiscs {
 		if qdisc.Type() == "clsact" {
 			return nil
 		}
 	}
-	if err := netlink.QdiscAdd(&netlink.Clsact{QdiscAttrs: netlink.QdiscAttrs{LinkIndex: link.Attrs().Index, Handle: netlink.MakeHandle(0xffff, 0), Parent: netlink.HANDLE_CLSACT}}); err != nil {
-		slog.Error("NPTv6 queue discipline could not be added", "interface", link.Attrs().Index, "err", err)
+
+	if err := netlink.QdiscAdd(&netlink.Clsact{
+		QdiscAttrs: netlink.QdiscAttrs{
+			LinkIndex: link.Attrs().Index,
+			Handle:    netlink.MakeHandle(0xffff, 0),
+			Parent:    netlink.HANDLE_CLSACT,
+		},
+	}); err != nil {
+		slog.Error(
+			"NPTv6 queue discipline could not be added",
+			"interface",
+			link.Attrs().Index,
+			"err",
+			err,
+		)
+
 		return fmt.Errorf("add clsact queue discipline: %w", err)
 	}
+
 	return nil
 }
 
 func removeFilters(link netlink.Link) error {
 	var failures []error
+
 	for _, direction := range []Direction{Ingress, Egress} {
 		filters, err := netlink.FilterList(link, filterParent(direction))
 		if err != nil {
-			slog.Error("NPTv6 filter removal could not list filters", "interface", link.Attrs().Index, "direction", direction, "err", err)
+			slog.Error(
+				"NPTv6 filter removal could not list filters",
+				"interface",
+				link.Attrs().Index,
+				"direction",
+				direction,
+				"err",
+				err,
+			)
 			failures = append(failures, err)
 			continue
 		}
+
 		for _, filter := range filters {
 			if ownedFilter(filter, direction) {
 				if err := netlink.FilterDel(filter); err != nil {
-					slog.Error("NPTv6 filter could not be removed", "interface", link.Attrs().Index, "direction", direction, "err", err)
+					slog.Error(
+						"NPTv6 filter could not be removed",
+						"interface",
+						link.Attrs().Index,
+						"direction",
+						direction,
+						"err",
+						err,
+					)
 					failures = append(failures, err)
 				}
 			}
 		}
 	}
+
 	return errors.Join(failures...)
 }
 
@@ -250,34 +391,48 @@ func interfaceKey(index int) (uint32, error) {
 	if index < 1 || index > math.MaxInt32 {
 		return 0, fmt.Errorf("interface index %d is outside the Linux interface index range", index)
 	}
+
 	return uint32(index), nil
 }
 
 func preparePolicies(policies []InterfacePolicy) (map[int]preparedPolicy, error) {
 	desired := make(map[int]preparedPolicy, len(policies))
+
 	seen := make(map[int]struct{}, len(policies))
 	for _, policy := range policies {
 		if _, duplicate := seen[policy.IfIndex]; duplicate {
 			return nil, fmt.Errorf("duplicate interface %d", policy.IfIndex)
 		}
+
 		seen[policy.IfIndex] = struct{}{}
 		key, err := interfaceKey(policy.IfIndex)
 		if err != nil {
 			return nil, err
 		}
+
 		link, err := netlink.LinkByIndex(policy.IfIndex)
 		if err != nil {
-			slog.Error("NPTv6 reconciliation could not read interface", "interface", policy.IfIndex, "err", err)
+			slog.Error(
+				"NPTv6 reconciliation could not read interface",
+				"interface",
+				policy.IfIndex,
+				"err",
+				err,
+			)
+
 			return nil, fmt.Errorf("read interface %d: %w", policy.IfIndex, err)
 		}
+
 		value, err := policyValue(policy, link)
 		if err != nil {
 			return nil, err
 		}
+
 		if len(policy.Pairs) != 0 {
 			desired[policy.IfIndex] = preparedPolicy{link: link, key: key, value: value}
 		}
 	}
+
 	return desired, nil
 }
 
@@ -286,44 +441,75 @@ func (translator *Translator) reconcileInterface(policy preparedPolicy) ([]Attac
 	if updateErr == nil {
 		updateErr = translator.objects.Policies.Update(policy.key, policy.value, ebpf.UpdateAny)
 	}
+
 	if updateErr == nil {
 		var actual nptPolicy
 		updateErr = translator.objects.Policies.Lookup(policy.key, &actual)
 		if updateErr == nil && actual != policy.value {
-			updateErr = fmt.Errorf("interface %d policy map differs from desired policy", policy.link.Attrs().Index)
+			updateErr = fmt.Errorf(
+				"interface %d policy map differs from desired policy",
+				policy.link.Attrs().Index,
+			)
 		}
 	}
+
 	var states []AttachmentState
 	var failures []error
+
 	for _, direction := range []Direction{Ingress, Egress} {
 		program := translator.objects.NptIngress
 		if direction == Egress {
 			program = translator.objects.NptEgress
 		}
-		state := AttachmentState{IfIndex: policy.link.Attrs().Index, Direction: direction, Ready: false, Reason: ""}
+
+		state := AttachmentState{
+			IfIndex:   policy.link.Attrs().Index,
+			Direction: direction,
+			Ready:     false,
+			Reason:    "",
+		}
 		err := updateErr
 		if err == nil {
 			err = installFilter(policy.link, direction, program, translator.objects.Policies)
 		}
+
 		if err == nil {
 			err = readFilter(policy.link, direction, program)
 		}
+
 		if err == nil {
 			var actual nptPolicy
 			err = translator.objects.Policies.Lookup(policy.key, &actual)
 			if err == nil && actual != policy.value {
-				err = fmt.Errorf("interface %d policy map differs from desired policy", state.IfIndex)
+				err = fmt.Errorf(
+					"interface %d policy map differs from desired policy",
+					state.IfIndex,
+				)
 			}
 		}
+
 		if err != nil {
 			state.Reason = err.Error()
-			slog.Error("NPTv6 attachment did not match desired state", "interface", state.IfIndex, "direction", direction, "err", err)
-			failures = append(failures, fmt.Errorf("interface %d %s: %w", state.IfIndex, direction, err))
+			slog.Error(
+				"NPTv6 attachment did not match desired state",
+				"interface",
+				state.IfIndex,
+				"direction",
+				direction,
+				"err",
+				err,
+			)
+			failures = append(
+				failures,
+				fmt.Errorf("interface %d %s: %w", state.IfIndex, direction, err),
+			)
 		} else {
 			state.Ready = true
 		}
+
 		states = append(states, state)
 	}
+
 	return states, errors.Join(failures...)
 }
 
@@ -333,23 +519,39 @@ func (translator *Translator) removeStalePolicies(desired map[int]preparedPolicy
 		slog.Error("NPTv6 stale policy cleanup could not list interfaces", "err", err)
 		return fmt.Errorf("list interfaces for stale policy cleanup: %w", err)
 	}
+
 	var failures []error
+
 	for _, link := range allLinks {
 		if _, exists := desired[link.Attrs().Index]; exists {
 			continue
 		}
+
 		if err := removeFilters(link); err != nil {
-			slog.Error("NPTv6 reconciliation could not remove stale attachments", "interface", link.Attrs().Index, "err", err)
-			failures = append(failures, fmt.Errorf("remove interface %d NPTv6: %w", link.Attrs().Index, err))
+			slog.Error(
+				"NPTv6 reconciliation could not remove stale attachments",
+				"interface",
+				link.Attrs().Index,
+				"err",
+				err,
+			)
+			failures = append(
+				failures,
+				fmt.Errorf("remove interface %d NPTv6: %w", link.Attrs().Index, err),
+			)
 		}
 	}
+
 	if err := translator.removeStaleMapEntries(desired); err != nil {
 		failures = append(failures, err)
 	}
+
 	return errors.Join(failures...)
 }
 
-func (translator *Translator) removeStaleMapEntries(desired map[int]preparedPolicy) (resultErr error) {
+func (translator *Translator) removeStaleMapEntries(
+	desired map[int]preparedPolicy,
+) (resultErr error) {
 	defer func() {
 		if resultErr != nil {
 			slog.Error("NPTv6 stale policy removal failed", "err", resultErr)
@@ -359,26 +561,33 @@ func (translator *Translator) removeStaleMapEntries(desired map[int]preparedPoli
 	var key uint32
 	var value nptPolicy
 	var obsolete []uint32
+
 	for iterator.Next(&key, &value) {
 		if _, configured := desired[int(key)]; !configured {
 			obsolete = append(obsolete, key)
 		}
 	}
+
 	if err := iterator.Err(); err != nil {
 		return fmt.Errorf("inspect NPTv6 policy keys for removal: %w", err)
 	}
+
 	for _, key := range obsolete {
-		if err := translator.objects.Policies.Delete(key); err != nil && !errors.Is(err, ebpf.ErrKeyNotExist) {
+		if err := translator.objects.Policies.Delete(key); err != nil &&
+			!errors.Is(err, ebpf.ErrKeyNotExist) {
 			return fmt.Errorf("delete obsolete NPTv6 policy %d: %w", key, err)
 		}
+
 		err := translator.objects.Policies.Lookup(key, &value)
 		if err == nil {
 			return fmt.Errorf("obsolete NPTv6 policy %d remains installed", key)
 		}
+
 		if !errors.Is(err, ebpf.ErrKeyNotExist) {
 			return fmt.Errorf("verify obsolete NPTv6 policy %d removal: %w", key, err)
 		}
 	}
+
 	return nil
 }
 
@@ -389,32 +598,47 @@ func (translator *Translator) Reconcile(policies []InterfacePolicy) ([]Attachmen
 	if translator.closed {
 		return nil, fmt.Errorf("NPTv6 translator is closed")
 	}
+
 	desired, err := preparePolicies(policies)
 	if err != nil {
 		return nil, err
 	}
+
 	var states []AttachmentState
 	var failures []error
+
 	for _, policy := range policies {
 		prepared, active := desired[policy.IfIndex]
 		if !active {
 			continue
 		}
+
 		attachments, err := translator.reconcileInterface(prepared)
 		states = append(states, attachments...)
 		if err != nil {
 			failures = append(failures, err)
 		}
 	}
+
 	if len(failures) != 0 {
 		err := errors.Join(failures...)
-		slog.Error("NPTv6 reconciliation retained stale attachments after active policies failed", "failed_interfaces", len(failures), "err", err)
+		slog.Error(
+			"NPTv6 reconciliation retained stale attachments after active policies failed",
+			"failed_interfaces",
+			len(failures),
+			"err",
+			err,
+		)
+
 		return states, err
 	}
+
 	if err := translator.removeStalePolicies(desired); err != nil {
 		return states, err
 	}
+
 	translator.replacePins()
+
 	return states, nil
 }
 
@@ -432,6 +656,8 @@ func (translator *Translator) Close() (resultErr error) {
 	if translator.closed {
 		return nil
 	}
+
 	translator.closed = true
+
 	return errors.Join(translator.objects.Close(), translator.closePrevious())
 }

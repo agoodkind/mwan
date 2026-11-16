@@ -57,6 +57,7 @@ type Span struct {
 func NewID() string {
 	var buf [8]byte
 	_, _ = rand.Read(buf[:])
+
 	return hex.EncodeToString(buf[:])
 }
 
@@ -71,12 +72,15 @@ func WithAttrs(ctx context.Context, attrs ...slog.Attr) context.Context {
 	current := fromContext(ctx)
 	merged := make(map[string]slog.Attr, len(current.attrs)+len(attrs))
 	maps.Copy(merged, current.attrs)
+
 	for _, attr := range attrs {
 		if attr.Key == "" {
 			continue
 		}
+
 		merged[attr.Key] = attr
 	}
+
 	return context.WithValue(ctx, contextKey{}, traceContext{attrs: merged})
 }
 
@@ -87,6 +91,7 @@ func WithTraceID(ctx context.Context, traceID string) context.Context {
 	if traceID == "" {
 		return ctx
 	}
+
 	return WithAttrs(ctx, slog.String(TraceIDKey, traceID))
 }
 
@@ -97,6 +102,7 @@ func WithRunID(ctx context.Context, runID string) context.Context {
 	if runID == "" {
 		return ctx
 	}
+
 	return WithAttrs(ctx, slog.String(RunIDKey, runID))
 }
 
@@ -107,6 +113,7 @@ func WithOperation(ctx context.Context, operation string) context.Context {
 	if operation == "" {
 		return ctx
 	}
+
 	return WithAttrs(ctx, slog.String(OperationKey, operation))
 }
 
@@ -116,6 +123,7 @@ func WithEvent(ctx context.Context, event string) context.Context {
 	if event == "" {
 		return ctx
 	}
+
 	return WithAttrs(ctx, slog.String(EventKey, event))
 }
 
@@ -131,7 +139,8 @@ func WithAttempt(ctx context.Context, attempt int) context.Context {
 // in the context becomes this span's parent. Empty component or operation
 // names are omitted rather than logged blank.
 func StartTrace(ctx context.Context, component string, operation string) (
-	context.Context, Span,
+	context.Context,
+	Span,
 ) {
 	traceID := TraceID(ctx)
 	if traceID == "" {
@@ -147,14 +156,17 @@ func StartTrace(ctx context.Context, component string, operation string) (
 	if parentSpanID != "" {
 		attrs = append(attrs, slog.String(ParentSpanIDKey, parentSpanID))
 	}
+
 	if component != "" {
 		attrs = append(attrs, slog.String(ComponentKey, component))
 	}
+
 	if operation != "" {
 		attrs = append(attrs, slog.String(OperationKey, operation))
 	}
 
 	ctx = WithAttrs(ctx, attrs...)
+
 	return ctx, Span{
 		TraceID:      traceID,
 		SpanID:       spanID,
@@ -184,20 +196,25 @@ func AttrsFromContext(ctx context.Context) []slog.Attr {
 	}
 	out := make([]slog.Attr, 0, len(current.attrs))
 	seen := make(map[string]struct{}, len(current.attrs))
+
 	for _, key := range keys {
 		attr, ok := current.attrs[key]
 		if !ok {
 			continue
 		}
+
 		out = append(out, attr)
 		seen[key] = struct{}{}
 	}
+
 	for key, attr := range current.attrs {
 		if _, ok := seen[key]; ok {
 			continue
 		}
+
 		out = append(out, attr)
 	}
+
 	return out
 }
 
@@ -218,6 +235,7 @@ func Logger(ctx context.Context, base *slog.Logger) *slog.Logger {
 	for _, attr := range attrs {
 		args = append(args, attr)
 	}
+
 	return base.With(args...)
 }
 
@@ -243,9 +261,11 @@ func fromContext(ctx context.Context) traceContext {
 	if !ok {
 		return traceContext{attrs: map[string]slog.Attr{}}
 	}
+
 	if current.attrs == nil {
 		current.attrs = map[string]slog.Attr{}
 	}
+
 	return current
 }
 
@@ -255,5 +275,6 @@ func stringValue(ctx context.Context, key string) string {
 	if !ok {
 		return ""
 	}
+
 	return attr.Value.String()
 }

@@ -50,15 +50,21 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	if m.clock == nil {
 		m.clock = internalclock.Real{}
 	}
+
 	log.InfoContext(
-		ctx, "slaac_health: Init",
-		"degraded_after", m.cfg.DegradedAfter.String(),
-		"alert_after", m.cfg.AlertAfter.String(),
-		"probe_targets", len(m.cfg.ProbeTargetsV6),
+		ctx,
+		"slaac_health: Init",
+		"degraded_after",
+		m.cfg.DegradedAfter.String(),
+		"alert_after",
+		m.cfg.AlertAfter.String(),
+		"probe_targets",
+		len(m.cfg.ProbeTargetsV6),
 	)
 	if m.cfg.Iface == "" {
 		return fmt.Errorf("slaac_health: iface is required")
 	}
+
 	return nil
 }
 
@@ -80,7 +86,9 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		m.handleHealthy(ctx, now, log)
 		return nil
 	}
+
 	m.handleDegraded(ctx, now, log)
+
 	return nil
 }
 
@@ -90,15 +98,17 @@ func (m *Module) checkHealth(ctx context.Context, log *slog.Logger) bool {
 		log.DebugContext(ctx, "slaac_health: no non-deprecated global v6")
 		return false
 	}
+
 	probe := netif.NewV6Probe(m.cfg.Iface, log)
 	for _, t := range m.cfg.ProbeTargetsV6 {
 		_, err := probe.PingICMP6(ctx, t, m.cfg.ProbeTimeout)
 		if err != nil {
-			log.DebugContext(ctx, "slaac_health: probe failed",
-				"target", t.String(), "err", err)
+			log.DebugContext(ctx, "slaac_health: probe failed", "target", t.String(), "err", err)
+
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -111,23 +121,28 @@ func (m *Module) hasNonDeprecatedGlobalV6(log *slog.Logger) bool {
 		log.Warn("slaac_health: LinkByName failed", "err", err)
 		return false
 	}
+
 	addrs, err := netlink.AddrList(link, unix.AF_INET6)
 	if err != nil {
 		log.Warn("slaac_health: AddrList failed", "err", err)
 		return false
 	}
+
 	for _, a := range addrs {
 		if a.IP.To4() != nil {
 			continue
 		}
+
 		// Skip link-local.
 		if strings.HasPrefix(strings.ToLower(a.IP.String()), "fe80") {
 			continue
 		}
+
 		if a.PreferedLft > 0 {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -140,8 +155,13 @@ func (m *Module) handleHealthy(ctx context.Context, now time.Time, log *slog.Log
 
 	if wasDegraded {
 		log.InfoContext(ctx, "slaac_health: recovered to healthy")
-		m.Env.Alerts.ResolveContext(ctx, now, "slaac-degraded", m.cfg.Iface,
-			"slaac_health: recovered")
+		m.Env.Alerts.ResolveContext(
+			ctx,
+			now,
+			"slaac-degraded",
+			m.cfg.Iface,
+			"slaac_health: recovered",
+		)
 	}
 }
 
@@ -151,6 +171,7 @@ func (m *Module) handleDegraded(ctx context.Context, now time.Time, log *slog.Lo
 	if m.degradedSince.IsZero() {
 		m.degradedSince = now
 	}
+
 	since := m.degradedSince
 	m.Unlock()
 
@@ -159,13 +180,17 @@ func (m *Module) handleDegraded(ctx context.Context, now time.Time, log *slog.Lo
 
 	if age >= m.cfg.AlertAfter {
 		m.Env.Alerts.NotifyContext(
-			ctx, now, slog.LevelWarn,
-			"slaac-degraded", m.cfg.Iface,
+			ctx,
+			now,
+			slog.LevelWarn,
+			"slaac-degraded",
+			m.cfg.Iface,
 			"slaac_health: degraded beyond alert threshold",
 			slog.Int("age_s", int(age.Seconds())),
 			slog.Int("alert_after_s", int(m.cfg.AlertAfter.Seconds())),
 		)
 	}
+
 	if age >= m.cfg.DegradedAfter {
 		m.trySolicit(ctx, log)
 	}
@@ -178,6 +203,7 @@ func (m *Module) trySolicit(ctx context.Context, log *slog.Logger) {
 		log.DebugContext(ctx, "slaac_health: no RA client; skipping solicit")
 		return
 	}
+
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	_, err := m.Env.RA.SolicitRA(cctx, 5*time.Second)
@@ -198,8 +224,10 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		if !ok {
 			return nil, fmt.Errorf("slaac_health: invalid config type %T", cfg)
 		}
+
 		c = typedConfig
 	}
+
 	return &Module{
 		BaseModule:    ifmgr.NewBaseModule("slaac_health"),
 		cfg:           c,

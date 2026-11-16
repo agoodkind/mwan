@@ -24,15 +24,24 @@ func TestSessionWithdrawsExportsAtPeerLoss(t *testing.T) {
 	if err := session.SetAdvertisement(true, nil); err != nil {
 		t.Fatalf("SetAdvertisement: %v", err)
 	}
+
 	waitReceived(t, peer, exported)
 
 	neighbor := peer.neighbor.String()
-	if err := peer.server.DeletePeer(t.Context(), &apipb.DeletePeerRequest{Address: neighbor}); err != nil {
+	if err := peer.server.DeletePeer(
+		t.Context(),
+		&apipb.DeletePeerRequest{Address: neighbor},
+	); err != nil {
 		t.Fatalf("delete the session as a test peer neighbor: %v", err)
 	}
-	eventually(t, "the session to report the peer loss", func() bool {
-		return !session.State().Established
-	})
+
+	eventually(
+		t,
+		"the session to report the peer loss",
+		func() bool {
+			return !session.State().Established
+		},
+	)
 	if advertised := session.State().Advertised; len(advertised) != 0 {
 		t.Fatalf("advertised prefixes after the peer loss = %v, want none", advertised)
 	}
@@ -40,21 +49,37 @@ func TestSessionWithdrawsExportsAtPeerLoss(t *testing.T) {
 	returned := &apipb.Peer{
 		Conf:      &apipb.PeerConf{NeighborAddress: neighbor, PeerAsn: sessionASN},
 		Transport: &apipb.Transport{PassiveMode: true},
-		Timers: &apipb.Timers{Config: &apipb.TimersConfig{
-			KeepaliveInterval: uint64(keepaliveSeconds), HoldTime: uint64(holdSeconds),
-		}},
-		AfiSafis: []*apipb.AfiSafi{{Config: &apipb.AfiSafiConfig{
-			Family: &apipb.Family{Afi: apipb.Family_AFI_IP6, Safi: apipb.Family_SAFI_UNICAST}, Enabled: true,
-		}}},
+		Timers: &apipb.Timers{
+			Config: &apipb.TimersConfig{
+				KeepaliveInterval: uint64(keepaliveSeconds),
+				HoldTime:          uint64(holdSeconds),
+			},
+		},
+		AfiSafis: []*apipb.AfiSafi{
+			{
+				Config: &apipb.AfiSafiConfig{
+					Family: &apipb.Family{
+						Afi:  apipb.Family_AFI_IP6,
+						Safi: apipb.Family_SAFI_UNICAST,
+					},
+					Enabled: true,
+				},
+			},
+		},
 	}
 	if err := peer.server.AddPeer(t.Context(), &apipb.AddPeerRequest{Peer: returned}); err != nil {
 		t.Fatalf("add the session as a test peer neighbor: %v", err)
 	}
+
 	waitEstablished(t, session)
 	peer.announce(t, learned, hop)
-	eventually(t, "the session to accept the peer's prefix", func() bool {
-		return slices.Equal(session.State().Accepted, []netip.Prefix{learned})
-	})
+	eventually(
+		t,
+		"the session to accept the peer's prefix",
+		func() bool {
+			return slices.Equal(session.State().Accepted, []netip.Prefix{learned})
+		},
+	)
 	if received := peer.receivedPrefixes(t); len(received) != 0 {
 		t.Fatalf("prefixes received before the next SetAdvertisement = %v, want none", received)
 	}
@@ -62,5 +87,6 @@ func TestSessionWithdrawsExportsAtPeerLoss(t *testing.T) {
 	if err := session.SetAdvertisement(true, nil); err != nil {
 		t.Fatalf("SetAdvertisement after the peer return: %v", err)
 	}
+
 	waitReceived(t, peer, exported)
 }

@@ -36,6 +36,7 @@ func New(log *slog.Logger) *DefaultSource {
 	if log == nil {
 		log = slog.Default()
 	}
+
 	return &DefaultSource{
 		log:        log,
 		runCommand: runCommandOutput,
@@ -51,6 +52,7 @@ func (s *DefaultSource) Prefix(
 	if log == nil {
 		log = slog.Default()
 	}
+
 	if err := validateIface(iface); err != nil {
 		log.WarnContext(ctx, "pd: invalid iface", "iface", iface, "err", err)
 		return netip.Prefix{}, false, err
@@ -72,17 +74,21 @@ func (s *DefaultSource) Prefix(
 			sourceErrors = append(sourceErrors, fmt.Errorf("%s: %w", probe.name, err))
 			continue
 		}
+
 		if !ok {
 			continue
 		}
+
 		return prefix, true, nil
 	}
+
 	if len(sourceErrors) == 0 {
 		return netip.Prefix{}, false, nil
 	}
 
 	err := fmt.Errorf("pd prefix sources failed for %s: %w", iface, errors.Join(sourceErrors...))
 	log.WarnContext(ctx, "pd: prefix sources failed", "iface", iface, "err", err)
+
 	return netip.Prefix{}, false, err
 }
 
@@ -90,11 +96,14 @@ func validateIface(iface string) error {
 	if iface == "" {
 		return errors.New("iface is empty")
 	}
+
 	if strings.Contains(iface, "/") {
 		return fmt.Errorf("iface %q contains slash", iface)
 	}
+
 	if strings.ContainsRune(iface, '\x00') {
 		return fmt.Errorf("iface %q contains NUL", iface)
 	}
+
 	return nil
 }

@@ -33,10 +33,22 @@ type forwardPathPacketResult struct {
 	err      error
 }
 
-func requireForwardPathPacket(t *testing.T, fixture forwardPathFixture, endpoints forwardPathPacketEndpoints, expected int, phase string) {
+func requireForwardPathPacket(
+	t *testing.T,
+	fixture forwardPathFixture,
+	endpoints forwardPathPacketEndpoints,
+	expected int,
+	phase string,
+) {
 	t.Helper()
 	path, usable, queryErr := netif.ForwardPathLookup(t.Context(), slog.Default(), fixture.selector)
-	t.Logf("forwarding lookup: phase=%s usable=%v route=%+v error=%v", phase, usable, path.Route, queryErr)
+	t.Logf(
+		"forwarding lookup: phase=%s usable=%v route=%+v error=%v",
+		phase,
+		usable,
+		path.Route,
+		queryErr,
+	)
 	observed := observeForwardPathPacket(t, fixture, endpoints, phase)
 	t.Logf("forwarding wire: phase=%s result=%+v", phase, observed)
 	if observed.output != expected || observed.hopLimit != forwardPathInitialHopLimit-1 {
@@ -45,20 +57,57 @@ func requireForwardPathPacket(t *testing.T, fixture forwardPathFixture, endpoint
 			family = unix.AF_INET6
 		}
 		rules, ruleErr := netlink.RuleList(family)
-		t.Fatalf("forwarded %s packet differs: result=%+v expected_output=%d query_usable=%v query_route=%+v query_error=%v input=%s/%d selector=%+v rules=%v rule_error=%v", phase,
-			observed, expected, usable, path.Route, queryErr, fixture.input.Attrs().Name, fixture.input.Attrs().Index, fixture.selector, rules, ruleErr)
+		t.Fatalf(
+			"forwarded %s packet differs: result=%+v expected_output=%d query_usable=%v query_route=%+v query_error=%v input=%s/%d selector=%+v rules=%v rule_error=%v",
+			phase,
+			observed,
+			expected,
+			usable,
+			path.Route,
+			queryErr,
+			fixture.input.Attrs().Name,
+			fixture.input.Attrs().Index,
+			fixture.selector,
+			rules,
+			ruleErr,
+		)
 	}
 	output := fixture.outputs[observed.output].Attrs().Index
-	if queryErr != nil || !usable || path.Link == nil || path.Route.LinkIndex != output || path.Link.Attrs().Index != output ||
-		path.Neighbor.LinkIndex != output || !path.Neighbor.IP.Equal(fixture.gateways[observed.output]) ||
-		!bytes.Equal(path.Neighbor.HardwareAddr, fixture.peers[observed.output].Attrs().HardwareAddr) {
-		t.Fatalf("lookup differs from forwarded %s packet: wire_output=%d query_usable=%v query_path=%+v query_error=%v", phase, output, usable, path, queryErr)
+	if queryErr != nil || !usable || path.Link == nil || path.Route.LinkIndex != output ||
+		path.Link.Attrs().Index != output ||
+		path.Neighbor.LinkIndex != output ||
+		!path.Neighbor.IP.Equal(fixture.gateways[observed.output]) ||
+		!bytes.Equal(
+			path.Neighbor.HardwareAddr,
+			fixture.peers[observed.output].Attrs().HardwareAddr,
+		) {
+		t.Fatalf(
+			"lookup differs from forwarded %s packet: wire_output=%d query_usable=%v query_path=%+v query_error=%v",
+			phase,
+			output,
+			usable,
+			path,
+			queryErr,
+		)
 	}
-	t.Logf("kernel packet and lookup agree: input=%s/%d phase=%s output=%s/%d protocol=%s hop_limit=%d", fixture.input.Attrs().Name,
-		fixture.input.Attrs().Index, phase, fixture.outputs[observed.output].Attrs().Name, fixture.outputs[observed.output].Attrs().Index, observed.protocol, observed.hopLimit)
+	t.Logf(
+		"kernel packet and lookup agree: input=%s/%d phase=%s output=%s/%d protocol=%s hop_limit=%d",
+		fixture.input.Attrs().Name,
+		fixture.input.Attrs().Index,
+		phase,
+		fixture.outputs[observed.output].Attrs().Name,
+		fixture.outputs[observed.output].Attrs().Index,
+		observed.protocol,
+		observed.hopLimit,
+	)
 }
 
-func observeForwardPathPacket(t *testing.T, fixture forwardPathFixture, endpoints forwardPathPacketEndpoints, phase string) forwardPathPacketResult {
+func observeForwardPathPacket(
+	t *testing.T,
+	fixture forwardPathFixture,
+	endpoints forwardPathPacketEndpoints,
+	phase string,
+) forwardPathPacketResult {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	var readers sync.WaitGroup
@@ -85,14 +134,35 @@ func observeForwardPathPacket(t *testing.T, fixture forwardPathFixture, endpoint
 	}
 	state := inspectForwardPathPacketSocket(t, endpoints.sender)
 	if state.mark != int(fixture.selector.Mark) {
-		t.Fatalf("sender socket mark %d does not match selector mark %d", state.mark, fixture.selector.Mark)
+		t.Fatalf(
+			"sender socket mark %d does not match selector mark %d",
+			state.mark,
+			fixture.selector.Mark,
+		)
 	}
-	t.Logf("forwarding witness: sender=%s/%d sender_namespace=%s socket_mark=%d socket_owner_uid=%d input=%s/%d selector=%+v", endpoints.client.Name,
-		state.index, endpoints.senderNamespace, state.mark, state.ownerUID, fixture.input.Attrs().Name, fixture.input.Attrs().Index, fixture.selector)
+	t.Logf(
+		"forwarding witness: sender=%s/%d sender_namespace=%s socket_mark=%d socket_owner_uid=%d input=%s/%d selector=%+v",
+		endpoints.client.Name,
+		state.index,
+		endpoints.senderNamespace,
+		state.mark,
+		state.ownerUID,
+		fixture.input.Attrs().Name,
+		fixture.input.Attrs().Index,
+		fixture.selector,
+	)
 	frame := encodeForwardPathPacket(t, fixture, endpoints.client.HardwareAddr, marker)
-	count, err := endpoints.sender.WriteTo(frame, &packet.Addr{HardwareAddr: fixture.input.Attrs().HardwareAddr})
+	count, err := endpoints.sender.WriteTo(
+		frame,
+		&packet.Addr{HardwareAddr: fixture.input.Attrs().HardwareAddr},
+	)
 	if err != nil || count != len(frame) {
-		t.Fatalf("send the forwarding packet: bytes=%d expected=%d error=%v", count, len(frame), err)
+		t.Fatalf(
+			"send the forwarding packet: bytes=%d expected=%d error=%v",
+			count,
+			len(frame),
+			err,
+		)
 	}
 	select {
 	case result := <-results:
@@ -112,7 +182,10 @@ type forwardPathPacketSocketState struct {
 	ownerUID uint32
 }
 
-func inspectForwardPathPacketSocket(t *testing.T, connection *packet.Conn) forwardPathPacketSocketState {
+func inspectForwardPathPacketSocket(
+	t *testing.T,
+	connection *packet.Conn,
+) forwardPathPacketSocketState {
 	t.Helper()
 	raw, err := connection.SyscallConn()
 	if err != nil {
@@ -152,7 +225,12 @@ func inspectForwardPathPacketSocket(t *testing.T, connection *packet.Conn) forwa
 	return state
 }
 
-func readForwardPathPacket(ctx context.Context, connection *packet.Conn, output int, marker []byte) forwardPathPacketResult {
+func readForwardPathPacket(
+	ctx context.Context,
+	connection *packet.Conn,
+	output int,
+	marker []byte,
+) forwardPathPacketResult {
 	buffer := make([]byte, forwardPathCaptureBytes)
 	for {
 		count, _, err := connection.ReadFrom(buffer)
@@ -181,7 +259,12 @@ func readForwardPathPacket(ctx context.Context, connection *packet.Conn, output 
 	}
 }
 
-func encodeForwardPathPacket(t *testing.T, fixture forwardPathFixture, sourceMAC net.HardwareAddr, payload []byte) []byte {
+func encodeForwardPathPacket(
+	t *testing.T,
+	fixture forwardPathFixture,
+	sourceMAC net.HardwareAddr,
+	payload []byte,
+) []byte {
 	t.Helper()
 	selector := fixture.selector
 	if selector.Protocol != unix.IPPROTO_UDP || selector.Mark != 0 {
@@ -208,13 +291,21 @@ func encodeForwardPathPacket(t *testing.T, fixture forwardPathFixture, sourceMAC
 		network, serialNetwork = &ipv6, &ipv6
 	}
 	var udp layers.UDP
-	udp.SrcPort, udp.DstPort = layers.UDPPort(selector.Source.Port()), layers.UDPPort(selector.Destination.Port())
+	udp.SrcPort, udp.DstPort = layers.UDPPort(selector.Source.Port()), layers.UDPPort(
+		selector.Destination.Port(),
+	)
 	if err := udp.SetNetworkLayerForChecksum(network); err != nil {
 		t.Fatalf("set the forwarding packet checksum input: %v", err)
 	}
 	buffer := gopacket.NewSerializeBuffer()
-	if err := gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true},
-		&ethernet, serialNetwork, &udp, gopacket.Payload(payload)); err != nil {
+	if err := gopacket.SerializeLayers(
+		buffer,
+		gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true},
+		&ethernet,
+		serialNetwork,
+		&udp,
+		gopacket.Payload(payload),
+	); err != nil {
 		t.Fatalf("encode the forwarding packet: %v", err)
 	}
 	return buffer.Bytes()

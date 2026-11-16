@@ -15,5 +15,6 @@ func (w WANRef) Key() string {
 	if w.ID != "" {
 		return w.ID.String()
 	}
+
 	return w.Name
 }

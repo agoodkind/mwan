@@ -33,14 +33,22 @@ func sweepRoute(t *testing.T, link netlink.Link, destination string) *netlink.Ro
 		t.Fatal(err)
 	}
 	return &netlink.Route{
-		LinkIndex: link.Attrs().Index, Dst: network, Gw: net.ParseIP(sweepGateway),
-		Priority: sweepMetric, Protocol: unix.RTPROT_BGP, Table: unix.RT_TABLE_MAIN,
+		LinkIndex: link.Attrs().Index,
+		Dst:       network,
+		Gw:        net.ParseIP(sweepGateway),
+		Priority:  sweepMetric,
+		Protocol:  unix.RTPROT_BGP,
+		Table:     unix.RT_TABLE_MAIN,
 	}
 }
 
 func sweepRoutePresent(t *testing.T, link netlink.Link, destination string) bool {
 	t.Helper()
-	routes, err := netlink.RouteListFiltered(netlink.FAMILY_V6, sweepRoute(t, link, destination), netlink.RT_FILTER_DST|netlink.RT_FILTER_OIF)
+	routes, err := netlink.RouteListFiltered(
+		netlink.FAMILY_V6,
+		sweepRoute(t, link, destination),
+		netlink.RT_FILTER_DST|netlink.RT_FILTER_OIF,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,12 +57,20 @@ func sweepRoutePresent(t *testing.T, link netlink.Link, destination string) bool
 
 func reconcileSweepModule(t *testing.T, stateFile string) {
 	t.Helper()
-	startModule(t, bgpsessions.Config{
-		StateFile: stateFile,
-		ConfiguredRoutes: []bgpsessions.ConfiguredRoute{
-			{Interface: sweepDevice, Dest: sweepConfigured, Via: sweepGateway, Metric: sweepMetric},
+	startModule(
+		t,
+		bgpsessions.Config{
+			StateFile: stateFile,
+			ConfiguredRoutes: []bgpsessions.ConfiguredRoute{
+				{
+					Interface: sweepDevice,
+					Dest:      sweepConfigured,
+					Via:       sweepGateway,
+					Metric:    sweepMetric,
+				},
+			},
 		},
-	})
+	)
 }
 
 // runSweepIsolated reports true in the child process, which runs in a new
@@ -102,7 +118,9 @@ func TestSweepKeepsConfiguredRoutesOfARemovedSession(t *testing.T) {
 	}
 	reconcileSweepModule(t, stateFile)
 	if !sweepRoutePresent(t, link, sweepLater) || !sweepRoutePresent(t, link, sweepConfigured) {
-		t.Fatal("the second process deleted a route after the first process dropped the journal record")
+		t.Fatal(
+			"the second process deleted a route after the first process dropped the journal record",
+		)
 	}
 }
 

@@ -289,7 +289,15 @@ type NativePacketDiagnostic struct {
 
 // Error formats the native operation, graph object, direction, and failure.
 func (e *NativeError) Error() string {
-	return fmt.Sprintf("native operation %d object %d/%d direction %d: %s: %s", e.Operation, e.ObjectKind, e.ObjectID, e.Direction, e.Message, e.Code)
+	return fmt.Sprintf(
+		"native operation %d object %d/%d direction %d: %s: %s",
+		e.Operation,
+		e.ObjectKind,
+		e.ObjectID,
+		e.Direction,
+		e.Message,
+		e.Code,
+	)
 }
 
 // Unwrap permits [errors.Is] to compare the underlying errno.
@@ -385,8 +393,10 @@ func ReadNativeBuild() (NativeBuildInfo, error) {
 		return NativeBuildInfo{}, errors.New("native library ABI does not match the Go binding")
 	}
 	return NativeBuildInfo{
-		ABIVersion: uint32(info.abi_version), DPDKVersion: C.GoString(&info.dpdk_version[0]),
-		SourceSHA256: C.GoString(&info.source_sha256[0]), PatchSHA256: C.GoString(&info.patch_sha256[0]),
+		ABIVersion:   uint32(info.abi_version),
+		DPDKVersion:  C.GoString(&info.dpdk_version[0]),
+		SourceSHA256: C.GoString(&info.source_sha256[0]),
+		PatchSHA256:  C.GoString(&info.patch_sha256[0]),
 	}, nil
 }
 
@@ -460,7 +470,8 @@ func NewNativeRuntime(config NativeConfig, log *slog.Logger) (*NativeRuntime, er
 
 // Enable restarts a disabled owner with its identical configuration.
 func (worker *NativeRuntime) Enable(ctx context.Context, config NativeConfig) error {
-	if config.PollBudget != worker.pollBudget || config.IdleWait != worker.idleWait || config.ConntrackUpdateTimeout != worker.updateTimeout {
+	if config.PollBudget != worker.pollBudget || config.IdleWait != worker.idleWait ||
+		config.ConntrackUpdateTimeout != worker.updateTimeout {
 		return errors.New("native reopen requires identical polling and conntrack update settings")
 	}
 	encoded, err := encodeNativeConfig(config)
@@ -473,45 +484,94 @@ func (worker *NativeRuntime) Enable(ctx context.Context, config NativeConfig) er
 }
 
 // Install consumes an existing kernel identity; provider selection stays with the caller.
-func (worker *NativeRuntime) Install(ctx context.Context, flow conntrack.Flow, spec NativePairSpec) (NativePairResult, error) {
+func (worker *NativeRuntime) Install(
+	ctx context.Context,
+	flow conntrack.Flow,
+	spec NativePairSpec,
+) (NativePairResult, error) {
 	return worker.install(ctx, flow, spec, nil, nil, nil, nativeInstall)
 }
 
 // InstallObserved applies the packet guards captured with the connection.
-func (worker *NativeRuntime) InstallObserved(ctx context.Context, flow conntrack.Flow, spec NativePairSpec, guards [2]NativePacketGuard) (NativePairResult, error) {
+func (worker *NativeRuntime) InstallObserved(
+	ctx context.Context,
+	flow conntrack.Flow,
+	spec NativePairSpec,
+	guards [2]NativePacketGuard,
+) (NativePairResult, error) {
 	return worker.install(ctx, flow, spec, &guards, nil, nil, nativeInstall)
 }
 
 // InstallObservedWithEvidence rechecks forwarding evidence around rule installation.
-func (worker *NativeRuntime) InstallObservedWithEvidence(ctx context.Context, flow conntrack.Flow, spec NativePairSpec, guards [2]NativePacketGuard, evidence *NativeEvidenceGuard) (NativePairResult, error) {
+func (worker *NativeRuntime) InstallObservedWithEvidence(
+	ctx context.Context,
+	flow conntrack.Flow,
+	spec NativePairSpec,
+	guards [2]NativePacketGuard,
+	evidence *NativeEvidenceGuard,
+) (NativePairResult, error) {
 	return worker.install(ctx, flow, spec, &guards, nil, evidence, nativeInstall)
 }
 
 // ResumeObserved preserves the suspended generation and its existing inverse.
-func (worker *NativeRuntime) ResumeObserved(ctx context.Context, flow conntrack.Flow, handle NativePairHandle, spec NativePairSpec, guards [2]NativePacketGuard) (NativePairResult, error) {
+func (worker *NativeRuntime) ResumeObserved(
+	ctx context.Context,
+	flow conntrack.Flow,
+	handle NativePairHandle,
+	spec NativePairSpec,
+	guards [2]NativePacketGuard,
+) (NativePairResult, error) {
 	return worker.install(ctx, flow, spec, &guards, &handle, nil, nativeResume)
 }
 
 // ResumeObservedWithEvidence requires current evidence for the retained generation.
-func (worker *NativeRuntime) ResumeObservedWithEvidence(ctx context.Context, flow conntrack.Flow, handle NativePairHandle, spec NativePairSpec, guards [2]NativePacketGuard, evidence *NativeEvidenceGuard) (NativePairResult, error) {
+func (worker *NativeRuntime) ResumeObservedWithEvidence(
+	ctx context.Context,
+	flow conntrack.Flow,
+	handle NativePairHandle,
+	spec NativePairSpec,
+	guards [2]NativePacketGuard,
+	evidence *NativeEvidenceGuard,
+) (NativePairResult, error) {
 	return worker.install(ctx, flow, spec, &guards, &handle, evidence, nativeResume)
 }
 
 // ReobserveWithEvidence replaces selectors only after the retained pair has completed removal.
 // Current connection and forwarding proof must authorize the unchanged mapping.
-func (worker *NativeRuntime) ReobserveWithEvidence(ctx context.Context, flow conntrack.Flow, handle NativePairHandle, spec NativePairSpec, guards [2]NativePacketGuard, evidence *NativeEvidenceGuard) (NativePairResult, error) {
+func (worker *NativeRuntime) ReobserveWithEvidence(
+	ctx context.Context,
+	flow conntrack.Flow,
+	handle NativePairHandle,
+	spec NativePairSpec,
+	guards [2]NativePacketGuard,
+	evidence *NativeEvidenceGuard,
+) (NativePairResult, error) {
 	if evidence == nil {
-		return NativePairResult{}, errors.New("native selector replacement requires forwarding evidence")
+		return NativePairResult{}, errors.New(
+			"native selector replacement requires forwarding evidence",
+		)
 	}
 	if _, present := ctx.Deadline(); !present {
-		return NativePairResult{}, errors.New("native selector replacement requires a request deadline")
+		return NativePairResult{}, errors.New(
+			"native selector replacement requires a request deadline",
+		)
 	}
 	return worker.install(ctx, flow, spec, &guards, &handle, evidence, nativeReobserve)
 }
 
-func (worker *NativeRuntime) install(ctx context.Context, flow conntrack.Flow, spec NativePairSpec, guards *[2]NativePacketGuard, resume *NativePairHandle, evidence *NativeEvidenceGuard, operation nativeOperation) (NativePairResult, error) {
+func (worker *NativeRuntime) install(
+	ctx context.Context,
+	flow conntrack.Flow,
+	spec NativePairSpec,
+	guards *[2]NativePacketGuard,
+	resume *NativePairHandle,
+	evidence *NativeEvidenceGuard,
+	operation nativeOperation,
+) (NativePairResult, error) {
 	if flow.ID == 0 || flow.Zone != 0 {
-		return NativePairResult{}, errors.New("native admission requires an existing zone-zero connection")
+		return NativePairResult{}, errors.New(
+			"native admission requires an existing zone-zero connection",
+		)
 	}
 	encoded, err := encodeNativePair(spec)
 	if err != nil {
@@ -520,7 +580,9 @@ func (worker *NativeRuntime) install(ctx context.Context, flow conntrack.Flow, s
 	for i, direction := range spec.Directions {
 		if spec.RequestedDirections&[2]uint32{1, 2}[i] != 0 &&
 			(direction.Original.Proto.Protocol != flow.TupleOrig.Proto.Protocol || direction.Translated.Proto.Protocol != flow.TupleOrig.Proto.Protocol) {
-			return NativePairResult{}, errors.New("native direction protocol does not match the connection")
+			return NativePairResult{}, errors.New(
+				"native direction protocol does not match the connection",
+			)
 		}
 	}
 	var request nativeRequest
@@ -544,7 +606,11 @@ func (worker *NativeRuntime) install(ctx context.Context, flow conntrack.Flow, s
 	return result.pair, result.err
 }
 
-func (worker *NativeRuntime) prepareInstall(ctx context.Context, flow conntrack.Flow, observed bool) error {
+func (worker *NativeRuntime) prepareInstall(
+	ctx context.Context,
+	flow conntrack.Flow,
+	observed bool,
+) error {
 	lookupContext, cancel := context.WithTimeout(ctx, worker.updateTimeout)
 	defer cancel()
 	if observed {
@@ -553,9 +619,17 @@ func (worker *NativeRuntime) prepareInstall(ctx context.Context, flow conntrack.
 			return err
 		}
 		if current.Mark != flow.Mark || current.Status != flow.Status ||
-			current.ProtoInfo.TCP != nil && flow.ProtoInfo.TCP != nil && current.ProtoInfo.TCP.State != flow.ProtoInfo.TCP.State {
+			current.ProtoInfo.TCP != nil && flow.ProtoInfo.TCP != nil &&
+				current.ProtoInfo.TCP.State != flow.ProtoInfo.TCP.State {
 			failure := fmt.Errorf("observed connection policy changed: %w", syscall.ESTALE)
-			worker.log.WarnContext(ctx, "prepare native admission failed", "id", flow.ID, "err", failure)
+			worker.log.WarnContext(
+				ctx,
+				"prepare native admission failed",
+				"id",
+				flow.ID,
+				"err",
+				failure,
+			)
 			return failure
 		}
 	}
@@ -576,7 +650,10 @@ func (worker *NativeRuntime) Retirement(ctx context.Context) (NativeRetirementSt
 }
 
 // Query reads hardware counters without treating unavailable counters as zero.
-func (worker *NativeRuntime) Query(ctx context.Context, handle NativePairHandle) (NativePairStats, error) {
+func (worker *NativeRuntime) Query(
+	ctx context.Context,
+	handle NativePairHandle,
+) (NativePairStats, error) {
 	var request nativeRequest
 	request.operation, request.handle = nativeQuery, encodeNativeHandle(handle)
 	result := worker.call(ctx, request)
@@ -584,7 +661,10 @@ func (worker *NativeRuntime) Query(ctx context.Context, handle NativePairHandle)
 }
 
 // Remove deletes hardware rules and retains inverse records until Disable.
-func (worker *NativeRuntime) Remove(ctx context.Context, handle NativePairHandle) (NativePairResult, error) {
+func (worker *NativeRuntime) Remove(
+	ctx context.Context,
+	handle NativePairHandle,
+) (NativePairResult, error) {
 	var request nativeRequest
 	request.operation, request.handle = nativeRemove, encodeNativeHandle(handle)
 	result := worker.call(ctx, request)
@@ -686,9 +766,14 @@ func nativeCallError(rc C.int, detail C.struct_mwan_native_error) error {
 		code = syscall.Errno(-rc)
 	}
 	return &NativeError{
-		Code: code, Operation: uint32(detail.operation), ObjectKind: NativeObjectKind(detail.object_kind), ObjectID: uint32(detail.object_id),
-		Direction: uint32(detail.direction), FlowErrorType: uint32(detail.flow_error_type), Message: C.GoString(&detail.message[0]),
-		Packet: decodeNativePacket(detail.packet),
+		Code:          code,
+		Operation:     uint32(detail.operation),
+		ObjectKind:    NativeObjectKind(detail.object_kind),
+		ObjectID:      uint32(detail.object_id),
+		Direction:     uint32(detail.direction),
+		FlowErrorType: uint32(detail.flow_error_type),
+		Message:       C.GoString(&detail.message[0]),
+		Packet:        decodeNativePacket(detail.packet),
 	}
 }
 
@@ -702,7 +787,9 @@ func decodeNativePacket(packet C.struct_mwan_native_packet_diagnostic) NativePac
 	result.DestinationMACMismatch = packet.failure_flags&C.MWAN_NATIVE_PACKET_DESTINATION_MAC_MISMATCH != 0
 	result.DecodeStatus, result.EtherType = int32(packet.decode_status), uint16(packet.ether_type)
 	for i := range result.SourceMAC {
-		result.SourceMAC[i], result.DestinationMAC[i] = byte(packet.source_mac[i]), byte(packet.destination_mac[i])
+		result.SourceMAC[i], result.DestinationMAC[i] = byte(packet.source_mac[i]), byte(
+			packet.destination_mac[i],
+		)
 	}
 	if !result.IPValid {
 		return result
@@ -733,9 +820,14 @@ func encodeNativePCI(address NativePCIAddress) C.struct_mwan_native_pci {
 
 func encodeNativeConfig(config NativeConfig) (C.struct_mwan_native_config, error) {
 	var result C.struct_mwan_native_config
-	if len(config.Controllers) > C.MWAN_NATIVE_MAX_CONTROLLERS || len(config.Receivers) > C.MWAN_NATIVE_MAX_RECEIVERS ||
-		len(config.Data) == 0 || len(config.Data) > C.MWAN_NATIVE_MAX_DATA || len(config.Origins) > C.MWAN_NATIVE_MAX_ORIGINS ||
-		config.PollBudget == 0 || config.IdleWait < 0 || config.DrainTimeout < time.Millisecond ||
+	if len(
+		config.Controllers,
+	) > C.MWAN_NATIVE_MAX_CONTROLLERS || len(config.Receivers) > C.MWAN_NATIVE_MAX_RECEIVERS ||
+		len(config.Data) == 0 || len(
+		config.Data,
+	) > C.MWAN_NATIVE_MAX_DATA || len(config.Origins) > C.MWAN_NATIVE_MAX_ORIGINS ||
+		config.PollBudget == 0 || config.IdleWait < 0 ||
+		config.DrainTimeout < time.Millisecond ||
 		config.ConntrackUpdateTimeout <= 0 ||
 		config.DrainTimeout/time.Millisecond > time.Duration(^uint32(0)) {
 		return result, errors.New("invalid native graph count, poll budget, or timeout")
@@ -743,11 +835,19 @@ func encodeNativeConfig(config NativeConfig) (C.struct_mwan_native_config, error
 	result.abi_version, result.record_size = C.MWAN_NATIVE_ABI_VERSION, C.sizeof_struct_mwan_native_config
 	result.cpu, result.memory_mb = C.uint32_t(config.CPU), C.uint32_t(config.MemoryMiB)
 	result.memory_mode = C.uint32_t(config.MemoryMode)
-	result.controller_count, result.receiver_count = C.uint32_t(len(config.Controllers)), C.uint32_t(len(config.Receivers))
-	result.data_count, result.origin_count = C.uint32_t(len(config.Data)), C.uint32_t(len(config.Origins))
-	result.pair_capacity, result.mbuf_count = C.uint32_t(config.PairCapacity), C.uint32_t(config.MbufCount)
+	result.controller_count, result.receiver_count = C.uint32_t(
+		len(config.Controllers),
+	), C.uint32_t(len(config.Receivers))
+	result.data_count, result.origin_count = C.uint32_t(len(config.Data)), C.uint32_t(
+		len(config.Origins),
+	)
+	result.pair_capacity, result.mbuf_count = C.uint32_t(config.PairCapacity), C.uint32_t(
+		config.MbufCount,
+	)
 	result.drain_timeout_ms = C.uint32_t(config.DrainTimeout / time.Millisecond)
-	result.rx_descriptors, result.tx_descriptors = C.uint16_t(config.RXDescriptors), C.uint16_t(config.TXDescriptors)
+	result.rx_descriptors, result.tx_descriptors = C.uint16_t(config.RXDescriptors), C.uint16_t(
+		config.TXDescriptors,
+	)
 	result.mtu = C.uint16_t(config.MTU)
 	if err := nativeText(result.hugepage_directory[:], config.HugepageDirectory); err != nil {
 		return result, err
@@ -768,7 +868,9 @@ func encodeNativeConfig(config NativeConfig) (C.struct_mwan_native_config, error
 	}
 	for i, data := range config.Data {
 		out := &result.data[i]
-		out.pci, out.controller, out.vf = encodeNativePCI(data.PCI), C.uint32_t(data.Controller), C.uint16_t(data.VF)
+		out.pci, out.controller, out.vf = encodeNativePCI(data.PCI), C.uint32_t(
+			data.Controller,
+		), C.uint16_t(data.VF)
 		for n := range data.MAC {
 			out.mac[n] = C.uint8_t(data.MAC[n])
 		}
@@ -802,21 +904,29 @@ func encodeNativeTuple(tuple conntrack.Tuple) (C.struct_mwan_native_tuple, error
 		tuple.IP.SourceAddress.Is4In6() || tuple.IP.DestinationAddress.Is4In6() ||
 		tuple.IP.SourceAddress.Zone() != "" || tuple.IP.DestinationAddress.Zone() != "" ||
 		tuple.IP.SourceAddress.Is4() != tuple.IP.DestinationAddress.Is4() {
-		return result, errors.New("native tuple requires one unambiguous address family and zone zero")
+		return result, errors.New(
+			"native tuple requires one unambiguous address family and zone zero",
+		)
 	}
 	result.protocol = C.uint8_t(tuple.Proto.Protocol)
-	result.source_port, result.destination_port = C.uint16_t(tuple.Proto.SourcePort), C.uint16_t(tuple.Proto.DestinationPort)
+	result.source_port, result.destination_port = C.uint16_t(tuple.Proto.SourcePort), C.uint16_t(
+		tuple.Proto.DestinationPort,
+	)
 	if tuple.IP.SourceAddress.Is4() {
 		result.family = C.MWAN_NATIVE_FAMILY_IPV4
 		source, destination := tuple.IP.SourceAddress.As4(), tuple.IP.DestinationAddress.As4()
 		for i := range source {
-			result.source[i], result.destination[i] = C.uint8_t(source[i]), C.uint8_t(destination[i])
+			result.source[i], result.destination[i] = C.uint8_t(source[i]), C.uint8_t(
+				destination[i],
+			)
 		}
 	} else {
 		result.family = C.MWAN_NATIVE_FAMILY_IPV6
 		source, destination := tuple.IP.SourceAddress.As16(), tuple.IP.DestinationAddress.As16()
 		for i := range source {
-			result.source[i], result.destination[i] = C.uint8_t(source[i]), C.uint8_t(destination[i])
+			result.source[i], result.destination[i] = C.uint8_t(source[i]), C.uint8_t(
+				destination[i],
+			)
 		}
 	}
 	return result, nil
@@ -827,7 +937,9 @@ func encodeNativePair(spec NativePairSpec) (C.struct_mwan_native_pair_spec, erro
 	if spec.RequestedDirections == 0 || spec.RequestedDirections > 3 {
 		return result, errors.New("native pair requires direction mask 1, 2, or 3")
 	}
-	result.cookie, result.policy_generation = C.uint64_t(spec.Cookie), C.uint64_t(spec.PolicyGeneration)
+	result.cookie, result.policy_generation = C.uint64_t(spec.Cookie), C.uint64_t(
+		spec.PolicyGeneration,
+	)
 	result.requested_direction_mask = C.uint32_t(spec.RequestedDirections)
 	masks := [2]uint32{1, 2}
 	for i, direction := range spec.Directions {
@@ -835,7 +947,9 @@ func encodeNativePair(spec NativePairSpec) (C.struct_mwan_native_pair_spec, erro
 			continue
 		}
 		out := &result.directions[i]
-		out.origin_id, out.egress_data_id = C.uint32_t(direction.Origin), C.uint32_t(direction.EgressData)
+		out.origin_id, out.egress_data_id = C.uint32_t(direction.Origin), C.uint32_t(
+			direction.EgressData,
+		)
 		var err error
 		out.original, err = encodeNativeTuple(direction.Original)
 		if err != nil {
@@ -858,16 +972,24 @@ func encodeNativePair(spec NativePairSpec) (C.struct_mwan_native_pair_spec, erro
 
 func encodeNativeHandle(handle NativePairHandle) C.struct_mwan_native_handle {
 	var result C.struct_mwan_native_handle
-	result.instance, result.generation, result.slot = C.uint64_t(handle.instance), C.uint64_t(handle.generation), C.uint32_t(handle.slot)
+	result.instance, result.generation, result.slot = C.uint64_t(handle.instance), C.uint64_t(
+		handle.generation,
+	), C.uint32_t(handle.slot)
 	return result
 }
 
 func decodeNativePairResult(result C.struct_mwan_native_pair_result) NativePairResult {
 	return NativePairResult{
-		Handle: NativePairHandle{instance: uint64(result.handle.instance), generation: uint64(result.handle.generation), slot: uint32(result.handle.slot)},
-		State:  NativePairState(result.state), RequestedDirections: uint32(result.requested_direction_mask),
-		InstalledDirections: uint32(result.installed_mask), CleanupFailedDirections: uint32(result.cleanup_failed_mask),
-		RestorationDirections: uint32(result.restoration_mask),
+		Handle: NativePairHandle{
+			instance:   uint64(result.handle.instance),
+			generation: uint64(result.handle.generation),
+			slot:       uint32(result.handle.slot),
+		},
+		State:                   NativePairState(result.state),
+		RequestedDirections:     uint32(result.requested_direction_mask),
+		InstalledDirections:     uint32(result.installed_mask),
+		CleanupFailedDirections: uint32(result.cleanup_failed_mask),
+		RestorationDirections:   uint32(result.restoration_mask),
 	}
 }
 
@@ -882,10 +1004,12 @@ func decodeNativePairStats(stats C.struct_mwan_native_pair_stats) NativePairStat
 
 func decodeNativeCounter(counter C.struct_mwan_native_counter) NativeCounter {
 	result := NativeCounter{
-		Packets: uint64(counter.packets), Bytes: uint64(counter.bytes),
+		Packets:             uint64(counter.packets),
+		Bytes:               uint64(counter.bytes),
 		ObservedMonotonicNS: uint64(counter.observed_monotonic_ns),
-		PacketsValid:        counter.packets_valid != 0, BytesValid: counter.bytes_valid != 0,
-		Error: nil,
+		PacketsValid:        counter.packets_valid != 0,
+		BytesValid:          counter.bytes_valid != 0,
+		Error:               nil,
 	}
 	if counter.error != 0 {
 		result.Error = syscall.Errno(-counter.error)
@@ -895,10 +1019,15 @@ func decodeNativeCounter(counter C.struct_mwan_native_counter) NativeCounter {
 
 func decodeNativeWorkerStats(stats C.struct_mwan_native_worker_stats) NativeWorkerStats {
 	return NativeWorkerStats{
-		Received: uint64(stats.received), Forwarded: uint64(stats.forwarded),
-		ReturnedToKernel: uint64(stats.returned_to_kernel), Unsupported: uint64(stats.unsupported),
-		LookupMisses: uint64(stats.lookup_misses), Malformed: uint64(stats.malformed),
-		TransmitDropped: uint64(stats.transmit_dropped), Pending: uint64(stats.pending_packets), Quarantined: uint64(stats.quarantined_packets),
+		Received:             uint64(stats.received),
+		Forwarded:            uint64(stats.forwarded),
+		ReturnedToKernel:     uint64(stats.returned_to_kernel),
+		Unsupported:          uint64(stats.unsupported),
+		LookupMisses:         uint64(stats.lookup_misses),
+		Malformed:            uint64(stats.malformed),
+		TransmitDropped:      uint64(stats.transmit_dropped),
+		Pending:              uint64(stats.pending_packets),
+		Quarantined:          uint64(stats.quarantined_packets),
 		DiscardedGroupFrames: uint64(stats.discarded_group_frames),
 	}
 }

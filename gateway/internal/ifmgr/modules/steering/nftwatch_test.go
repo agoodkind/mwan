@@ -19,9 +19,12 @@ func TestNftEventWipesSteering(t *testing.T) {
 		want  bool
 	}{
 		{
-			name:  "delete the steering table",
-			event: &nftables.MonitorEvent{Type: nftables.MonitorEventTypeDelTable, Data: steerTable},
-			want:  true,
+			name: "delete the steering table",
+			event: &nftables.MonitorEvent{
+				Type: nftables.MonitorEventTypeDelTable,
+				Data: steerTable,
+			},
+			want: true,
 		},
 		{
 			name: "delete the steering chain",
@@ -38,41 +41,59 @@ func TestNftEventWipesSteering(t *testing.T) {
 			name: "delete a steering rule is not a wipe",
 			event: &nftables.MonitorEvent{
 				Type: nftables.MonitorEventTypeDelRule,
-				Data: &nftables.Rule{Table: steerTable, Chain: &nftables.Chain{Name: steerChainName}},
+				Data: &nftables.Rule{
+					Table: steerTable,
+					Chain: &nftables.Chain{Name: steerChainName},
+				},
 			},
 			want: false,
 		},
 		{
 			// Apply creates the table and the chain every pass, so their
 			// creation events must not be a wipe signal either.
-			name:  "create the steering table is not a wipe",
-			event: &nftables.MonitorEvent{Type: nftables.MonitorEventTypeNewTable, Data: steerTable},
-			want:  false,
+			name: "create the steering table is not a wipe",
+			event: &nftables.MonitorEvent{
+				Type: nftables.MonitorEventTypeNewTable,
+				Data: steerTable,
+			},
+			want: false,
 		},
 		{
-			name:  "delete a different inet table",
-			event: &nftables.MonitorEvent{Type: nftables.MonitorEventTypeDelTable, Data: otherInetTable},
-			want:  false,
+			name: "delete a different inet table",
+			event: &nftables.MonitorEvent{
+				Type: nftables.MonitorEventTypeDelTable,
+				Data: otherInetTable,
+			},
+			want: false,
 		},
 		{
-			name:  "delete a same-named table in another family",
-			event: &nftables.MonitorEvent{Type: nftables.MonitorEventTypeDelTable, Data: v6SteerTable},
-			want:  false,
+			name: "delete a same-named table in another family",
+			event: &nftables.MonitorEvent{
+				Type: nftables.MonitorEventTypeDelTable,
+				Data: v6SteerTable,
+			},
+			want: false,
 		},
 		{name: "nil event", event: nil, want: false},
 		{
-			name:  "delete a chain with no table",
-			event: &nftables.MonitorEvent{Type: nftables.MonitorEventTypeDelChain, Data: &nftables.Chain{}},
-			want:  false,
+			name: "delete a chain with no table",
+			event: &nftables.MonitorEvent{
+				Type: nftables.MonitorEventTypeDelChain,
+				Data: &nftables.Chain{},
+			},
+			want: false,
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
 
-			if got := nftEventWipesSteering(test.event); got != test.want {
-				t.Fatalf("nftEventWipesSteering = %t, want %t", got, test.want)
-			}
-		})
+				if got := nftEventWipesSteering(test.event); got != test.want {
+					t.Fatalf("nftEventWipesSteering = %t, want %t", got, test.want)
+				}
+			},
+		)
 	}
 }

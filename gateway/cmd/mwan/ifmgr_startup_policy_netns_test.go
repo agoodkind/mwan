@@ -37,8 +37,14 @@ func TestStartupPolicyIgnoresUnansweredProbes(t *testing.T) {
 		return
 	}
 	binary := protocolTestBinary(t)
-	child := exec.Command(os.Args[0], "-test.run=^TestStartupPolicyIgnoresUnansweredProbes$", "-test.v")
-	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
+	child := exec.Command(
+		os.Args[0],
+		"-test.run=^TestStartupPolicyIgnoresUnansweredProbes$",
+		"-test.v",
+	)
+	child.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS),
+	}
 	child.Env = append(os.Environ(), startupPolicyChildEnv+"=1", startupPolicyBinaryEnv+"="+binary)
 	output, err := child.CombinedOutput()
 	t.Logf("isolated startup policy test output: %s", output)
@@ -67,8 +73,14 @@ func runStartupPolicyChild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture = bytes.ReplaceAll(fixture, []byte(`"goodkind-mwan-steering:link-files": "rendered"`), []byte(`"goodkind-mwan-steering:link-files": "hand-authored"`))
-	fixture = replaceStartupFixture(t, fixture,
+	fixture = bytes.ReplaceAll(
+		fixture,
+		[]byte(`"goodkind-mwan-steering:link-files": "rendered"`),
+		[]byte(`"goodkind-mwan-steering:link-files": "hand-authored"`),
+	)
+	fixture = replaceStartupFixture(
+		t,
+		fixture,
 		`"goodkind-mwan-steering:link-files": "hand-authored",
         "goodkind-mwan-steering:link": {
           "match": { "driver": "igc" }
@@ -76,14 +88,20 @@ func runStartupPolicyChild(t *testing.T) {
 		`"goodkind-mwan-steering:owner": "external",
         "goodkind-mwan-steering:link": {
           "match": { "hardware-address": "`+startupPolicyWebpassMAC+`" }
-        },`)
-	fixture = replaceStartupFixture(t, fixture, `"goodkind-mwan-steering:dhcp": true,
+        },`,
+	)
+	fixture = replaceStartupFixture(
+		t,
+		fixture,
+		`"goodkind-mwan-steering:dhcp": true,
           "goodkind-mwan-steering:translation": {
             "mode": "ietf-nat:napt44",
-            "static-mapping"`, `"goodkind-mwan-steering:dhcp": false,
+            "static-mapping"`,
+		`"goodkind-mwan-steering:dhcp": false,
           "goodkind-mwan-steering:translation": {
             "mode": "ietf-nat:napt44",
-            "static-mapping"`)
+            "static-mapping"`,
+	)
 	legacyWAN := `"name": "enatt0",
         "type": "iana-if-type:other",
         "goodkind-mwan-steering:link-files": "hand-authored"`
@@ -96,8 +114,18 @@ func runStartupPolicyChild(t *testing.T) {
 	fixture = replaceStartupFixture(t, fixture, legacyWAN, typedWAN)
 	attHealth := `"forced-dscp": 8, "health": {"enabled": true, "ping-count": 1, "success-threshold": 1, "failure-threshold": 1, "recovery-threshold": 1, "check-interval": 30, "targets-v4": ["198.51.100.2"], "targets-v6": ["2001:db8:2::2"]}`
 	fixture = replaceStartupFixture(t, fixture, `"forced-dscp": 8`, attHealth)
-	fixture = replaceStartupFixture(t, fixture, `["192.0.2.10", "192.0.2.11"]`, `["10.98.0.2", "10.98.0.3"]`)
-	fixture = replaceStartupFixture(t, fixture, `["2001:db8:53::1", "2001:db8:53::2"]`, `["2001:db8:98::2", "2001:db8:98::3"]`)
+	fixture = replaceStartupFixture(
+		t,
+		fixture,
+		`["192.0.2.10", "192.0.2.11"]`,
+		`["10.98.0.2", "10.98.0.3"]`,
+	)
+	fixture = replaceStartupFixture(
+		t,
+		fixture,
+		`["2001:db8:53::1", "2001:db8:53::2"]`,
+		`["2001:db8:98::2", "2001:db8:98::3"]`,
+	)
 	if err := os.WriteFile(filepath.Join(networkDir, "network.json"), fixture, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -117,24 +145,64 @@ func runStartupPolicyChild(t *testing.T) {
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = false\n",
-		filepath.Join(stateDir, "owned-links.json"), filepath.Join(stateDir, "owned-static.json"), filepath.Join(stateDir, "kernel-policy.json"))
+	config := fmt.Sprintf(
+		"[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = false\n",
+		filepath.Join(stateDir, "owned-links.json"),
+		filepath.Join(stateDir, "owned-static.json"),
+		filepath.Join(stateDir, "kernel-policy.json"),
+	)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", []byte("1"), 0o644); err != nil {
+	if err := os.WriteFile(
+		"/proc/sys/net/ipv6/conf/all/forwarding",
+		[]byte("1"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	setRuntimeLoopback(t)
-	management := newRuntimePeer(t, gateway, "enmgmt0", "mgmt-host", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
-	lan := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29", "2001:db8:b01::1/64", "2001:db8:b01:fe::1/64"}, []string{"192.0.2.2/29", "2001:db8:b01::2/64", "2001:db8:b01:fe::2/64"}, "")
+	management := newRuntimePeer(
+		t,
+		gateway,
+		"enmgmt0",
+		"mgmt-host",
+		[]string{"203.0.113.1/24"},
+		[]string{"203.0.113.2/24"},
+		"",
+	)
+	lan := newRuntimePeer(
+		t,
+		gateway,
+		"enmwanbr0",
+		"lan-host",
+		[]string{"192.0.2.1/29", "2001:db8:b01::1/64", "2001:db8:b01:fe::1/64"},
+		[]string{"192.0.2.2/29", "2001:db8:b01::2/64", "2001:db8:b01:fe::2/64"},
+		"",
+	)
 	// The webpass peer has no addresses, so none of its probe targets answer
 	// and every probe waits for its timeout. The att peer answers.
-	webpass := newRuntimePeer(t, gateway, "enwebpass0", "webpass-host", []string{"10.98.0.1/24", "2001:db8:98::1/64"}, nil, startupPolicyWebpassMAC)
-	wan := newRuntimePeer(t, gateway, "enatt0", "wan-host", []string{"198.51.100.1/24", "2001:db8:2::1/64"}, []string{"198.51.100.2/24", "2001:db8:2::2/64"}, runtimeWANMAC)
+	webpass := newRuntimePeer(
+		t,
+		gateway,
+		"enwebpass0",
+		"webpass-host",
+		[]string{"10.98.0.1/24", "2001:db8:98::1/64"},
+		nil,
+		startupPolicyWebpassMAC,
+	)
+	wan := newRuntimePeer(
+		t,
+		gateway,
+		"enatt0",
+		"wan-host",
+		[]string{"198.51.100.1/24", "2001:db8:2::1/64"},
+		[]string{"198.51.100.2/24", "2001:db8:2::2/64"},
+		runtimeWANMAC,
+	)
 	addRuntimeDefault(t, "enatt0", "198.51.100.2")
 	defer management.namespace.Close()
 	defer lan.namespace.Close()
@@ -143,7 +211,13 @@ func runStartupPolicyChild(t *testing.T) {
 	setRuntimeNamespace(t, gateway)
 
 	started := time.Now()
-	daemon := startRuntimeDaemon(t, os.Getenv(startupPolicyBinaryEnv), configPath, root, "startup-policy")
+	daemon := startRuntimeDaemon(
+		t,
+		os.Getenv(startupPolicyBinaryEnv),
+		configPath,
+		root,
+		"startup-policy",
+	)
 	defer stopRuntimeDaemon(t, daemon)
 	var missing []string
 	for time.Since(started) < startupPolicyGiveUp {
@@ -157,8 +231,12 @@ func runStartupPolicyChild(t *testing.T) {
 	elapsed := time.Since(started)
 	t.Logf("full policy complete after %s; still missing: %v", elapsed, missing)
 	if len(missing) != 0 || elapsed > startupPolicyBound {
-		t.Fatalf("The full firewall policy and policy routes took %s with bound %s; missing %v",
-			elapsed, startupPolicyBound, missing)
+		t.Fatalf(
+			"The full firewall policy and policy routes took %s with bound %s; missing %v",
+			elapsed,
+			startupPolicyBound,
+			missing,
+		)
 	}
 }
 

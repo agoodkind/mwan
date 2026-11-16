@@ -49,42 +49,78 @@ func enterTunnelRouteNamespace(t *testing.T) bool {
 	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
 	child.Env = append(os.Environ(), tunnelRouteChildEnv+"="+t.Name())
 	if output, err := child.CombinedOutput(); err != nil {
-		t.Fatalf("isolated tunnel route test (needs CAP_SYS_ADMIN and CAP_NET_ADMIN): %v: %s", err, output)
+		t.Fatalf(
+			"isolated tunnel route test (needs CAP_SYS_ADMIN and CAP_NET_ADMIN): %v: %s",
+			err,
+			output,
+		)
 	}
 	return false
 }
 
 func tunnelRouteConfig(healthPath string, withTunnel bool) Config {
 	cfg := Config{
-		InternalIface: tunnelRouteInternal, OpnsenseEdgeV6: "2001:db8:b01:fe::2", InternalNetV4: "198.18.0.0/29",
+		InternalIface:   tunnelRouteInternal,
+		OpnsenseEdgeV6:  "2001:db8:b01:fe::2",
+		InternalNetV4:   "198.18.0.0/29",
 		HealthStateFile: healthPath,
 		WANs: []WAN{
 			{
-				WANRef:  ifmgr.WANRef{ID: "isp", Name: "isp", Iface: tunnelRouteUnderlay},
-				TableID: tunnelRouteUnderTbl, FwMark: tunnelRouteUnderMark, FwMarkPrio: 100, FromPrio: 55,
-				TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44}, Tier: 0, Weight: 1,
+				WANRef:     ifmgr.WANRef{ID: "isp", Name: "isp", Iface: tunnelRouteUnderlay},
+				TableID:    tunnelRouteUnderTbl,
+				FwMark:     tunnelRouteUnderMark,
+				FwMarkPrio: 100,
+				FromPrio:   55,
+				TranslationV4: &config.IPv4Translation{
+					Mode: config.TranslationNAPT44,
+				},
+				Tier:   0,
+				Weight: 1,
 			},
 			{
-				WANRef:  ifmgr.WANRef{ID: "other", Name: "other", Iface: tunnelRouteOther},
-				TableID: tunnelRouteOtherTbl, FwMark: 3, FwMarkPrio: 300, FromPrio: 57,
-				TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44}, Tier: 0, Weight: 1,
+				WANRef:     ifmgr.WANRef{ID: "other", Name: "other", Iface: tunnelRouteOther},
+				TableID:    tunnelRouteOtherTbl,
+				FwMark:     3,
+				FwMarkPrio: 300,
+				FromPrio:   57,
+				TranslationV4: &config.IPv4Translation{
+					Mode: config.TranslationNAPT44,
+				},
+				Tier:   0,
+				Weight: 1,
 			},
 		},
 	}
 	if withTunnel {
-		cfg.WANs = append(cfg.WANs, WAN{
-			WANRef:  ifmgr.WANRef{ID: tunnelRouteID, Name: "tunnel", Iface: tunnelRouteIface},
-			TableID: tunnelRouteTunnelTbl, FwMark: 2, FwMarkPrio: 200, FromPrio: 56,
-			TranslationV6: &config.IPv6Translation{Mode: config.TranslationNative}, Tier: 0, Weight: 1,
-			Tunnel: tunnelRouteIntent(),
-		})
+		cfg.WANs = append(
+			cfg.WANs,
+			WAN{
+				WANRef: ifmgr.WANRef{
+					ID:    tunnelRouteID,
+					Name:  "tunnel",
+					Iface: tunnelRouteIface,
+				},
+				TableID:    tunnelRouteTunnelTbl,
+				FwMark:     2,
+				FwMarkPrio: 200,
+				FromPrio:   56,
+				TranslationV6: &config.IPv6Translation{
+					Mode: config.TranslationNative,
+				},
+				Tier:   0,
+				Weight: 1,
+				Tunnel: tunnelRouteIntent(),
+			},
+		)
 	}
 	return cfg
 }
 
 func tunnelRouteIntent() *interfaceintent.Tunnel {
 	return &interfaceintent.Tunnel{
-		Protocol: interfaceintent.TunnelProtocol6in4, Underlay: tunnelRouteUnderlay,
-		Remote: netip.MustParseAddr(tunnelRouteRemote), Local: netip.MustParseAddr(tunnelRouteLocal),
+		Protocol: interfaceintent.TunnelProtocol6in4,
+		Underlay: tunnelRouteUnderlay,
+		Remote:   netip.MustParseAddr(tunnelRouteRemote),
+		Local:    netip.MustParseAddr(tunnelRouteLocal),
 	}
 }

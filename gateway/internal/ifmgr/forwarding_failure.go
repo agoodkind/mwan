@@ -28,6 +28,7 @@ func (d *Daemon) reportedForwardingReadiness() forwardingready.State {
 			return reporter.ForwardingReadiness()
 		}
 	}
+
 	return forwardingready.State{IPv4: false, IPv6: false}
 }
 
@@ -35,5 +36,6 @@ func forwardingFailureImpact(module Module) forwardingready.State {
 	if reporter, ok := module.(forwardingFailureReporter); ok {
 		return reporter.ForwardingFailureImpact()
 	}
+
 	return forwardingready.State{IPv4: true, IPv6: true}
 }

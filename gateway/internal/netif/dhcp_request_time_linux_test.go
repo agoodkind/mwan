@@ -28,7 +28,11 @@ func TestDHCPLeaseDeadlineAfterDelayedACK(t *testing.T) {
 		if os.Geteuid() != 0 {
 			t.Skip("network namespace requires root")
 		}
-		child := exec.Command(os.Args[0], "-test.v", "-test.run=^TestDHCPLeaseDeadlineAfterDelayedACK$")
+		child := exec.Command(
+			os.Args[0],
+			"-test.v",
+			"-test.run=^TestDHCPLeaseDeadlineAfterDelayedACK$",
+		)
 		child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
 		child.Env = append(os.Environ(), childEnvironment+"=1")
 		if output, err := child.CombinedOutput(); err != nil {
@@ -36,10 +40,20 @@ func TestDHCPLeaseDeadlineAfterDelayedACK(t *testing.T) {
 		}
 		return
 	}
-	for _, phase := range []string{"acquire", "restart", "renew", "rebind", "expired", "expired-renew"} {
-		t.Run(phase, func(t *testing.T) {
-			testDHCPLeaseDeadline(t, phase)
-		})
+	for _, phase := range []string{
+		"acquire",
+		"restart",
+		"renew",
+		"rebind",
+		"expired",
+		"expired-renew",
+	} {
+		t.Run(
+			phase,
+			func(t *testing.T) {
+				testDHCPLeaseDeadline(t, phase)
+			},
+		)
 	}
 }
 
@@ -67,7 +81,10 @@ func testDHCPLeaseDeadline(t *testing.T, phase string) {
 	if err := netns.Set(gateway); err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: clientName}, PeerName: serverName}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Veth{
+		LinkAttrs: netlink.LinkAttrs{Name: clientName},
+		PeerName:  serverName,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -117,7 +134,9 @@ func testDHCPLeaseDeadline(t *testing.T, phase string) {
 		t.Fatal(err)
 	}
 	requests := make(chan time.Time, 1)
-	server, err := server4.NewServer(serverName, &net.UDPAddr{IP: net.IPv4zero, Port: 67},
+	server, err := server4.NewServer(
+		serverName,
+		&net.UDPAddr{IP: net.IPv4zero, Port: 67},
 		func(conn net.PacketConn, peer net.Addr, packet *dhcpv4.DHCPv4) {
 			responseType := dhcpv4.MessageTypeOffer
 			responseLease := leaseDuration
@@ -128,8 +147,10 @@ func testDHCPLeaseDeadline(t *testing.T, phase string) {
 				if phase == "rebind" && renewing && !rebinding {
 					return
 				}
-				target := (phase == "acquire" && !renewing) || (phase == "restart" && !renewing) || (phase == "expired" && !renewing) ||
-					(phase == "renew" && renewing && !rebinding) || (phase == "rebind" && rebinding) ||
+				target := (phase == "acquire" && !renewing) || (phase == "restart" && !renewing) ||
+					(phase == "expired" && !renewing) ||
+					(phase == "renew" && renewing && !rebinding) ||
+					(phase == "rebind" && rebinding) ||
 					(phase == "expired-renew" && renewing && !rebinding)
 				if target {
 					if phase == "expired-renew" {
@@ -142,7 +163,8 @@ func testDHCPLeaseDeadline(t *testing.T, phase string) {
 					time.Sleep(responseDelay)
 				}
 			}
-			reply, replyErr := dhcpv4.NewReplyFromRequest(packet,
+			reply, replyErr := dhcpv4.NewReplyFromRequest(
+				packet,
 				dhcpv4.WithMessageType(responseType),
 				dhcpv4.WithYourIP(net.IPv4(192, 0, 2, 8)),
 				dhcpv4.WithOption(dhcpv4.OptServerIdentifier(net.IPv4(192, 0, 2, 1))),
@@ -154,7 +176,8 @@ func testDHCPLeaseDeadline(t *testing.T, phase string) {
 			if replyErr == nil {
 				_, _ = conn.WriteTo(reply.ToBytes(), peer)
 			}
-		})
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,11 +194,16 @@ func testDHCPLeaseDeadline(t *testing.T, phase string) {
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	config := DHCPConfig{Iface: clientName, RequestTimeout: 5 * time.Second, RenewTimeout: 5 * time.Second}
+	config := DHCPConfig{
+		Iface:          clientName,
+		RequestTimeout: 5 * time.Second,
+		RenewTimeout:   5 * time.Second,
+	}
 	if phase == "restart" {
 		config.CachedLease = &LeaseInfo{
-			IP: net.IPv4(192, 0, 2, 8), LinkHardwareAddr: clientLink.HardwareAddr,
-			ExpiresAt: time.Now().Add(time.Minute),
+			IP:               net.IPv4(192, 0, 2, 8),
+			LinkHardwareAddr: clientLink.HardwareAddr,
+			ExpiresAt:        time.Now().Add(time.Minute),
 		}
 	}
 	client := StartDHCPClient(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), config)
@@ -202,9 +230,15 @@ func testDHCPLeaseDeadline(t *testing.T, phase string) {
 				}
 				latestExpiry := received.Add(leaseDuration + 250*time.Millisecond)
 				if lease.RenewAt.After(received.Add(2250*time.Millisecond)) ||
-					lease.RebindAt.After(received.Add(4250*time.Millisecond)) || lease.ExpiresAt.After(latestExpiry) {
-					t.Fatalf("lease deadlines after request: renewal=%s rebinding=%s expiry=%s",
-						lease.RenewAt.Sub(received), lease.RebindAt.Sub(received), lease.ExpiresAt.Sub(received))
+					lease.RebindAt.After(
+						received.Add(4250*time.Millisecond),
+					) || lease.ExpiresAt.After(latestExpiry) {
+					t.Fatalf(
+						"lease deadlines after request: renewal=%s rebinding=%s expiry=%s",
+						lease.RenewAt.Sub(received),
+						lease.RebindAt.Sub(received),
+						lease.ExpiresAt.Sub(received),
+					)
 				}
 				return
 			default:

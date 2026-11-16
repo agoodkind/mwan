@@ -140,7 +140,11 @@ func (module *Module) Init(ctx context.Context, env *ifmgr.Env) (resultErr error
 	module.failures = make(chan error, 1)
 	module.resumeWake = make(chan struct{}, 1)
 	module.policyGeneration.Store(1)
-	module.attempts = observationCache{entries: make(map[observationKey]*list.Element), order: list.List{}, capacity: int(module.cfg.Settings.FlowCapacity)}
+	module.attempts = observationCache{
+		entries:  make(map[observationKey]*list.Element),
+		order:    list.List{},
+		capacity: int(module.cfg.Settings.FlowCapacity),
+	}
 	var err error
 	module.unregisterForwarding, err = env.ForwardingChanges.Register(module.guardForwarding)
 	if err != nil {
@@ -152,15 +156,25 @@ func (module *Module) Init(ctx context.Context, env *ifmgr.Env) (resultErr error
 	}
 	workerContext, cancel := context.WithCancel(ifmgr.WithoutForwardingChange(ctx))
 	module.cancel = cancel
-	module.forwarding, err = offload.NewForwardingEvents(workerContext, int(module.cfg.Settings.SocketBufferBytes))
+	module.forwarding, err = offload.NewForwardingEvents(
+		workerContext,
+		int(module.cfg.Settings.SocketBufferBytes),
+	)
 	if err != nil {
 		return fmt.Errorf("start native forwarding observations: %w", err)
 	}
-	module.rules, err = offload.NewRulesetEvents(workerContext, int(module.cfg.Settings.SocketBufferBytes))
+	module.rules, err = offload.NewRulesetEvents(
+		workerContext,
+		int(module.cfg.Settings.SocketBufferBytes),
+	)
 	if err != nil {
 		return fmt.Errorf("start native policy observations: %w", err)
 	}
-	module.events, err = offload.NewConntrackEvents(workerContext, int(module.cfg.Settings.EventCapacity), int(module.cfg.Settings.SocketBufferBytes))
+	module.events, err = offload.NewConntrackEvents(
+		workerContext,
+		int(module.cfg.Settings.EventCapacity),
+		int(module.cfg.Settings.SocketBufferBytes),
+	)
 	if err != nil {
 		return fmt.Errorf("start native conntrack observations: %w", err)
 	}
@@ -183,7 +197,12 @@ func (module *Module) Init(ctx context.Context, env *ifmgr.Env) (resultErr error
 				default:
 					cause = fmt.Errorf("panic value: %v", value)
 				}
-				module.Log.ErrorContext(workerContext, "native admission loop panicked", "err", cause)
+				module.Log.ErrorContext(
+					workerContext,
+					"native admission loop panicked",
+					"err",
+					cause,
+				)
 				module.recoverWorkerPanic(workerContext, "native admission loop", cause)
 			}
 		}()
@@ -225,7 +244,14 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 			continue
 		}
 		captureContext := context.WithoutCancel(ifmgr.WithoutForwardingChange(ctx))
-		capture, err := openPacketCapture(captureContext, &link.kernel, int(module.cfg.Settings.SocketBufferBytes), module.observations, module.failures, &module.admissionPaused)
+		capture, err := openPacketCapture(
+			captureContext,
+			&link.kernel,
+			int(module.cfg.Settings.SocketBufferBytes),
+			module.observations,
+			module.failures,
+			&module.admissionPaused,
+		)
 		if err != nil {
 			return module.fail(ctx, err)
 		}
@@ -242,7 +268,16 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		return module.fail(ctx, fmt.Errorf("initialize native packet worker: %w", err))
 	}
 	module.refreshPolicy(ctx)
-	log.InfoContext(ctx, "native automatic admission enabled", "pair_capacity", module.cfg.Settings.PairCapacity, "flow_capacity", module.cfg.Settings.FlowCapacity, "observation_capacity", module.cfg.Settings.ObservationCapacity)
+	log.InfoContext(
+		ctx,
+		"native automatic admission enabled",
+		"pair_capacity",
+		module.cfg.Settings.PairCapacity,
+		"flow_capacity",
+		module.cfg.Settings.FlowCapacity,
+		"observation_capacity",
+		module.cfg.Settings.ObservationCapacity,
+	)
 	return nil
 }
 
@@ -256,12 +291,22 @@ func (module *Module) guardForwarding(ctx context.Context) (func(), error) {
 	}()
 	if module.startupFailed && module.runtime != nil {
 		failure := module.stats.Failure
-		module.Log.WarnContext(ctx, "native startup ownership blocks forwarding changes", "err", failure)
+		module.Log.WarnContext(
+			ctx,
+			"native startup ownership blocks forwarding changes",
+			"err",
+			failure,
+		)
 		return nil, fmt.Errorf("native startup retains resources: %w", failure)
 	}
 	if module.ownershipUncertain && module.runtime != nil {
 		failure := module.stats.Failure
-		module.Log.WarnContext(ctx, "uncertain native ownership blocks forwarding changes", "err", failure)
+		module.Log.WarnContext(
+			ctx,
+			"uncertain native ownership blocks forwarding changes",
+			"err",
+			failure,
+		)
 		return nil, fmt.Errorf("native failure retains uncertain resources: %w", failure)
 	}
 	if err := module.guardRuntime(ctx); err != nil {
@@ -330,12 +375,18 @@ func (module *Module) checkEvidence(ctx context.Context) bool {
 	if module.stats.Failure != nil {
 		return false
 	}
-	if err := errors.Join(module.events.Err(), module.forwarding.Err(), module.rules.Err()); err != nil {
+	if err := errors.Join(
+		module.events.Err(),
+		module.forwarding.Err(),
+		module.rules.Err(),
+	); err != nil {
 		_ = module.fail(ctx, err)
 		return false
 	}
 	generation := module.forwarding.Generation()
-	if generation != module.evidenceGeneration || module.cachedEvidence != nil && module.cachedEvidence.epoch != module.currentEvidenceEpoch() {
+	if generation != module.evidenceGeneration ||
+		module.cachedEvidence != nil &&
+			module.cachedEvidence.epoch != module.currentEvidenceEpoch() {
 		module.invalidateEvidence(ctx)
 	}
 	return module.stats.Failure == nil
@@ -353,7 +404,10 @@ func (module *Module) recordFailure(failure error) {
 }
 
 func (module *Module) retireFailed(ctx context.Context) error {
-	module.stats.Failure = errors.Join(module.stats.Failure, module.retireAll(ctx, "native evidence became unavailable"))
+	module.stats.Failure = errors.Join(
+		module.stats.Failure,
+		module.retireAll(ctx, "native evidence became unavailable"),
+	)
 	module.Log.ErrorContext(ctx, "native automatic admission stopped", "err", module.stats.Failure)
 	return module.stats.Failure
 }
@@ -390,7 +444,10 @@ func (module *Module) Shutdown(ctx context.Context, _ *slog.Logger) error {
 		defer module.Unlock()
 		shutdownContext, cancel := context.WithTimeout(ctx, module.cfg.Settings.ShutdownTimeout)
 		defer cancel()
-		module.shutdownErr = errors.Join(module.shutdownErr, module.retireAll(shutdownContext, "shutdown"))
+		module.shutdownErr = errors.Join(
+			module.shutdownErr,
+			module.retireAll(shutdownContext, "shutdown"),
+		)
 		if module.runtime != nil {
 			closeErr := module.runtime.Close(shutdownContext)
 			module.shutdownErr = errors.Join(module.shutdownErr, closeErr)
@@ -408,7 +465,12 @@ func (module *Module) Shutdown(ctx context.Context, _ *slog.Logger) error {
 }
 
 func flowIdentity(flow conntrack.Flow) connectionIdentity {
-	return connectionIdentity{id: flow.ID, zone: flow.Zone, original: flow.TupleOrig, reply: flow.TupleReply}
+	return connectionIdentity{
+		id:       flow.ID,
+		zone:     flow.Zone,
+		original: flow.TupleOrig,
+		reply:    flow.TupleReply,
+	}
 }
 
 func init() { ifmgr.Register(moduleName, New) }

@@ -13,6 +13,7 @@ func (c *Config) NotifyConfig() notify.Config {
 	if c == nil {
 		return notify.Config{RepeatEvery: 0, PerKind: nil}
 	}
+
 	return NotifyCadence(c.Notify, c.IfMgr.Alerts)
 }
 
@@ -29,21 +30,26 @@ func NotifyCadence(section NotifySection, fallback IfMgrAlertsSection) notify.Co
 			repeat = d
 		}
 	}
+
 	source := section.PerKind
 	if len(source) == 0 {
 		source = fallback.PerModule
 	}
+
 	if len(source) == 0 {
 		return notify.Config{RepeatEvery: repeat, PerKind: nil}
 	}
+
 	perKind := make(map[string]time.Duration, len(source))
 	for kind, raw := range source {
 		if raw == "" {
 			continue
 		}
+
 		if d, err := time.ParseDuration(raw); err == nil {
 			perKind[kind] = d
 		}
 	}
+
 	return notify.Config{RepeatEvery: repeat, PerKind: perKind}
 }

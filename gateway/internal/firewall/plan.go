@@ -119,6 +119,7 @@ func ruleScope(parts ...string) string {
 		part = strings.ReplaceAll(part, scopeSeparator, "%2C")
 		escaped = append(escaped, strings.ReplaceAll(part, occurrenceSeparator, "%23"))
 	}
+
 	return strings.Join(escaped, scopeSeparator)
 }
 

@@ -30,13 +30,25 @@ func warnRenamedLinks(
 ) {
 	live, err := netif.ListLinkIdentities(log)
 	if err != nil {
-		log.WarnContext(ctx, "ifmgr: listing links to compare rendered .link names failed", "err", err)
+		log.WarnContext(
+			ctx,
+			"ifmgr: listing links to compare rendered .link names failed",
+			"err",
+			err,
+		)
+
 		return
 	}
+
 	for _, rename := range renamedLinks(changes, connections, live) {
-		log.WarnContext(ctx,
+		log.WarnContext(
+			ctx,
 			"ifmgr: a rendered .link file asks for a name the link does not carry; the new name takes effect at the next reboot",
-			"current", rename.Current, "wanted", rename.Wanted)
+			"current",
+			rename.Current,
+			"wanted",
+			rename.Wanted,
+		)
 	}
 }
 
@@ -53,22 +65,28 @@ func renamedLinks(
 	for _, connection := range connections {
 		byName[connection.Name] = connection
 	}
+
 	var renames []linkRename
+
 	for _, change := range changes {
 		if change.Kind != networkd.FileLink || change.Removed {
 			continue
 		}
+
 		connection, known := byName[change.Interface]
 		if !known || connection.Link == nil {
 			continue
 		}
+
 		for _, link := range live {
 			if !matches(connection.Link.Match, link) || link.Name == connection.Name {
 				continue
 			}
+
 			renames = append(renames, linkRename{Current: link.Name, Wanted: connection.Name})
 		}
 	}
+
 	return renames
 }
 
@@ -79,8 +97,10 @@ func matches(match interfaceintent.Match, link netif.LinkIdentity) bool {
 	if match.Driver != "" {
 		return link.Driver == match.Driver
 	}
+
 	if match.HardwareAddress != "" {
 		return link.HardwareAddress == strings.ToLower(match.HardwareAddress)
 	}
+
 	return false
 }

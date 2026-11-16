@@ -36,6 +36,7 @@ func (c *Coord) SetRollingBack(v bool) {
 func (c *Coord) IsRollingBack() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	return c.rollingBack
 }
 
@@ -56,6 +57,7 @@ func (c *Coord) TakeShutdownAfterRollback() bool {
 	defer c.mu.Unlock()
 	v := c.shutdownAfterRollback
 	c.shutdownAfterRollback = false
+
 	return v
 }
 
@@ -96,7 +98,9 @@ func (a *Limiter) TrySendPartial(now time.Time) bool {
 	if now.Before(a.nextPartialSendAt) {
 		return false
 	}
+
 	a.nextPartialSendAt = now.Add(a.cooldown)
+
 	return true
 }
 
@@ -109,7 +113,9 @@ func (a *Limiter) TrySendTotal(now time.Time) bool {
 	if now.Before(a.nextTotalSendAt) {
 		return false
 	}
+
 	a.nextTotalSendAt = now.Add(a.cooldown)
+
 	return true
 }
 
@@ -131,6 +137,7 @@ func (a *Limiter) PartialCooldownRemaining(now time.Time) time.Duration {
 	if now.Before(a.nextPartialSendAt) {
 		return a.nextPartialSendAt.Sub(now)
 	}
+
 	return 0
 }
 
@@ -142,5 +149,6 @@ func (a *Limiter) TotalCooldownRemaining(now time.Time) time.Duration {
 	if now.Before(a.nextTotalSendAt) {
 		return a.nextTotalSendAt.Sub(now)
 	}
+
 	return 0
 }

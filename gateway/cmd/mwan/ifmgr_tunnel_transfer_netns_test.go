@@ -22,7 +22,16 @@ func tunnelRuntimePayload(size int) []byte {
 	return payload
 }
 
-func tunnelRuntimeTransfer(t *testing.T, topology tunnelRuntimeTopology, destinationNamespace, sourceNamespace netns.NsHandle, network, destination, source string, size int) (netip.Addr, error) {
+func tunnelRuntimeTransfer(
+	t *testing.T,
+	topology tunnelRuntimeTopology,
+	destinationNamespace netns.NsHandle,
+	sourceNamespace netns.NsHandle,
+	network string,
+	destination string,
+	source string,
+	size int,
+) (netip.Addr, error) {
 	t.Helper()
 	defer setRuntimeNamespace(t, topology.gateway)
 	setRuntimeNamespace(t, destinationNamespace)
@@ -89,20 +98,53 @@ func tunnelRuntimeTransfer(t *testing.T, topology tunnelRuntimeTopology, destina
 	return result.peer, result.err
 }
 
-func waitTunnelRuntimeTransfer(t *testing.T, daemon *runtimeDaemon, topology tunnelRuntimeTopology, destinationNamespace, sourceNamespace netns.NsHandle, network, destination, source string, window time.Duration) netip.Addr {
+func waitTunnelRuntimeTransfer(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	topology tunnelRuntimeTopology,
+	destinationNamespace netns.NsHandle,
+	sourceNamespace netns.NsHandle,
+	network string,
+	destination string,
+	source string,
+	window time.Duration,
+) netip.Addr {
 	t.Helper()
 	deadline := time.Now().Add(window)
 	var lastErr error
 	for time.Now().Before(deadline) {
-		peer, err := tunnelRuntimeTransfer(t, topology, destinationNamespace, sourceNamespace, network, destination, source, tunnelRuntimeTransferSize)
+		peer, err := tunnelRuntimeTransfer(
+			t,
+			topology,
+			destinationNamespace,
+			sourceNamespace,
+			network,
+			destination,
+			source,
+			tunnelRuntimeTransferSize,
+		)
 		if err == nil {
 			return peer
 		}
 		lastErr = err
-		t.Logf("%s transfer to %s from %s failed and repeats: %v", network, destination, source, err)
+		t.Logf(
+			"%s transfer to %s from %s failed and repeats: %v",
+			network,
+			destination,
+			source,
+			err,
+		)
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(200 * time.Millisecond)
 	}
-	t.Fatalf("no %s transfer to %s from %s within %s: %v; daemon=%s", network, destination, source, window, lastErr, tunnelRuntimeLog(t, daemon))
+	t.Fatalf(
+		"no %s transfer to %s from %s within %s: %v; daemon=%s",
+		network,
+		destination,
+		source,
+		window,
+		lastErr,
+		tunnelRuntimeLog(t, daemon),
+	)
 	return netip.Addr{}
 }

@@ -22,9 +22,11 @@ func TestAddrSpecFamilyInferred(t *testing.T) {
 	if (AddrSpec{CIDR: "10.0.0.1/24"}).family() != "inet" {
 		t.Fatal("v4 should be inet")
 	}
+
 	if (AddrSpec{CIDR: "::1/128"}).family() != "inet6" {
 		t.Fatal("v6 should be inet6")
 	}
+
 	if (AddrSpec{CIDR: "::1", Family: "inet"}).family() != "inet" {
 		t.Fatal("explicit override should win")
 	}
@@ -34,9 +36,11 @@ func TestFamilyToNetlink(t *testing.T) {
 	if got := familyToNetlink("inet"); got == 0 {
 		t.Fatal("inet should map to AF_INET, not 0")
 	}
+
 	if got := familyToNetlink("inet6"); got == 0 {
 		t.Fatal("inet6 should map to AF_INET6, not 0")
 	}
+
 	if familyToNetlink("inet") == familyToNetlink("inet6") {
 		t.Fatal("inet and inet6 must map to distinct constants")
 	}
@@ -98,42 +102,59 @@ func TestBuildTableRoute(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			route, err := buildTableRoute(slog.Default(), tc.want, link)
-			if err != nil {
-				t.Fatalf("buildTableRoute: %v", err)
-			}
-			if route.LinkIndex != attrs.Index {
-				t.Fatalf("link index got %d, want %d", route.LinkIndex, attrs.Index)
-			}
-			if route.Table != tc.want.TableID {
-				t.Fatalf("table got %d, want %d", route.Table, tc.want.TableID)
-			}
-			if route.Family != familyToNetlink(tc.want.Family) {
-				t.Fatalf("family got %d, want %d", route.Family, familyToNetlink(tc.want.Family))
-			}
-			if route.Priority != tc.want.Metric {
-				t.Fatalf("metric got %d, want %d", route.Priority, tc.want.Metric)
-			}
-			if int(route.Protocol) != tc.wantProto {
-				t.Fatalf("protocol got %d, want %d", route.Protocol, tc.wantProto)
-			}
-			if route.Dst == nil || route.Dst.String() != tc.wantDest {
-				t.Fatalf("dest got %v, want %s", route.Dst, tc.wantDest)
-			}
-			if tc.wantGw == "" {
-				if route.Gw != nil {
-					t.Fatalf("gateway got %s, want nil", route.Gw)
+		t.Run(
+			tc.name,
+			func(t *testing.T) {
+				route, err := buildTableRoute(slog.Default(), tc.want, link)
+				if err != nil {
+					t.Fatalf("buildTableRoute: %v", err)
 				}
-				if route.Scope != tc.wantScope {
-					t.Fatalf("scope got %d, want %d", route.Scope, tc.wantScope)
+
+				if route.LinkIndex != attrs.Index {
+					t.Fatalf("link index got %d, want %d", route.LinkIndex, attrs.Index)
 				}
-				return
-			}
-			if !route.Gw.Equal(net.ParseIP(tc.wantGw)) {
-				t.Fatalf("gateway got %s, want %s", route.Gw, tc.wantGw)
-			}
-		})
+
+				if route.Table != tc.want.TableID {
+					t.Fatalf("table got %d, want %d", route.Table, tc.want.TableID)
+				}
+
+				if route.Family != familyToNetlink(tc.want.Family) {
+					t.Fatalf(
+						"family got %d, want %d",
+						route.Family,
+						familyToNetlink(tc.want.Family),
+					)
+				}
+
+				if route.Priority != tc.want.Metric {
+					t.Fatalf("metric got %d, want %d", route.Priority, tc.want.Metric)
+				}
+
+				if int(route.Protocol) != tc.wantProto {
+					t.Fatalf("protocol got %d, want %d", route.Protocol, tc.wantProto)
+				}
+
+				if route.Dst == nil || route.Dst.String() != tc.wantDest {
+					t.Fatalf("dest got %v, want %s", route.Dst, tc.wantDest)
+				}
+
+				if tc.wantGw == "" {
+					if route.Gw != nil {
+						t.Fatalf("gateway got %s, want nil", route.Gw)
+					}
+
+					if route.Scope != tc.wantScope {
+						t.Fatalf("scope got %d, want %d", route.Scope, tc.wantScope)
+					}
+
+					return
+				}
+
+				if !route.Gw.Equal(net.ParseIP(tc.wantGw)) {
+					t.Fatalf("gateway got %s, want %s", route.Gw, tc.wantGw)
+				}
+			},
+		)
 	}
 }
 
@@ -147,15 +168,19 @@ func TestIsLinkNotFoundMatchesAMissingLink(t *testing.T) {
 	if err == nil {
 		t.Fatal("IfaceDefaultGateway on a missing link returned nil error")
 	}
+
 	if !IsLinkNotFound(err) {
 		t.Fatalf("IsLinkNotFound(%v) = false, want true", err)
 	}
+
 	if IsLinkNotFound(fmt.Errorf("list rules: %w", syscall.EBUSY)) {
 		t.Fatal("IsLinkNotFound matched a busy netlink read")
 	}
+
 	if IsLinkNotFound(errors.New("Link not found")) {
 		t.Fatal("IsLinkNotFound matched on error text alone")
 	}
+
 	if IsLinkNotFound(nil) {
 		t.Fatal("IsLinkNotFound matched a nil error")
 	}
@@ -168,10 +193,12 @@ func TestRouteToCurrentPreservesDestination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseCIDR returned error: %v", err)
 	}
+
 	current, err := routeToCurrent(slog.Default(), netlink.Route{Dst: destination})
 	if err != nil {
 		t.Fatalf("routeToCurrent returned error: %v", err)
 	}
+
 	if current.Dest != "2001:db8:1234::/48" {
 		t.Fatalf("routeToCurrent destination = %q, want %q", current.Dest, "2001:db8:1234::/48")
 	}

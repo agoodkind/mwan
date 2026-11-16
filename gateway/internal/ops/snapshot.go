@@ -78,25 +78,46 @@ const pveshRunner = "pvesh"
 // unit tests and non-systemd hosts working rather than describing a
 // supported deployment.
 func runDetached(
-	ctx context.Context, binary string, args ...string,
+	ctx context.Context,
+	binary string,
+	args ...string,
 ) ([]byte, error) {
 	if _, err := exec.LookPath(scopeRunner); err != nil {
-		slog.WarnContext(ctx,
+		slog.WarnContext(
+			ctx,
 			"ops: systemd-run not found, using this control group",
-			"binary", binary, "args", args, "err", err)
+			"binary",
+			binary,
+			"args",
+			args,
+			"err",
+			err,
+		)
+
 		return runHypervisor(ctx, binary, TimeoutQmLockHolding, args...)
 	}
-	slog.DebugContext(ctx, "ops: runDetached",
-		"binary", binary, "args", args, "wait", TimeoutQmLockHolding)
+
+	slog.DebugContext(
+		ctx,
+		"ops: runDetached",
+		"binary",
+		binary,
+		"args",
+		args,
+		"wait",
+		TimeoutQmLockHolding,
+	)
 	cctx, cancel := context.WithTimeout(ctx, TimeoutQmLockHolding)
 	defer cancel()
 	scopeArgs := append(
-		[]string{"--scope", "--quiet", "--collect", binary}, args...,
+		[]string{"--scope", "--quiet", "--collect", binary},
+		args...,
 	)
 	out, err := exec.CommandContext(cctx, scopeRunner, scopeArgs...).CombinedOutput()
 	if err != nil {
 		return out, fmt.Errorf("systemd-run scope %s %s: %w", binary, args[0], err)
 	}
+
 	return out, nil
 }
 
@@ -108,15 +129,31 @@ func (r *RealOps) runGuestDetached(ctx context.Context, args []string) ([]byte, 
 func (r *RealOps) VMRollback(ctx context.Context, vmid, snap string) error {
 	out, err := r.runGuestDetached(ctx, r.guest.rollbackArgs(vmid, snap))
 	if err != nil {
-		r.log.ErrorContext(ctx, "guest rollback failed",
-			"binary", r.guest.binary(),
-			"vmid", vmid, "snapshot", snap, "err", err,
-			"output", strings.TrimSpace(string(out)))
+		r.log.ErrorContext(
+			ctx,
+			"guest rollback failed",
+			"binary",
+			r.guest.binary(),
+			"vmid",
+			vmid,
+			"snapshot",
+			snap,
+			"err",
+			err,
+			"output",
+			strings.TrimSpace(string(out)),
+		)
+
 		return fmt.Errorf(
 			"%s rollback %s %s: %w: %s",
-			r.guest.binary(), vmid, snap, err, strings.TrimSpace(string(out)),
+			r.guest.binary(),
+			vmid,
+			snap,
+			err,
+			strings.TrimSpace(string(out)),
 		)
 	}
+
 	return nil
 }
 
@@ -125,15 +162,31 @@ func (r *RealOps) VMRollback(ctx context.Context, vmid, snap string) error {
 func (r *RealOps) VMSnapshot(ctx context.Context, vmid, snapName string) error {
 	out, err := r.runGuestDetached(ctx, r.guest.snapshotArgs(vmid, snapName))
 	if err != nil {
-		r.log.ErrorContext(ctx, "guest snapshot failed",
-			"binary", r.guest.binary(),
-			"vmid", vmid, "snapshot", snapName, "err", err,
-			"output", strings.TrimSpace(string(out)))
+		r.log.ErrorContext(
+			ctx,
+			"guest snapshot failed",
+			"binary",
+			r.guest.binary(),
+			"vmid",
+			vmid,
+			"snapshot",
+			snapName,
+			"err",
+			err,
+			"output",
+			strings.TrimSpace(string(out)),
+		)
+
 		return fmt.Errorf(
 			"%s snapshot %s %s: %w: %s",
-			r.guest.binary(), vmid, snapName, err, strings.TrimSpace(string(out)),
+			r.guest.binary(),
+			vmid,
+			snapName,
+			err,
+			strings.TrimSpace(string(out)),
 		)
 	}
+
 	return nil
 }
 
@@ -144,15 +197,31 @@ func (r *RealOps) VMSnapshot(ctx context.Context, vmid, snapName string) error {
 func (r *RealOps) VMDelSnapshot(ctx context.Context, vmid, snapName string) error {
 	out, err := r.runGuestDetached(ctx, r.guest.deleteSnapshotArgs(vmid, snapName, false))
 	if err != nil {
-		r.log.ErrorContext(ctx, "guest delsnapshot failed",
-			"binary", r.guest.binary(),
-			"vmid", vmid, "snapshot", snapName, "err", err,
-			"output", strings.TrimSpace(string(out)))
+		r.log.ErrorContext(
+			ctx,
+			"guest delsnapshot failed",
+			"binary",
+			r.guest.binary(),
+			"vmid",
+			vmid,
+			"snapshot",
+			snapName,
+			"err",
+			err,
+			"output",
+			strings.TrimSpace(string(out)),
+		)
+
 		return fmt.Errorf(
 			"%s delsnapshot %s %s: %w: %s",
-			r.guest.binary(), vmid, snapName, err, strings.TrimSpace(string(out)),
+			r.guest.binary(),
+			vmid,
+			snapName,
+			err,
+			strings.TrimSpace(string(out)),
 		)
 	}
+
 	return nil
 }
 
@@ -171,19 +240,37 @@ func (r *RealOps) VMDelSnapshot(ctx context.Context, vmid, snapName string) erro
 // plain delete already failed with the storage layer reporting that the
 // disk snapshot is gone.
 func (r *RealOps) VMDelSnapshotForce(
-	ctx context.Context, vmid, snapName string,
+	ctx context.Context,
+	vmid string,
+	snapName string,
 ) error {
 	out, err := r.runGuestDetached(ctx, r.guest.deleteSnapshotArgs(vmid, snapName, true))
 	if err != nil {
-		r.log.ErrorContext(ctx, "guest delsnapshot --force failed",
-			"binary", r.guest.binary(),
-			"vmid", vmid, "snapshot", snapName, "err", err,
-			"output", strings.TrimSpace(string(out)))
+		r.log.ErrorContext(
+			ctx,
+			"guest delsnapshot --force failed",
+			"binary",
+			r.guest.binary(),
+			"vmid",
+			vmid,
+			"snapshot",
+			snapName,
+			"err",
+			err,
+			"output",
+			strings.TrimSpace(string(out)),
+		)
+
 		return fmt.Errorf(
 			"%s delsnapshot --force %s %s: %w: %s",
-			r.guest.binary(), vmid, snapName, err, strings.TrimSpace(string(out)),
+			r.guest.binary(),
+			vmid,
+			snapName,
+			err,
+			strings.TrimSpace(string(out)),
 		)
 	}
+
 	return nil
 }
 
@@ -192,20 +279,30 @@ func (r *RealOps) VMDelSnapshotForce(
 func (r *RealOps) VMLock(ctx context.Context, vmid string) (string, error) {
 	out, err := r.runGuest(ctx, timeoutQmConfig, r.guest.configArgs(vmid)...)
 	if err != nil {
-		r.log.ErrorContext(ctx, "guest config failed",
-			"binary", r.guest.binary(),
-			"vmid", vmid, "err", err,
-			"output", strings.TrimSpace(string(out)))
+		r.log.ErrorContext(
+			ctx,
+			"guest config failed",
+			"binary",
+			r.guest.binary(),
+			"vmid",
+			vmid,
+			"err",
+			err,
+			"output",
+			strings.TrimSpace(string(out)),
+		)
 		// runQm already names the command and its arguments, so this adds
 		// only the output rather than repeating the prefix.
 		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
 	}
+
 	for line := range strings.SplitSeq(string(out), "\n") {
 		value, found := strings.CutPrefix(line, "lock:")
 		if found {
 			return strings.TrimSpace(value), nil
 		}
 	}
+
 	return "", nil
 }
 
@@ -214,15 +311,25 @@ func (r *RealOps) VMLock(ctx context.Context, vmid string) (string, error) {
 func (r *RealOps) VMUnlock(ctx context.Context, vmid string) error {
 	out, err := r.runGuest(ctx, timeoutQmUnlock, r.guest.unlockArgs(vmid)...)
 	if err != nil {
-		r.log.ErrorContext(ctx, "guest unlock failed",
-			"binary", r.guest.binary(),
-			"vmid", vmid, "err", err,
-			"output", strings.TrimSpace(string(out)))
+		r.log.ErrorContext(
+			ctx,
+			"guest unlock failed",
+			"binary",
+			r.guest.binary(),
+			"vmid",
+			vmid,
+			"err",
+			err,
+			"output",
+			strings.TrimSpace(string(out)),
+		)
 		// runQm already names the command and its arguments, so this adds
 		// only the output rather than repeating the prefix.
 		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
 	}
+
 	r.log.InfoContext(ctx, "cleared guest lock", "vmid", vmid)
+
 	return nil
 }
 
@@ -240,39 +347,52 @@ type pveTask struct {
 // The task list defaults to finished tasks only, so the query asks for
 // active ones explicitly.
 func (r *RealOps) VMHasRunningTask(
-	ctx context.Context, vmid string,
+	ctx context.Context,
+	vmid string,
 ) (bool, error) {
 	if r.pveNode == "" {
 		err := errors.New("ops: pve node is not configured")
 		r.log.ErrorContext(ctx, "task liveness check unavailable", "err", err)
+
 		return false, err
 	}
-	out, err := runPvesh(ctx,
-		"get", nodeTasksPath(r.pveNode),
-		"--vmid", vmid,
-		"--source", "active",
-		"--limit", strconv.Itoa(pveTaskListLimit),
-		"--output-format", "json",
+
+	out, err := runPvesh(
+		ctx,
+		"get",
+		nodeTasksPath(r.pveNode),
+		"--vmid",
+		vmid,
+		"--source",
+		"active",
+		"--limit",
+		strconv.Itoa(pveTaskListLimit),
+		"--output-format",
+		"json",
 	)
 	if err != nil {
-		r.log.ErrorContext(ctx, "pvesh task list failed",
-			"vmid", vmid, "err", err)
+		r.log.ErrorContext(ctx, "pvesh task list failed", "vmid", vmid, "err", err)
+
 		return false, err
 	}
+
 	var tasks []pveTask
 	if err := json.Unmarshal(out, &tasks); err != nil {
-		r.log.ErrorContext(ctx, "pvesh task list decode failed",
-			"vmid", vmid, "err", err)
+		r.log.ErrorContext(ctx, "pvesh task list decode failed", "vmid", vmid, "err", err)
+
 		return false, fmt.Errorf("pvesh tasks %s decode: %w", vmid, err)
 	}
+
 	running := 0
+
 	for _, task := range tasks {
 		if task.EndTime == nil {
 			running++
 		}
 	}
-	r.log.InfoContext(ctx, "read guest task liveness",
-		"vmid", vmid, "running_tasks", running)
+
+	r.log.InfoContext(ctx, "read guest task liveness", "vmid", vmid, "running_tasks", running)
+
 	return running > 0, nil
 }
 
@@ -292,13 +412,19 @@ func runPvesh(ctx context.Context, args ...string) ([]byte, error) {
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		slog.ErrorContext(ctx, "ops: pvesh failed",
-			"args", args, "err", err,
-			"stderr", strings.TrimSpace(stderr.String()))
-		return nil, fmt.Errorf(
-			"pvesh %s: %w: %s",
-			args[0], err, strings.TrimSpace(stderr.String()),
+		slog.ErrorContext(
+			ctx,
+			"ops: pvesh failed",
+			"args",
+			args,
+			"err",
+			err,
+			"stderr",
+			strings.TrimSpace(stderr.String()),
 		)
+
+		return nil, fmt.Errorf("pvesh %s: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
 	}
+
 	return out, nil
 }

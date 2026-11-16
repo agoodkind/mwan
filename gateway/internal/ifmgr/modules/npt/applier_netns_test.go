@@ -29,8 +29,16 @@ func TestNPTCreatesAndRepairsOwnNATChains(t *testing.T) {
 		}
 		table := &nftables.Table{Family: nftables.TableFamilyIPv6, Name: natTableName}
 		for _, wanted := range []*nftables.Chain{
-			{Name: preroutingChain, Hooknum: nftables.ChainHookPrerouting, Priority: nftables.ChainPriorityNATDest},
-			{Name: postroutingChain, Hooknum: nftables.ChainHookPostrouting, Priority: nftables.ChainPriorityNATSource},
+			{
+				Name:     preroutingChain,
+				Hooknum:  nftables.ChainHookPrerouting,
+				Priority: nftables.ChainPriorityNATDest,
+			},
+			{
+				Name:     postroutingChain,
+				Hooknum:  nftables.ChainHookPostrouting,
+				Priority: nftables.ChainPriorityNATSource,
+			},
 		} {
 			got, err := conn.ListChain(table, wanted.Name)
 			if err != nil {
@@ -51,7 +59,10 @@ func TestNPTCreatesAndRepairsOwnNATChains(t *testing.T) {
 
 func TestNPTRejectsIncompatibleBaseChainWithoutReplacingRules(t *testing.T) {
 	inIPv4Namespace(t)
-	loadIPv4Rules(t, "table ip6 nat {\nchain prerouting { type nat hook prerouting priority 99; policy accept; }\nchain postrouting { type nat hook postrouting priority srcnat; policy accept; }\n}")
+	loadIPv4Rules(
+		t,
+		"table ip6 nat {\nchain prerouting { type nat hook prerouting priority 99; policy accept; }\nchain postrouting { type nat hook postrouting priority srcnat; policy accept; }\n}",
+	)
 	before := runNFT(t, "list", "table", "ip6", "nat")
 	err := newNFTApplier().Apply(context.Background(), slog.Default(), desiredForTest())
 	if err == nil || !strings.Contains(err.Error(), "prerouting") {
@@ -68,20 +79,33 @@ func TestRemoveReverseDNATKeepsOtherRulesInKernel(t *testing.T) {
 	forward := netip.MustParseAddr("2600:1700:2f71:c85::20")
 	other := netip.MustParseAddr("2001:db8:1:20::30")
 	var desired desiredRules
-	desired.add(buildWANRules(wanRuleInput{
-		Iface: "enatt0.3242", External: netip.MustParsePrefix("2600:1700:2f71:c80::/60"),
-		OpnsenseEdge: netip.MustParseAddr("3d06:bad:b01:201::1"), MwanbrEdge: netip.MustParseAddr("3d06:bad:b01:200::1"),
-		ExtraDNAT: []netip.Addr{local, forward},
-	}))
-	desired.add(buildWANRules(wanRuleInput{
-		Iface: "webpass0", External: netip.MustParsePrefix("2001:db8:1:20::/60"),
-		OpnsenseEdge: netip.MustParseAddr("3d06:bad:b01:201::1"), MwanbrEdge: netip.MustParseAddr("3d06:bad:b01:200::1"),
-		ExtraDNAT: []netip.Addr{other},
-	}))
+	desired.add(
+		buildWANRules(wanRuleInput{
+			Iface:        "enatt0.3242",
+			External:     netip.MustParsePrefix("2600:1700:2f71:c80::/60"),
+			OpnsenseEdge: netip.MustParseAddr("3d06:bad:b01:201::1"),
+			MwanbrEdge:   netip.MustParseAddr("3d06:bad:b01:200::1"),
+			ExtraDNAT:    []netip.Addr{local, forward},
+		}),
+	)
+	desired.add(
+		buildWANRules(wanRuleInput{
+			Iface:        "webpass0",
+			External:     netip.MustParsePrefix("2001:db8:1:20::/60"),
+			OpnsenseEdge: netip.MustParseAddr("3d06:bad:b01:201::1"),
+			MwanbrEdge:   netip.MustParseAddr("3d06:bad:b01:200::1"),
+			ExtraDNAT:    []netip.Addr{other},
+		}),
+	)
 	if err := newNFTApplier().Apply(context.Background(), slog.Default(), desired); err != nil {
 		t.Fatal(err)
 	}
-	if err := removeReverseDNAT(context.Background(), slog.Default(), "enatt0.3242", []netip.Addr{local}); err != nil {
+	if err := removeReverseDNAT(
+		context.Background(),
+		slog.Default(),
+		"enatt0.3242",
+		[]netip.Addr{local},
+	); err != nil {
 		t.Fatal(err)
 	}
 	conn, err := nftables.New()

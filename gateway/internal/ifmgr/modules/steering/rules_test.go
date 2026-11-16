@@ -15,7 +15,12 @@ func membersForTest() []Member {
 	return []Member{
 		{WANRef: ifmgr.WANRef{Name: "att", Iface: "enatt0.3242"}, Mark: 1, Tier: 0, Weight: 1},
 		{WANRef: ifmgr.WANRef{Name: "webpass", Iface: "enwebpass0"}, Mark: 2, Tier: 0, Weight: 1},
-		{WANRef: ifmgr.WANRef{Name: "monkeybrains", Iface: "enmbrains0"}, Mark: 3, Tier: 1, Weight: 1},
+		{
+			WANRef: ifmgr.WANRef{Name: "monkeybrains", Iface: "enmbrains0"},
+			Mark:   3,
+			Tier:   1,
+			Weight: 1,
+		},
 	}
 }
 
@@ -35,7 +40,8 @@ func TestBalancerForSpreadsTheActiveTier(t *testing.T) {
 			name:    "two equal providers in the first tier",
 			members: membersForTest(),
 			health: netif.HealthStates{
-				"att": netif.HealthStateHealthy, "webpass": netif.HealthStateHealthy,
+				"att":          netif.HealthStateHealthy,
+				"webpass":      netif.HealthStateHealthy,
 				"monkeybrains": netif.HealthStateHealthy,
 			},
 			want:   balancer{Mark: 0, Modulus: 2, Slots: []uint32{1, 2}},
@@ -46,11 +52,22 @@ func TestBalancerForSpreadsTheActiveTier(t *testing.T) {
 			// provider's mark, assigned in ascending mark order.
 			name: "unequal weights take proportional slots",
 			members: []Member{
-				{WANRef: ifmgr.WANRef{Name: "att", Iface: "enatt0.3242"}, Mark: 1, Tier: 0, Weight: 2},
-				{WANRef: ifmgr.WANRef{Name: "webpass", Iface: "enwebpass0"}, Mark: 2, Tier: 0, Weight: 1},
+				{
+					WANRef: ifmgr.WANRef{Name: "att", Iface: "enatt0.3242"},
+					Mark:   1,
+					Tier:   0,
+					Weight: 2,
+				},
+				{
+					WANRef: ifmgr.WANRef{Name: "webpass", Iface: "enwebpass0"},
+					Mark:   2,
+					Tier:   0,
+					Weight: 1,
+				},
 			},
 			health: netif.HealthStates{
-				"att": netif.HealthStateHealthy, "webpass": netif.HealthStateHealthy,
+				"att":     netif.HealthStateHealthy,
+				"webpass": netif.HealthStateHealthy,
 			},
 			want:   balancer{Mark: 0, Modulus: 3, Slots: []uint32{1, 1, 2}},
 			wantOK: true,
@@ -61,7 +78,8 @@ func TestBalancerForSpreadsTheActiveTier(t *testing.T) {
 			name:    "a lone healthy provider in the first tier",
 			members: membersForTest(),
 			health: netif.HealthStates{
-				"att": netif.HealthStateHealthy, "webpass": netif.HealthStateUnhealthy,
+				"att":          netif.HealthStateHealthy,
+				"webpass":      netif.HealthStateUnhealthy,
 				"monkeybrains": netif.HealthStateHealthy,
 			},
 			want:   balancer{Mark: 1, Modulus: 0, Slots: nil},
@@ -74,7 +92,8 @@ func TestBalancerForSpreadsTheActiveTier(t *testing.T) {
 			name:    "the fallback tier's lone provider",
 			members: membersForTest(),
 			health: netif.HealthStates{
-				"att": netif.HealthStateUnhealthy, "webpass": netif.HealthStateUnhealthy,
+				"att":          netif.HealthStateUnhealthy,
+				"webpass":      netif.HealthStateUnhealthy,
 				"monkeybrains": netif.HealthStateHealthy,
 			},
 			want:   balancer{Mark: 3, Modulus: 0, Slots: nil},
@@ -86,7 +105,8 @@ func TestBalancerForSpreadsTheActiveTier(t *testing.T) {
 			name:    "no healthy provider anywhere",
 			members: membersForTest(),
 			health: netif.HealthStates{
-				"att": netif.HealthStateUnhealthy, "webpass": netif.HealthStateUnhealthy,
+				"att":          netif.HealthStateUnhealthy,
+				"webpass":      netif.HealthStateUnhealthy,
 				"monkeybrains": netif.HealthStateUnhealthy,
 			},
 			want:   balancer{Mark: 0, Modulus: 0, Slots: nil},
@@ -103,20 +123,25 @@ func TestBalancerForSpreadsTheActiveTier(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			tc.name,
+			func(t *testing.T) {
+				t.Parallel()
 
-			got, ok := balancerFor(tc.members, tc.health)
-			if ok != tc.wantOK {
-				t.Fatalf("ok = %v, want %v", ok, tc.wantOK)
-			}
-			if !ok {
-				return
-			}
-			if !reflect.DeepEqual(got, tc.want) {
-				t.Fatalf("balancer mismatch\ngot:  %#v\nwant: %#v", got, tc.want)
-			}
-		})
+				got, ok := balancerFor(tc.members, tc.health)
+				if ok != tc.wantOK {
+					t.Fatalf("ok = %v, want %v", ok, tc.wantOK)
+				}
+
+				if !ok {
+					return
+				}
+
+				if !reflect.DeepEqual(got, tc.want) {
+					t.Fatalf("balancer mismatch\ngot:  %#v\nwant: %#v", got, tc.want)
+				}
+			},
+		)
 	}
 }
 

@@ -43,8 +43,11 @@ func runMonitorRALifetimeChild(t *testing.T) {
 	const clientName = "ra-life-client"
 	const routerName = "ra-life-router"
 	clientVeth := &netlink.Veth{
-		LinkAttrs: netlink.LinkAttrs{Name: clientName, HardwareAddr: net.HardwareAddr{0x02, 0, 0x5e, 0, 0x05, 0x23}},
-		PeerName:  routerName,
+		LinkAttrs: netlink.LinkAttrs{
+			Name:         clientName,
+			HardwareAddr: net.HardwareAddr{0x02, 0, 0x5e, 0, 0x05, 0x23},
+		},
+		PeerName: routerName,
 	}
 	if err := netlink.LinkAdd(clientVeth); err != nil {
 		t.Fatal(err)
@@ -58,8 +61,11 @@ func runMonitorRALifetimeChild(t *testing.T) {
 		t.Fatal(err)
 	}
 	for key, value := range map[string]string{
-		"accept_ra": "2", "autoconf": "1", "use_tempaddr": "0",
-		"addr_gen_mode": "0", "dad_transmits": "1",
+		"accept_ra":     "2",
+		"autoconf":      "1",
+		"use_tempaddr":  "0",
+		"addr_gen_mode": "0",
+		"dad_transmits": "1",
 	} {
 		path := fmt.Sprintf("/proc/sys/net/ipv6/conf/%s/%s", clientName, key)
 		if err := os.WriteFile(path, []byte(value), 0o644); err != nil {
@@ -79,9 +85,13 @@ func runMonitorRALifetimeChild(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: clientName})
-	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
-		return snapshot.IfIndex == client.Attrs().Index
-	})
+	waitObservedSnapshot(
+		t,
+		monitor.Events,
+		func(snapshot *Snapshot) bool {
+			return snapshot.IfIndex == client.Attrs().Index
+		},
+	)
 	routerInterface, err := net.InterfaceByName(routerName)
 	if err != nil {
 		t.Fatal(err)
@@ -93,11 +103,16 @@ func runMonitorRALifetimeChild(t *testing.T) {
 	defer func() { _ = conn.Close() }()
 	ra := &ndp.RouterAdvertisement{
 		CurrentHopLimit: 64,
-		Options: []ndp.Option{&ndp.PrefixInformation{
-			PrefixLength: 64, Prefix: netip.MustParseAddr("2001:db8:523::"),
-			OnLink: true, AutonomousAddressConfiguration: true,
-			PreferredLifetime: 4 * time.Second, ValidLifetime: 10 * time.Second,
-		}},
+		Options: []ndp.Option{
+			&ndp.PrefixInformation{
+				PrefixLength:                   64,
+				Prefix:                         netip.MustParseAddr("2001:db8:523::"),
+				OnLink:                         true,
+				AutonomousAddressConfiguration: true,
+				PreferredLifetime:              4 * time.Second,
+				ValidLifetime:                  10 * time.Second,
+			},
+		},
 	}
 	if err := conn.WriteTo(ra, nil, netip.MustParseAddr("ff02::1")); err != nil {
 		t.Fatal(err)
@@ -170,8 +185,14 @@ func runMonitorRALifetimeChild(t *testing.T) {
 				}
 			}
 		case <-deadline.C:
-			t.Fatalf("RA lifecycle timed out: tentative_snapshot=%t usable=%t deprecated=%t deleted=%t cidr=%s",
-				checkedTentative, sawUsable, sawDeprecated, sawDeleted, addressCIDR)
+			t.Fatalf(
+				"RA lifecycle timed out: tentative_snapshot=%t usable=%t deprecated=%t deleted=%t cidr=%s",
+				checkedTentative,
+				sawUsable,
+				sawDeprecated,
+				sawDeleted,
+				addressCIDR,
+			)
 		}
 		if sawUsable && !checkedUsable && !sawDeprecated {
 			snapshot := raFreshSnapshot(t, logger, clientName)
@@ -188,7 +209,13 @@ func runMonitorRALifetimeChild(t *testing.T) {
 		}
 	}
 	if !checkedTentative || !sawUsable || !checkedUsable || !sawDeprecated {
-		t.Fatalf("incomplete RA lifecycle: tentative_snapshot=%t usable=%t usable_snapshot=%t deprecated=%t", checkedTentative, sawUsable, checkedUsable, sawDeprecated)
+		t.Fatalf(
+			"incomplete RA lifecycle: tentative_snapshot=%t usable=%t usable_snapshot=%t deprecated=%t",
+			checkedTentative,
+			sawUsable,
+			checkedUsable,
+			sawDeprecated,
+		)
 	}
 	if _, exists := raKernelAddress(t, client, addressCIDR); exists {
 		t.Fatal("expired RA address remains in kernel")
@@ -238,9 +265,13 @@ func raFreshSnapshot(t *testing.T, logger *slog.Logger, iface string) *Snapshot 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: iface})
-	return waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
-		return snapshot.IfIndex != 0
-	})
+	return waitObservedSnapshot(
+		t,
+		monitor.Events,
+		func(snapshot *Snapshot) bool {
+			return snapshot.IfIndex != 0
+		},
+	)
 }
 
 func raSnapshotAddress(t *testing.T, snapshot *Snapshot, cidr string) CurrentAddr {

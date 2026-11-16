@@ -101,9 +101,12 @@ func modulesForRole(role string) ([]string, error) {
 		for k := range roleModules {
 			valid = append(valid, k)
 		}
+
 		logger.Warn("ifmgr: unknown role requested", "role", role, "valid", valid)
+
 		return nil, fmt.Errorf("unknown ifmgr role %q (valid: %v)", role, valid)
 	}
+
 	return names, nil
 }
 
@@ -121,5 +124,6 @@ func KnownRoles() []string {
 	for k := range roleModules {
 		out = append(out, k)
 	}
+
 	return out
 }

@@ -40,6 +40,7 @@ func installPruneCommands(t *testing.T, directory string) {
 		filepath.Join(directory, pruneCreatedFile),
 		filepath.Join(directory, pruneDeletedFile),
 	)
+
 	scripts := map[string]string{
 		"qm":    qm,
 		"ping":  "#!/bin/sh\nexit 0\n",
@@ -51,6 +52,7 @@ func installPruneCommands(t *testing.T, directory string) {
 			t.Fatalf("write %s: %v", name, err)
 		}
 	}
+
 	t.Setenv("PATH", commands)
 }
 
@@ -61,6 +63,7 @@ func readPruneNames(t *testing.T, directory, name string) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return strings.Fields(string(data))
 }
 
@@ -92,16 +95,20 @@ func TestRunPrunesOldestPreDeploySnapshotAtTotalLimit(t *testing.T) {
 		runPruneChild(t)
 		return
 	}
+
 	directory := t.TempDir()
+
 	preDeploys := make([]string, 0, prunePreDeployCount)
 	for i := range prunePreDeployCount {
 		preDeploys = append(preDeploys, fmt.Sprintf("pre-deploy-20260809T1200%02d", i))
 	}
+
 	listing := strings.Join(preDeploys, "\n") + "\n"
 	listingPath := filepath.Join(directory, pruneListingFile)
 	if err := os.WriteFile(listingPath, []byte(listing), 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	installPruneCommands(t, directory)
 
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
@@ -114,6 +121,7 @@ func TestRunPrunesOldestPreDeploySnapshotAtTotalLimit(t *testing.T) {
 	if len(created) != 1 || !strings.HasPrefix(created[0], "known-good-") {
 		t.Fatalf("created = %v, want one known-good-* snapshot", created)
 	}
+
 	deleted := readPruneNames(t, directory, pruneDeletedFile)
 	want := []string{preDeploys[0]}
 	if !slices.Equal(deleted, want) {

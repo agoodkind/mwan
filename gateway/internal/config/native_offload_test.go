@@ -24,18 +24,31 @@ func TestLoadNativeOffloadProcessSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	settings, err := loaded.IfMgr.Modules.NativeOffload.Resolve()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	want := config.NativeOffloadProcessSettings{
-		CPU: 0, MemoryMiB: 256, HugepageDirectory: "/dev/hugepages", FilePrefix: "mwan-native-test",
-		PairCapacity: 1024, MbufCount: 8192, FlowCapacity: 4096, EventCapacity: 1024,
-		ObservationCapacity: 4096, SocketBufferBytes: 1048576,
-		ObservationMaxAge: 500 * time.Millisecond, RequestTimeout: 500 * time.Millisecond,
-		ResyncInterval: 30 * time.Second, CounterInterval: time.Second,
-		ResyncTimeout: 3 * time.Second, ShutdownTimeout: 10 * time.Second,
-		IdleTimeout: 30 * time.Second, IdleWait: 10 * time.Microsecond,
+		CPU:                 0,
+		MemoryMiB:           256,
+		HugepageDirectory:   "/dev/hugepages",
+		FilePrefix:          "mwan-native-test",
+		PairCapacity:        1024,
+		MbufCount:           8192,
+		FlowCapacity:        4096,
+		EventCapacity:       1024,
+		ObservationCapacity: 4096,
+		SocketBufferBytes:   1048576,
+		ObservationMaxAge:   500 * time.Millisecond,
+		RequestTimeout:      500 * time.Millisecond,
+		ResyncInterval:      30 * time.Second,
+		CounterInterval:     time.Second,
+		ResyncTimeout:       3 * time.Second,
+		ShutdownTimeout:     10 * time.Second,
+		IdleTimeout:         30 * time.Second,
+		IdleWait:            10 * time.Microsecond,
 	}
 	if settings != want {
 		t.Fatalf("resolved settings = %+v, want %+v", settings, want)
@@ -44,6 +57,7 @@ func TestLoadNativeOffloadProcessSettings(t *testing.T) {
 
 func TestLoadNativeOffloadRejectsInvalidSettings(t *testing.T) {
 	t.Parallel()
+
 	for _, check := range []struct{ name, before, after string }{
 		{"missing-cpu", "cpu = 0", ""},
 		{"zero-memory", "memory_mib = 256", "memory_mib = 0"},
@@ -75,22 +89,27 @@ func TestLoadNativeOffloadRejectsInvalidSettings(t *testing.T) {
 		{"idle-wait-negative", "", `idle_wait = "-1us"`},
 		{"idle-wait-invalid", "", `idle_wait = "soon"`},
 	} {
-		t.Run(check.name, func(t *testing.T) {
-			t.Parallel()
-			text := nativeProcessTOML + check.after
-			if check.before != "" {
-				text = strings.Replace(nativeProcessTOML, check.before, check.after, 1)
-			}
-			path := writeSharedFile(t, sharedFileText+text)
-			if _, err := config.LoadPath(path); err == nil {
-				t.Fatalf("loader accepted invalid native settings: %s", text)
-			}
-		})
+		t.Run(
+			check.name,
+			func(t *testing.T) {
+				t.Parallel()
+				text := nativeProcessTOML + check.after
+				if check.before != "" {
+					text = strings.Replace(nativeProcessTOML, check.before, check.after, 1)
+				}
+
+				path := writeSharedFile(t, sharedFileText+text)
+				if _, err := config.LoadPath(path); err == nil {
+					t.Fatalf("loader accepted invalid native settings: %s", text)
+				}
+			},
+		)
 	}
 }
 
 func TestLoadNativeOffloadIdleWait(t *testing.T) {
 	t.Parallel()
+
 	for _, check := range []struct {
 		name  string
 		input string
@@ -100,29 +119,40 @@ func TestLoadNativeOffloadIdleWait(t *testing.T) {
 		{name: "zero", input: `idle_wait = "0s"`, want: 0},
 		{name: "positive", input: `idle_wait = "1us"`, want: time.Microsecond},
 	} {
-		t.Run(check.name, func(t *testing.T) {
-			t.Parallel()
-			path := writeSharedFile(t, sharedFileText+nativeProcessTOML+check.input)
-			loaded, err := config.LoadPath(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			settings, err := loaded.IfMgr.Modules.NativeOffload.Resolve()
-			if err != nil || settings.IdleWait != check.want {
-				t.Fatalf("resolved native idle wait = %v, want %v: %v", settings.IdleWait, check.want, err)
-			}
-		})
+		t.Run(
+			check.name,
+			func(t *testing.T) {
+				t.Parallel()
+				path := writeSharedFile(t, sharedFileText+nativeProcessTOML+check.input)
+				loaded, err := config.LoadPath(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				settings, err := loaded.IfMgr.Modules.NativeOffload.Resolve()
+				if err != nil || settings.IdleWait != check.want {
+					t.Fatalf(
+						"resolved native idle wait = %v, want %v: %v",
+						settings.IdleWait,
+						check.want,
+						err,
+					)
+				}
+			},
+		)
 	}
 }
 
 func TestLoadNativeOffloadDisabled(t *testing.T) {
 	t.Parallel()
+
 	for _, text := range []string{"", "[ifmgr.modules.nativeoffload]\nenabled = false\n"} {
 		path := writeSharedFile(t, sharedFileText+text)
 		loaded, err := config.LoadPath(path)
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		settings, err := loaded.IfMgr.Modules.NativeOffload.Resolve()
 		if err != nil || settings != (config.NativeOffloadProcessSettings{}) {
 			t.Fatalf("disabled native settings = %+v, error %v", settings, err)

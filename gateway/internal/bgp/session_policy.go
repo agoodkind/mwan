@@ -26,19 +26,27 @@ func importRejection(cfg SessionConfig, prefix netip.Prefix) string {
 			return rejectedExported
 		}
 	}
+
 	reason := rejectedNoRule
+
 	for _, rule := range cfg.Import {
 		if prefix.Bits() < rule.Prefix.Bits() || !rule.Prefix.Contains(prefix.Addr()) {
 			continue
 		}
+
 		if prefix.Bits() >= int(rule.MinLength) && prefix.Bits() <= int(rule.MaxLength) {
 			return ""
 		}
+
 		reason = fmt.Sprintf(
 			"prefix length %d is outside the bounds %d to %d of import rule %s",
-			prefix.Bits(), rule.MinLength, rule.MaxLength, rule.Prefix,
+			prefix.Bits(),
+			rule.MinLength,
+			rule.MaxLength,
+			rule.Prefix,
 		)
 	}
+
 	return reason
 }
 
@@ -46,6 +54,7 @@ func exportAdvertised(mode ExportMode, eligible, backupActive bool) bool {
 	if !eligible {
 		return false
 	}
+
 	return mode == ExportAlways || backupActive
 }
 
@@ -55,6 +64,7 @@ func exportPath(log *slog.Logger, cfg SessionConfig, rule ExportRule) (*apiutil.
 		log.Error("build bgp session NLRI failed", "prefix", rule.Prefix, "error", err)
 		return nil, fmt.Errorf("build NLRI for %s: %w", rule.Prefix, err)
 	}
+
 	mpReach, err := bgppkt.NewPathAttributeMpReachNLRI(
 		bgppkt.RF_IPv6_UC,
 		[]bgppkt.PathNLRI{{NLRI: nlri}},
@@ -74,33 +84,45 @@ func exportPath(log *slog.Logger, cfg SessionConfig, rule ExportRule) (*apiutil.
 		for i := range prepended {
 			prepended[i] = cfg.LocalASN
 		}
+
 		segment := bgppkt.NewAs4PathParam(bgppkt.BGP_ASPATH_ATTR_TYPE_SEQ, prepended)
 		attributes = append(
 			attributes,
 			bgppkt.NewPathAttributeAsPath([]bgppkt.AsPathParamInterface{segment}),
 		)
 	}
+
 	if rule.MED != nil {
 		attributes = append(attributes, bgppkt.NewPathAttributeMultiExitDisc(*rule.MED))
 	}
+
 	if cfg.Internal() && rule.LocalPreference != nil {
 		attributes = append(attributes, bgppkt.NewPathAttributeLocalPref(*rule.LocalPreference))
 	}
+
 	if len(rule.Communities) > 0 {
 		communities := make([]uint32, 0, len(rule.Communities))
 		for _, community := range rule.Communities {
 			encoded := uint32(community.ASN)<<communityASNShift | uint32(community.Value)
 			communities = append(communities, encoded)
 		}
+
 		attributes = append(attributes, bgppkt.NewPathAttributeCommunities(communities))
 	}
+
 	if len(rule.LargeCommunities) > 0 {
 		largeCommunities := make([]*bgppkt.LargeCommunity, 0, len(rule.LargeCommunities))
 		for _, community := range rule.LargeCommunities {
-			largeCommunities = append(largeCommunities, bgppkt.NewLargeCommunity(
-				community.GlobalAdmin, community.LocalData1, community.LocalData2,
-			))
+			largeCommunities = append(
+				largeCommunities,
+				bgppkt.NewLargeCommunity(
+					community.GlobalAdmin,
+					community.LocalData1,
+					community.LocalData2,
+				),
+			)
 		}
+
 		attributes = append(attributes, bgppkt.NewPathAttributeLargeCommunities(largeCommunities))
 	}
 
@@ -113,5 +135,6 @@ func withdrawalPath(log *slog.Logger, prefix netip.Prefix) (*apiutil.Path, error
 		log.Error("build bgp session NLRI failed", "prefix", prefix, "error", err)
 		return nil, fmt.Errorf("build NLRI for %s: %w", prefix, err)
 	}
+
 	return &apiutil.Path{Family: bgppkt.RF_IPv6_UC, Nlri: nlri, Withdrawal: true}, nil
 }

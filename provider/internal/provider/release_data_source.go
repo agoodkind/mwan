@@ -34,11 +34,19 @@ func newReleaseDataSource() datasource.DataSource {
 	return &releaseDataSource{data: nil}
 }
 
-func (d *releaseDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+func (d *releaseDataSource) Metadata(
+	_ context.Context,
+	req datasource.MetadataRequest,
+	resp *datasource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_release"
 }
 
-func (d *releaseDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (d *releaseDataSource) Schema(
+	_ context.Context,
+	_ datasource.SchemaRequest,
+	resp *datasource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		Description: "The data source downloads the release checksum manifest and returns archive URLs. " +
 			"The tag's commit suffix must match the provider's stamped build commit.",
@@ -85,24 +93,39 @@ func (d *releaseDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 	}
 }
 
-func (d *releaseDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (d *releaseDataSource) Configure(
+	_ context.Context,
+	req datasource.ConfigureRequest,
+	resp *datasource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
+
 	data, ok := req.ProviderData.(*providerData)
 	if !ok {
-		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("got %T", req.ProviderData))
+		resp.Diagnostics.AddError(
+			"Unexpected provider data",
+			fmt.Sprintf("got %T", req.ProviderData),
+		)
+
 		return
 	}
+
 	d.data = data
 }
 
-func (d *releaseDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+func (d *releaseDataSource) Read(
+	ctx context.Context,
+	req datasource.ReadRequest,
+	resp *datasource.ReadResponse,
+) {
 	var model releaseModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &model)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if d.data == nil {
 		resp.Diagnostics.AddError("Provider not configured", "The provider has no configuration.")
 		return
@@ -115,22 +138,28 @@ func (d *releaseDataSource) Read(ctx context.Context, req datasource.ReadRequest
 			"The release pipeline did not stamp a commit into this provider build. "+
 				"Use a released provider build to read release "+requested+".",
 		)
+
 		return
 	}
+
 	requestedCommit, err := release.CommitOf(requested)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid release version", err.Error())
 		return
 	}
+
 	if requestedCommit != d.data.buildCommit {
 		resp.Diagnostics.AddError(
 			"Release version differs from the provider build",
 			fmt.Sprintf(
 				"The configuration asks for release %q, which names commit %q, and this provider build is commit %q. "+
 					"Use the provider build of the same release.",
-				requested, requestedCommit, d.data.buildCommit,
+				requested,
+				requestedCommit,
+				d.data.buildCommit,
 			),
 		)
+
 		return
 	}
 
@@ -139,13 +168,16 @@ func (d *releaseDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		resp.Diagnostics.AddError("Cannot resolve the release", err.Error())
 		return
 	}
+
 	model.ArchiveMember = types.StringValue(release.ArchiveMember)
+
 	model.Architectures = make(map[string]architectureModel, len(architectures))
 	for name, archives := range architectures {
 		debs := make(map[string]string, len(stackspec.Packages()))
 		for _, pkg := range stackspec.Packages() {
 			debs[pkg.Name] = pkg.Member(name)
 		}
+
 		model.Architectures[name] = architectureModel{
 			StackDebs:   debs,
 			MwanURL:     types.StringValue(archives.Mwan.URL),
@@ -154,5 +186,6 @@ func (d *releaseDataSource) Read(ctx context.Context, req datasource.ReadRequest
 			StackSHA256: types.StringValue(archives.Stack.SHA256),
 		}
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }

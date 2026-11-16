@@ -31,16 +31,20 @@ func Write(path string, content []byte, mode fs.FileMode) (bool, error) {
 	if err == nil && bytes.Equal(existing, content) {
 		return false, nil
 	}
+
 	if err != nil && !os.IsNotExist(err) {
 		return false, failed("read the file in place", path, err)
 	}
+
 	parent := filepath.Dir(path)
 	if err := os.MkdirAll(parent, dirMode); err != nil {
 		return false, failed("create the parent directory", parent, err)
 	}
+
 	if err := renameio.WriteFile(path, content, mode); err != nil {
 		return false, failed("write the file", path, err)
 	}
+
 	return true, nil
 }
 

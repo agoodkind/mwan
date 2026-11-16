@@ -36,7 +36,9 @@ func TestWANFirewallRuntimePackets(t *testing.T) {
 	}
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^TestWANFirewallRuntimePackets$")
-	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
+	child.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS),
+	}
 	child.Env = append(os.Environ(), runtimeChildEnv+"=1", runtimeBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("The isolated WAN runtime test failed: %v: %s", err, output)
@@ -63,22 +65,32 @@ func runWANFirewallRuntimeChild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture = bytes.ReplaceAll(fixture, []byte(`"goodkind-mwan-steering:link-files": "rendered"`), []byte(`"goodkind-mwan-steering:link-files": "hand-authored"`))
-	legacyWAN := []byte(`"name": "enatt0",
+	fixture = bytes.ReplaceAll(
+		fixture,
+		[]byte(`"goodkind-mwan-steering:link-files": "rendered"`),
+		[]byte(`"goodkind-mwan-steering:link-files": "hand-authored"`),
+	)
+	legacyWAN := []byte(
+		`"name": "enatt0",
         "type": "iana-if-type:other",
-        "goodkind-mwan-steering:link-files": "hand-authored"`)
-	typedWAN := []byte(`"name": "enatt0",
+        "goodkind-mwan-steering:link-files": "hand-authored"`,
+	)
+	typedWAN := []byte(
+		`"name": "enatt0",
         "type": "iana-if-type:other",
         "goodkind-mwan-steering:owner": "external",
         "goodkind-mwan-steering:link": {
           "match": { "hardware-address": "` + runtimeWANMAC + `" }
-        }`)
+        }`,
+	)
 	if !bytes.Contains(fixture, legacyWAN) {
 		t.Fatal("test fixture has no hand-authored enatt0 entry")
 	}
 	fixture = bytes.Replace(fixture, legacyWAN, typedWAN, 1)
 	healthTarget := []byte(`"forced-dscp": 8`)
-	healthConfig := []byte(`"forced-dscp": 8, "health": {"enabled": true, "ping-count": 1, "success-threshold": 1, "failure-threshold": 1, "recovery-threshold": 1, "check-interval": 1, "targets-v4": ["198.51.100.2"], "targets-v6": ["2001:db8:2::2"]}`)
+	healthConfig := []byte(
+		`"forced-dscp": 8, "health": {"enabled": true, "ping-count": 1, "success-threshold": 1, "failure-threshold": 1, "recovery-threshold": 1, "check-interval": 1, "targets-v4": ["198.51.100.2"], "targets-v6": ["2001:db8:2::2"]}`,
+	)
 	if !bytes.Contains(fixture, healthTarget) {
 		t.Fatal("native provider has no forced-dscp field")
 	}
@@ -105,12 +117,32 @@ func runWANFirewallRuntimeChild(t *testing.T) {
 	if err := os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", []byte("1"), 0o644); err != nil {
+	if err := os.WriteFile(
+		"/proc/sys/net/ipv6/conf/all/forwarding",
+		[]byte("1"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	setRuntimeLoopback(t)
-	management := newRuntimePeer(t, gateway, "enmgmt0", "mgmt-host", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
-	lan := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29", "2001:db8:b01::1/64", "2001:db8:b01:fe::1/64"}, []string{"192.0.2.2/29", "2001:db8:b01::2/64", "2001:db8:b01:fe::2/64"}, "")
+	management := newRuntimePeer(
+		t,
+		gateway,
+		"enmgmt0",
+		"mgmt-host",
+		[]string{"203.0.113.1/24"},
+		[]string{"203.0.113.2/24"},
+		"",
+	)
+	lan := newRuntimePeer(
+		t,
+		gateway,
+		"enmwanbr0",
+		"lan-host",
+		[]string{"192.0.2.1/29", "2001:db8:b01::1/64", "2001:db8:b01:fe::1/64"},
+		[]string{"192.0.2.2/29", "2001:db8:b01::2/64", "2001:db8:b01:fe::2/64"},
+		"",
+	)
 	defer management.namespace.Close()
 	defer lan.namespace.Close()
 	setRuntimeNamespace(t, gateway)
@@ -119,13 +151,37 @@ func runWANFirewallRuntimeChild(t *testing.T) {
 	first := startRuntimeDaemon(t, binary, configPath, root, "first")
 	defer stopRuntimeDaemon(t, first)
 	waitRuntimeTable(t, first, "inet", "filter", 10*time.Second)
-	assertRuntimeTCP(t, gateway, management.namespace, "tcp4", "203.0.113.1:22", "203.0.113.2:0", true)
-	assertRuntimeTCP(t, gateway, management.namespace, "tcp4", "203.0.113.1:2222", "203.0.113.2:0", false)
+	assertRuntimeTCP(
+		t,
+		gateway,
+		management.namespace,
+		"tcp4",
+		"203.0.113.1:22",
+		"203.0.113.2:0",
+		true,
+	)
+	assertRuntimeTCP(
+		t,
+		gateway,
+		management.namespace,
+		"tcp4",
+		"203.0.113.1:2222",
+		"203.0.113.2:0",
+		false,
+	)
 	waitRuntimeTable(t, first, "ip", "nat", 10*time.Second)
 	waitRuntimeTable(t, first, "inet", "mangle", 10*time.Second)
 	assertRuntimeNoReconcileLoop(t, first)
 
-	wan := newRuntimePeer(t, gateway, "enatt0", "wan-host", []string{"198.51.100.1/24", "2001:db8:2::1/64"}, []string{"198.51.100.2/24", "2001:db8:2::2/64"}, runtimeWANMAC)
+	wan := newRuntimePeer(
+		t,
+		gateway,
+		"enatt0",
+		"wan-host",
+		[]string{"198.51.100.1/24", "2001:db8:2::1/64"},
+		[]string{"198.51.100.2/24", "2001:db8:2::2/64"},
+		runtimeWANMAC,
+	)
 	defer wan.namespace.Close()
 	addRuntimeDefault(t, "enatt0", "198.51.100.2")
 	addRuntimeDefault(t, "enatt0", "2001:db8:2::2")
@@ -134,9 +190,25 @@ func runWANFirewallRuntimeChild(t *testing.T) {
 	addRuntimeRoute(t, gateway, wan.namespace, "192.0.2.0/29", "198.51.100.1")
 	addRuntimeRoute(t, gateway, wan.namespace, "2001:db8:b01:fe::/64", "2001:db8:2::1")
 	waitRuntimeForwarding(t, first, 10*time.Second)
-	assertRuntimeTCP(t, wan.namespace, lan.namespace, "tcp4", "198.51.100.2:3001", "192.0.2.2:0", true)
+	assertRuntimeTCP(
+		t,
+		wan.namespace,
+		lan.namespace,
+		"tcp4",
+		"198.51.100.2:3001",
+		"192.0.2.2:0",
+		true,
+	)
 	setRuntimeNamespace(t, gateway)
-	assertRuntimeTCP(t, wan.namespace, lan.namespace, "tcp6", "[2001:db8:2::2]:3002", "[2001:db8:b01:fe::2]:0", true)
+	assertRuntimeTCP(
+		t,
+		wan.namespace,
+		lan.namespace,
+		"tcp6",
+		"[2001:db8:2::2]:3002",
+		"[2001:db8:b01:fe::2]:0",
+		true,
+	)
 	setRuntimeNamespace(t, gateway)
 	assertRuntimeOwnedReturnRouteRepair(t, first, gateway, wan.namespace, lan.namespace)
 	setRuntimeNamespace(t, gateway)
@@ -167,12 +239,27 @@ func runWANFirewallRuntimeChild(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertRuntimeDialFails(t, gateway, lan.namespace, "tcp4", "198.51.100.2:3012", "192.0.2.2:0")
-	assertRuntimeDialFails(t, gateway, lan.namespace, "tcp6", "[2001:db8:2::2]:3013", "[2001:db8:b01:fe::2]:0")
+	assertRuntimeDialFails(
+		t,
+		gateway,
+		lan.namespace,
+		"tcp6",
+		"[2001:db8:2::2]:3013",
+		"[2001:db8:b01:fe::2]:0",
+	)
 	deletionDeadline := time.Now().Add(15 * time.Second)
 	waitRuntimeMonitorResync(t, first, deletionLogStart, deletionDeadline)
 	waitRuntimeOwnedDefaultsAbsent(t, first, oldWANIndex, deletionDeadline)
 	logStart := len(runtimeDaemonLog(t, first))
-	wan = newRuntimePeer(t, gateway, "enatt0", "wan-new", []string{"198.51.100.1/24", "2001:db8:2::1/64"}, []string{"198.51.100.2/24", "2001:db8:2::2/64"}, runtimeWANMAC)
+	wan = newRuntimePeer(
+		t,
+		gateway,
+		"enatt0",
+		"wan-new",
+		[]string{"198.51.100.1/24", "2001:db8:2::1/64"},
+		[]string{"198.51.100.2/24", "2001:db8:2::2/64"},
+		runtimeWANMAC,
+	)
 	defer wan.namespace.Close()
 	replacementLink, err := netlink.LinkByName("enatt0")
 	if err != nil {
@@ -188,8 +275,28 @@ func runWANFirewallRuntimeChild(t *testing.T) {
 	recoveryDeadline := time.Now().Add(15 * time.Second)
 	waitRuntimeMonitorResync(t, first, logStart, recoveryDeadline)
 	waitRuntimeOwnedDefaults(t, first, replacementLink.Attrs().Index, recoveryDeadline)
-	waitRuntimeTCP(t, first, gateway, wan.namespace, lan.namespace, "tcp4", "198.51.100.2:3014", "192.0.2.2:0", recoveryDeadline)
-	waitRuntimeTCP(t, first, gateway, wan.namespace, lan.namespace, "tcp6", "[2001:db8:2::2]:3015", "[2001:db8:b01:fe::2]:0", recoveryDeadline)
+	waitRuntimeTCP(
+		t,
+		first,
+		gateway,
+		wan.namespace,
+		lan.namespace,
+		"tcp4",
+		"198.51.100.2:3014",
+		"192.0.2.2:0",
+		recoveryDeadline,
+	)
+	waitRuntimeTCP(
+		t,
+		first,
+		gateway,
+		wan.namespace,
+		lan.namespace,
+		"tcp6",
+		"[2001:db8:2::2]:3015",
+		"[2001:db8:b01:fe::2]:0",
+		recoveryDeadline,
+	)
 	assertRuntimeDaemonRunning(t, first)
 	if first.command.Process.Pid != daemonPID {
 		t.Fatalf("WAN daemon PID changed from %d to %d", daemonPID, first.command.Process.Pid)
@@ -199,9 +306,33 @@ func runWANFirewallRuntimeChild(t *testing.T) {
 	waitRuntimeTable(t, first, "inet", "filter", 10*time.Second)
 	waitRuntimeTable(t, first, "ip", "nat", 10*time.Second)
 	waitRuntimeTable(t, first, "inet", "mangle", 10*time.Second)
-	assertRuntimeTCP(t, gateway, management.namespace, "tcp4", "203.0.113.1:2222", "203.0.113.2:0", false)
-	assertRuntimeTCP(t, wan.namespace, lan.namespace, "tcp4", "198.51.100.2:3003", "192.0.2.2:0", true)
-	assertRuntimeTCP(t, wan.namespace, lan.namespace, "tcp6", "[2001:db8:2::2]:3004", "[2001:db8:b01:fe::2]:0", true)
+	assertRuntimeTCP(
+		t,
+		gateway,
+		management.namespace,
+		"tcp4",
+		"203.0.113.1:2222",
+		"203.0.113.2:0",
+		false,
+	)
+	assertRuntimeTCP(
+		t,
+		wan.namespace,
+		lan.namespace,
+		"tcp4",
+		"198.51.100.2:3003",
+		"192.0.2.2:0",
+		true,
+	)
+	assertRuntimeTCP(
+		t,
+		wan.namespace,
+		lan.namespace,
+		"tcp6",
+		"[2001:db8:2::2]:3004",
+		"[2001:db8:b01:fe::2]:0",
+		true,
+	)
 	setRuntimeNamespace(t, gateway)
 	stopRuntimeDaemon(t, first)
 	assertRuntimeTable(t, "inet", "filter")
@@ -214,14 +345,44 @@ func runWANFirewallRuntimeChild(t *testing.T) {
 	waitRuntimeTable(t, second, "inet", "filter", 10*time.Second)
 	waitRuntimeTable(t, second, "ip", "nat", 10*time.Second)
 	waitRuntimeTable(t, second, "inet", "mangle", 10*time.Second)
-	assertRuntimeTCP(t, gateway, management.namespace, "tcp4", "203.0.113.1:2222", "203.0.113.2:0", false)
-	assertRuntimeTCP(t, wan.namespace, lan.namespace, "tcp4", "198.51.100.2:3005", "192.0.2.2:0", true)
-	assertRuntimeTCP(t, wan.namespace, lan.namespace, "tcp6", "[2001:db8:2::2]:3006", "[2001:db8:b01:fe::2]:0", true)
+	assertRuntimeTCP(
+		t,
+		gateway,
+		management.namespace,
+		"tcp4",
+		"203.0.113.1:2222",
+		"203.0.113.2:0",
+		false,
+	)
+	assertRuntimeTCP(
+		t,
+		wan.namespace,
+		lan.namespace,
+		"tcp4",
+		"198.51.100.2:3005",
+		"192.0.2.2:0",
+		true,
+	)
+	assertRuntimeTCP(
+		t,
+		wan.namespace,
+		lan.namespace,
+		"tcp6",
+		"[2001:db8:2::2]:3006",
+		"[2001:db8:b01:fe::2]:0",
+		true,
+	)
 	assertRuntimeNoReconcileLoop(t, second)
 	assertRuntimeDaemonRunning(t, second)
 }
 
-func assertRuntimeOwnedReturnRouteRepair(t *testing.T, daemon *runtimeDaemon, gateway, wan, lan netns.NsHandle) {
+func assertRuntimeOwnedReturnRouteRepair(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	gateway netns.NsHandle,
+	wan netns.NsHandle,
+	lan netns.NsHandle,
+) {
 	t.Helper()
 	_, foreignDestination, err := net.ParseCIDR("192.0.2.0/29")
 	if err != nil {
@@ -232,8 +393,11 @@ func assertRuntimeOwnedReturnRouteRepair(t *testing.T, daemon *runtimeDaemon, ga
 		t.Fatal(err)
 	}
 	foreign := &netlink.Route{
-		LinkIndex: internal.Attrs().Index, Dst: foreignDestination,
-		Table: 150, Protocol: unix.RTPROT_STATIC, Scope: netlink.SCOPE_LINK,
+		LinkIndex: internal.Attrs().Index,
+		Dst:       foreignDestination,
+		Table:     150,
+		Protocol:  unix.RTPROT_STATIC,
+		Scope:     netlink.SCOPE_LINK,
 	}
 	if err := netlink.RouteAdd(foreign); err != nil {
 		t.Fatal(err)
@@ -243,7 +407,11 @@ func assertRuntimeOwnedReturnRouteRepair(t *testing.T, daemon *runtimeDaemon, ga
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) && owned == nil {
 		var err error
-		routes, err = netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: 100}, netlink.RT_FILTER_TABLE)
+		routes, err = netlink.RouteListFiltered(
+			unix.AF_INET,
+			&netlink.Route{Table: 100},
+			netlink.RT_FILTER_TABLE,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -266,14 +434,21 @@ func assertRuntimeOwnedReturnRouteRepair(t *testing.T, daemon *runtimeDaemon, ga
 	deletedAt := time.Now()
 	deadline = deletedAt.Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		routes, err := netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: 100}, netlink.RT_FILTER_TABLE)
+		routes, err := netlink.RouteListFiltered(
+			unix.AF_INET,
+			&netlink.Route{Table: 100},
+			netlink.RT_FILTER_TABLE,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, route := range routes {
 			if route.Dst != nil && route.Dst.String() == "192.0.2.0/29" {
-				foreignRoutes, err := netlink.RouteListFiltered(unix.AF_INET,
-					&netlink.Route{Table: 150}, netlink.RT_FILTER_TABLE)
+				foreignRoutes, err := netlink.RouteListFiltered(
+					unix.AF_INET,
+					&netlink.Route{Table: 150},
+					netlink.RT_FILTER_TABLE,
+				)
 				if err != nil || len(foreignRoutes) != 1 {
 					t.Fatalf("unrelated route changed during repair: %v, %v", foreignRoutes, err)
 				}
@@ -284,10 +459,19 @@ func assertRuntimeOwnedReturnRouteRepair(t *testing.T, daemon *runtimeDaemon, ga
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("owned return route was not restored before the 1h periodic reconcile; daemon log: %s", runtimeLogTail(t, daemon, 30))
+	t.Fatalf(
+		"owned return route was not restored before the 1h periodic reconcile; daemon log: %s",
+		runtimeLogTail(t, daemon, 30),
+	)
 }
 
-func assertRuntimeOwnedPolicyRuleRepair(t *testing.T, daemon *runtimeDaemon, gateway, wan, lan netns.NsHandle) {
+func assertRuntimeOwnedPolicyRuleRepair(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	gateway netns.NsHandle,
+	wan netns.NsHandle,
+	lan netns.NsHandle,
+) {
 	t.Helper()
 	rules, err := netlink.RuleList(unix.AF_INET)
 	if err != nil {
@@ -323,7 +507,10 @@ func assertRuntimeOwnedPolicyRuleRepair(t *testing.T, daemon *runtimeDaemon, gat
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("owned policy rule was not restored before the 1h periodic reconcile; daemon log: %s", runtimeLogTail(t, daemon, 30))
+	t.Fatalf(
+		"owned policy rule was not restored before the 1h periodic reconcile; daemon log: %s",
+		runtimeLogTail(t, daemon, 30),
+	)
 }
 
 func runtimeLogTail(t *testing.T, daemon *runtimeDaemon, count int) string {
@@ -335,7 +522,14 @@ func runtimeLogTail(t *testing.T, daemon *runtimeDaemon, count int) string {
 	return strings.Join(lines, "\n")
 }
 
-func assertRuntimeDialFails(t *testing.T, gateway, sourceNamespace netns.NsHandle, network, destination, source string) {
+func assertRuntimeDialFails(
+	t *testing.T,
+	gateway netns.NsHandle,
+	sourceNamespace netns.NsHandle,
+	network string,
+	destination string,
+	source string,
+) {
 	t.Helper()
 	setRuntimeNamespace(t, sourceNamespace)
 	local, err := net.ResolveTCPAddr(network, source)
@@ -353,7 +547,12 @@ func assertRuntimeDialFails(t *testing.T, gateway, sourceNamespace netns.NsHandl
 	}
 }
 
-func waitRuntimeMonitorResync(t *testing.T, daemon *runtimeDaemon, logStart int, deadline time.Time) {
+func waitRuntimeMonitorResync(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	logStart int,
+	deadline time.Time,
+) {
 	t.Helper()
 	for time.Now().Before(deadline) {
 		log := runtimeDaemonLog(t, daemon)
@@ -368,10 +567,18 @@ func waitRuntimeMonitorResync(t *testing.T, daemon *runtimeDaemon, logStart int,
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("WAN daemon did not request reconcile after interface resync: %s", runtimeLogTail(t, daemon, 30))
+	t.Fatalf(
+		"WAN daemon did not request reconcile after interface resync: %s",
+		runtimeLogTail(t, daemon, 30),
+	)
 }
 
-func waitRuntimeOwnedDefaults(t *testing.T, daemon *runtimeDaemon, linkIndex int, deadline time.Time) {
+func waitRuntimeOwnedDefaults(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	linkIndex int,
+	deadline time.Time,
+) {
 	t.Helper()
 	for time.Now().Before(deadline) {
 		ready := true
@@ -382,8 +589,11 @@ func waitRuntimeOwnedDefaults(t *testing.T, daemon *runtimeDaemon, linkIndex int
 			{value: unix.AF_INET, gateway: net.ParseIP("198.51.100.2")},
 			{value: unix.AF_INET6, gateway: net.ParseIP("2001:db8:2::2")},
 		} {
-			routes, err := netlink.RouteListFiltered(family.value,
-				&netlink.Route{Table: 100}, netlink.RT_FILTER_TABLE)
+			routes, err := netlink.RouteListFiltered(
+				family.value,
+				&netlink.Route{Table: 100},
+				netlink.RT_FILTER_TABLE,
+			)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -408,17 +618,28 @@ func waitRuntimeOwnedDefaults(t *testing.T, daemon *runtimeDaemon, linkIndex int
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("WAN daemon did not restore table 100 defaults on index %d: %s",
-		linkIndex, runtimeLogTail(t, daemon, 30))
+	t.Fatalf(
+		"WAN daemon did not restore table 100 defaults on index %d: %s",
+		linkIndex,
+		runtimeLogTail(t, daemon, 30),
+	)
 }
 
-func waitRuntimeOwnedDefaultsAbsent(t *testing.T, daemon *runtimeDaemon, linkIndex int, deadline time.Time) {
+func waitRuntimeOwnedDefaultsAbsent(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	linkIndex int,
+	deadline time.Time,
+) {
 	t.Helper()
 	for time.Now().Before(deadline) {
 		found := false
 		for _, family := range []int{unix.AF_INET, unix.AF_INET6} {
-			routes, err := netlink.RouteListFiltered(family,
-				&netlink.Route{Table: 100}, netlink.RT_FILTER_TABLE)
+			routes, err := netlink.RouteListFiltered(
+				family,
+				&netlink.Route{Table: 100},
+				netlink.RT_FILTER_TABLE,
+			)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -441,11 +662,24 @@ func waitRuntimeOwnedDefaultsAbsent(t *testing.T, daemon *runtimeDaemon, linkInd
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("table 100 defaults still reference deleted enatt0 index %d: %s",
-		linkIndex, runtimeLogTail(t, daemon, 30))
+	t.Fatalf(
+		"table 100 defaults still reference deleted enatt0 index %d: %s",
+		linkIndex,
+		runtimeLogTail(t, daemon, 30),
+	)
 }
 
-func waitRuntimeTCP(t *testing.T, daemon *runtimeDaemon, gateway, destinationNamespace, sourceNamespace netns.NsHandle, network, destination, source string, deadline time.Time) {
+func waitRuntimeTCP(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	gateway netns.NsHandle,
+	destinationNamespace netns.NsHandle,
+	sourceNamespace netns.NsHandle,
+	network string,
+	destination string,
+	source string,
+	deadline time.Time,
+) {
 	t.Helper()
 	setRuntimeNamespace(t, destinationNamespace)
 	listener, err := net.Listen(network, destination)
@@ -472,7 +706,11 @@ func waitRuntimeTCP(t *testing.T, daemon *runtimeDaemon, gateway, destinationNam
 		setRuntimeNamespace(t, sourceNamespace)
 	}
 	setRuntimeNamespace(t, gateway)
-	t.Fatalf("WAN daemon did not restore %s TCP within 15s: %s", network, runtimeLogTail(t, daemon, 30))
+	t.Fatalf(
+		"WAN daemon did not restore %s TCP within 15s: %s",
+		network,
+		runtimeLogTail(t, daemon, 30),
+	)
 }
 
 type runtimeDaemon struct {
@@ -545,7 +783,13 @@ func runtimeDaemonLog(t *testing.T, daemon *runtimeDaemon) string {
 	return string(content)
 }
 
-func waitRuntimeTable(t *testing.T, daemon *runtimeDaemon, family, table string, timeout time.Duration) {
+func waitRuntimeTable(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	family string,
+	table string,
+	timeout time.Duration,
+) {
 	t.Helper()
 	gateway, err := netns.GetFromPid(daemon.command.Process.Pid)
 	if err != nil {
@@ -555,21 +799,45 @@ func waitRuntimeTable(t *testing.T, daemon *runtimeDaemon, family, table string,
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		setRuntimeNamespace(t, gateway)
-		if output, err := exec.Command("nft", "list", "table", family, table).CombinedOutput(); err == nil && len(output) > 0 {
+		if output, err := exec.Command(
+			"nft",
+			"list",
+			"table",
+			family,
+			table,
+		).CombinedOutput(); err == nil &&
+			len(output) > 0 {
 			return
 		}
 		if daemon.command.ProcessState != nil {
-			t.Fatalf("WAN daemon exited before %s %s appeared: %s", family, table, runtimeDaemonLog(t, daemon))
+			t.Fatalf(
+				"WAN daemon exited before %s %s appeared: %s",
+				family,
+				table,
+				runtimeDaemonLog(t, daemon),
+			)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	rules, _ := exec.Command("nft", "list", "ruleset").CombinedOutput()
-	t.Fatalf("WAN daemon did not install %s %s: ruleset=%s daemon=%s", family, table, rules, runtimeDaemonLog(t, daemon))
+	t.Fatalf(
+		"WAN daemon did not install %s %s: ruleset=%s daemon=%s",
+		family,
+		table,
+		rules,
+		runtimeDaemonLog(t, daemon),
+	)
 }
 
 func assertRuntimeTable(t *testing.T, family, table string) {
 	t.Helper()
-	if output, err := exec.Command("nft", "list", "table", family, table).CombinedOutput(); err != nil {
+	if output, err := exec.Command(
+		"nft",
+		"list",
+		"table",
+		family,
+		table,
+	).CombinedOutput(); err != nil {
 		t.Fatalf("%s %s is missing after the daemon stopped: %v: %s", family, table, err, output)
 	}
 }
@@ -597,7 +865,10 @@ func assertRuntimeNoReconcileLoop(t *testing.T, daemon *runtimeDaemon) {
 		t.Fatalf("WAN daemon never reconciled the firewall: %s", runtimeDaemonLog(t, daemon))
 	}
 	if !stable {
-		t.Fatalf("WAN daemon startup reconciliation did not settle: %s", runtimeDaemonLog(t, daemon))
+		t.Fatalf(
+			"WAN daemon startup reconciliation did not settle: %s",
+			runtimeDaemonLog(t, daemon),
+		)
 	}
 	deadline = time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -605,7 +876,10 @@ func assertRuntimeNoReconcileLoop(t *testing.T, daemon *runtimeDaemon) {
 		assertRuntimeDaemonRunning(t, daemon)
 		second := countRuntimeFirewallReconciles(runtimeDaemonLog(t, daemon))
 		if second != first {
-			t.Fatalf("WAN daemon reconciled without a timer or external change: %s", runtimeDaemonLog(t, daemon))
+			t.Fatalf(
+				"WAN daemon reconciled without a timer or external change: %s",
+				runtimeDaemonLog(t, daemon),
+			)
 		}
 	}
 }
@@ -613,7 +887,8 @@ func assertRuntimeNoReconcileLoop(t *testing.T, daemon *runtimeDaemon) {
 func countRuntimeFirewallReconciles(log string) int {
 	count := 0
 	for _, line := range strings.Split(log, "\n") {
-		if strings.Contains(line, `"msg":"ifmgr: Reconcile"`) && strings.Contains(line, `"module":"firewall"`) {
+		if strings.Contains(line, `"msg":"ifmgr: Reconcile"`) &&
+			strings.Contains(line, `"module":"firewall"`) {
 			count++
 		}
 	}
@@ -630,8 +905,17 @@ func waitRuntimeForwarding(t *testing.T, daemon *runtimeDaemon, timeout time.Dur
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		setRuntimeNamespace(t, gateway)
-		output, err := exec.Command("nft", "list", "chain", "inet", "mwan_steer", "forward").CombinedOutput()
-		if err == nil && !strings.Contains(string(output), `oifname "enatt0" meta nfproto ipv4 drop`) && !strings.Contains(string(output), `oifname "enatt0" meta nfproto ipv6 drop`) {
+		output, err := exec.Command(
+			"nft",
+			"list",
+			"chain",
+			"inet",
+			"mwan_steer",
+			"forward",
+		).CombinedOutput()
+		if err == nil &&
+			!strings.Contains(string(output), `oifname "enatt0" meta nfproto ipv4 drop`) &&
+			!strings.Contains(string(output), `oifname "enatt0" meta nfproto ipv6 drop`) {
 			return
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -639,7 +923,9 @@ func waitRuntimeForwarding(t *testing.T, daemon *runtimeDaemon, timeout time.Dur
 	lines := strings.Split(runtimeDaemonLog(t, daemon), "\n")
 	relevant := make([]string, 0)
 	for _, line := range lines {
-		if strings.Contains(line, `"module":"wan.routes"`) || strings.Contains(line, `"module":"steering"`) || strings.Contains(line, `"module":"health"`) {
+		if strings.Contains(line, `"module":"wan.routes"`) ||
+			strings.Contains(line, `"module":"steering"`) ||
+			strings.Contains(line, `"module":"health"`) {
 			relevant = append(relevant, line)
 		}
 	}
@@ -656,7 +942,15 @@ func runRuntimeNFT(t *testing.T, arguments ...string) {
 	}
 }
 
-func newRuntimePeer(t *testing.T, gateway netns.NsHandle, gatewayName, peerName string, gatewayAddresses, peerAddresses []string, gatewayMAC string) runtimePeer {
+func newRuntimePeer(
+	t *testing.T,
+	gateway netns.NsHandle,
+	gatewayName string,
+	peerName string,
+	gatewayAddresses []string,
+	peerAddresses []string,
+	gatewayMAC string,
+) runtimePeer {
 	t.Helper()
 	peerNamespace, err := netns.New()
 	if err != nil {
@@ -682,7 +976,10 @@ func newRuntimePeer(t *testing.T, gateway netns.NsHandle, gatewayName, peerName 
 		}
 		attributes.HardwareAddr = hardware
 	}
-	if err := netlink.LinkAdd(&netlink.Veth{LinkAttrs: attributes, PeerName: peerName}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Veth{
+		LinkAttrs: attributes,
+		PeerName:  peerName,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	peerLink, err := netlink.LinkByName(peerName)
@@ -747,7 +1044,10 @@ func addRuntimeRoute(t *testing.T, gateway, namespace netns.NsHandle, destinatio
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.RouteAdd(&netlink.Route{Dst: network, Gw: net.ParseIP(nextHop)}); err != nil {
+	if err := netlink.RouteAdd(&netlink.Route{
+		Dst: network,
+		Gw:  net.ParseIP(nextHop),
+	}); err != nil {
 		t.Fatal(err)
 	}
 	setRuntimeNamespace(t, gateway)
@@ -759,12 +1059,23 @@ func addRuntimeDefault(t *testing.T, interfaceName, nextHop string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.RouteAdd(&netlink.Route{LinkIndex: link.Attrs().Index, Gw: net.ParseIP(nextHop)}); err != nil {
+	if err := netlink.RouteAdd(&netlink.Route{
+		LinkIndex: link.Attrs().Index,
+		Gw:        net.ParseIP(nextHop),
+	}); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertRuntimeTCP(t *testing.T, destinationNamespace, sourceNamespace netns.NsHandle, network, destination, source string, accepted bool) {
+func assertRuntimeTCP(
+	t *testing.T,
+	destinationNamespace netns.NsHandle,
+	sourceNamespace netns.NsHandle,
+	network string,
+	destination string,
+	source string,
+	accepted bool,
+) {
 	t.Helper()
 	setRuntimeNamespace(t, destinationNamespace)
 	listener, err := net.Listen(network, destination)

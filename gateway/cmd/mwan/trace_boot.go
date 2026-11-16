@@ -28,13 +28,17 @@ func runTraceBoot(output, diagnostics io.Writer) int {
 	} else {
 		slog.Warn("read boot id failed", "path", bootIDPath, "err", err)
 	}
+
 	traceID := fmt.Sprintf("%s-boot-%s", time.Now().Format("20060102-150405"), bootID)
 	if writeErr := writeTraceID(traceID); writeErr != nil {
 		slog.Error("write boot trace id failed", "err", writeErr)
 		fmt.Fprintf(diagnostics, "mwan trace-boot: %v\n", writeErr)
+
 		return 1
 	}
+
 	slog.Info("boot trace id written", "trace_id", traceID)
 	fmt.Fprintln(output, "traceId="+traceID)
+
 	return 0
 }

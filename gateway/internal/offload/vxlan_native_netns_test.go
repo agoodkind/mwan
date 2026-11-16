@@ -16,13 +16,21 @@ import (
 func checkNativeVXLANRejectedLifecycle(t *testing.T, owner *offload.NativeRuntime) {
 	t.Helper()
 	endpoint := offload.NativeVXLANEndpoint{
-		Receiver: 0, SourceVF: 0, LinuxIfIndex: 1,
-		PCI: offload.NativePCIAddress{Domain: 65535, Bus: 255, Device: 31, Function: 4},
+		Receiver:     0,
+		SourceVF:     0,
+		LinuxIfIndex: 1,
+		PCI:          offload.NativePCIAddress{Domain: 65535, Bus: 255, Device: 31, Function: 4},
 	}
 	result, err := owner.OpenVXLANContext(t.Context(), endpoint)
 	var detail *offload.NativeError
-	if !errors.Is(err, syscall.EBUSY) || !errors.As(err, &detail) || detail.ObjectKind != offload.NativeObjectReceiver || result.Context != (offload.NativeVXLANContext{}) {
-		t.Fatalf("faulted owner did not reject VXLAN context on the owner thread: result=%+v error=%v", result, err)
+	if !errors.Is(err, syscall.EBUSY) || !errors.As(err, &detail) ||
+		detail.ObjectKind != offload.NativeObjectReceiver ||
+		result.Context != (offload.NativeVXLANContext{}) {
+		t.Fatalf(
+			"faulted owner did not reject VXLAN context on the owner thread: result=%+v error=%v",
+			result,
+			err,
+		)
 	}
 	canceled, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -57,14 +65,37 @@ func checkNativeVXLANClosedLifecycle(t *testing.T, owner *offload.NativeRuntime)
 		name string
 		run  func() error
 	}{
-		{"open", func() error { _, err := owner.OpenVXLANContext(t.Context(), offload.NativeVXLANEndpoint{}); return err }},
-		{"install", func() error {
-			_, err := owner.InstallVXLAN(t.Context(), contextHandle, nativeVXLANPlan(), evidence)
-			return err
-		}},
+		{
+			"open",
+			func() error {
+				_, err := owner.OpenVXLANContext(
+					t.Context(),
+					offload.NativeVXLANEndpoint{},
+				)
+				return err
+			},
+		},
+		{
+			"install",
+			func() error {
+				_, err := owner.InstallVXLAN(
+					t.Context(),
+					contextHandle,
+					nativeVXLANPlan(),
+					evidence,
+				)
+				return err
+			},
+		},
 		{"query", func() error { _, err := owner.QueryVXLAN(t.Context(), rule); return err }},
 		{"remove", func() error { _, err := owner.RemoveVXLAN(t.Context(), rule); return err }},
-		{"close", func() error { _, err := owner.CloseVXLANContext(t.Context(), contextHandle); return err }},
+		{
+			"close",
+			func() error {
+				_, err := owner.CloseVXLANContext(t.Context(), contextHandle)
+				return err
+			},
+		},
 	}
 	for _, operation := range operations {
 		if err := operation.run(); !errors.Is(err, net.ErrClosed) {
@@ -85,13 +116,15 @@ func nativeVXLANForwardingEvidence(t *testing.T) *offload.NativeEvidenceGuard {
 		}
 	})
 	expected := source.Generation()
-	return &offload.NativeEvidenceGuard{Check: func() error {
-		if err := source.Err(); err != nil {
-			return err
-		}
-		if source.Generation() != expected {
-			return fmt.Errorf("VXLAN forwarding namespace changed: %w", syscall.ESTALE)
-		}
-		return nil
-	}}
+	return &offload.NativeEvidenceGuard{
+		Check: func() error {
+			if err := source.Err(); err != nil {
+				return err
+			}
+			if source.Generation() != expected {
+				return fmt.Errorf("VXLAN forwarding namespace changed: %w", syscall.ESTALE)
+			}
+			return nil
+		},
+	}
 }

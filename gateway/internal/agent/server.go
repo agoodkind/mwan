@@ -99,7 +99,8 @@ func (a *Server) enrichRPCContext(
 ) context.Context {
 	attrs := make([]slog.Attr, 0, 4)
 	if peerInfo != nil && peerInfo.Addr != nil {
-		attrs = append(attrs,
+		attrs = append(
+			attrs,
 			slog.String("peer_addr", peerInfo.Addr.String()),
 			slog.String("transport", peerInfo.Addr.Network()),
 		)
@@ -139,10 +140,28 @@ func (a *Server) GetHealth(
 			st := &mwanv1.WANStatus{Name: iface.Name}
 			st.LinkUp = iface.Flags&net.FlagUp != 0
 			if st.LinkUp {
-				st.Ipv4Reachable = a.pingExitZero(ctx, "ping", "-I", iface.Name,
-					"-c", "1", "-W", "2", "1.1.1.1")
-				st.Ipv6Reachable = a.pingExitZero(ctx, "ping6", "-I", iface.Name,
-					"-c", "1", "-W", "2", "2606:4700:4700::1111")
+				st.Ipv4Reachable = a.pingExitZero(
+					ctx,
+					"ping",
+					"-I",
+					iface.Name,
+					"-c",
+					"1",
+					"-W",
+					"2",
+					"1.1.1.1",
+				)
+				st.Ipv6Reachable = a.pingExitZero(
+					ctx,
+					"ping6",
+					"-I",
+					iface.Name,
+					"-c",
+					"1",
+					"-W",
+					"2",
+					"2606:4700:4700::1111",
+				)
 			}
 			resp.WanInterfaces = append(resp.WanInterfaces, st)
 		}
@@ -177,8 +196,14 @@ func (a *Server) listFailedSystemdUnits(ctx context.Context) ([]string, error) {
 	slog.DebugContext(ctx, "agent: listFailedSystemdUnits")
 	runCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(runCtx, "systemctl", "list-units",
-		"--state=failed", "--no-legend", "--no-pager")
+	cmd := exec.CommandContext(
+		runCtx,
+		"systemctl",
+		"list-units",
+		"--state=failed",
+		"--no-legend",
+		"--no-pager",
+	)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -234,8 +259,10 @@ func (a *Server) Ping(
 	}
 
 	args := []string{
-		"-c", strconv.FormatInt(int64(count), 10),
-		"-W", strconv.FormatInt(int64(timeoutSec), 10),
+		"-c",
+		strconv.FormatInt(int64(count), 10),
+		"-W",
+		strconv.FormatInt(int64(timeoutSec), 10),
 	}
 	if bind := strings.TrimSpace(req.GetBindInterface()); bind != "" {
 		args = append(args, "-I", bind)
@@ -290,19 +317,25 @@ func (a *Server) GetConfigState(
 		// The watchdog's deploy-staleness check still observes a zero
 		// epoch; this gate suppresses the WARN flood on fresh hosts.
 		if a.deployExpected {
-			a.notifier.Notify(ctx, notify.Event{
-				Level:   slog.LevelWarn,
-				Kind:    "deploy-file-missing",
-				Key:     a.deployFilePath,
-				Message: "read deploy file",
-				Fields: []slog.Attr{
-					slog.String("path", a.deployFilePath),
-					slog.String("error", err.Error()),
+			a.notifier.Notify(
+				ctx,
+				notify.Event{
+					Level:   slog.LevelWarn,
+					Kind:    "deploy-file-missing",
+					Key:     a.deployFilePath,
+					Message: "read deploy file",
+					Fields: []slog.Attr{
+						slog.String("path", a.deployFilePath),
+						slog.String("error", err.Error()),
+					},
 				},
-			})
+			)
 		}
 	} else {
-		a.notifier.Resolve(ctx, "deploy-file-missing", a.deployFilePath,
+		a.notifier.Resolve(
+			ctx,
+			"deploy-file-missing",
+			a.deployFilePath,
 			"deploy file readable",
 			slog.String("path", a.deployFilePath),
 		)
@@ -478,13 +511,16 @@ func (a *Server) GetBGPStatus(
 		AllEstablished: a.bgp.IsEstablished(ctx),
 	}
 	for _, p := range st.Peers {
-		resp.Peers = append(resp.Peers, &mwanv1.BGPPeerStatus{
-			Address:      p.Address,
-			Afi:          p.AFI,
-			SessionState: p.State,
-			Established:  p.Established,
-			UpSinceEpoch: p.UpSince,
-		})
+		resp.Peers = append(
+			resp.Peers,
+			&mwanv1.BGPPeerStatus{
+				Address:      p.Address,
+				Afi:          p.AFI,
+				SessionState: p.State,
+				Established:  p.Established,
+				UpSinceEpoch: p.UpSince,
+			},
+		)
 	}
 	return resp, nil
 }
@@ -504,11 +540,17 @@ func (a *Server) AnnounceRoutes(
 			return &mwanv1.AnnounceRoutesResponse{Success: false, Error: err.Error()}, nil
 		}
 		if a.requireAllFamilies && ((a.announceIPv4 && !state.IPv4) || (a.announceIPv6 && !state.IPv6)) {
-			return &mwanv1.AnnounceRoutesResponse{Success: false, Error: "primary forwarding is not ready"}, nil
+			return &mwanv1.AnnounceRoutesResponse{
+				Success: false,
+				Error:   "primary forwarding is not ready",
+			}, nil
 		}
 		// A ready family can still serve clients while the primary is down.
 		if !a.requireAllFamilies && !(a.announceIPv4 && state.IPv4) && !(a.announceIPv6 && state.IPv6) {
-			return &mwanv1.AnnounceRoutesResponse{Success: false, Error: "no announced address families are ready"}, nil
+			return &mwanv1.AnnounceRoutesResponse{
+				Success: false,
+				Error:   "no announced address families are ready",
+			}, nil
 		}
 		if err := a.bgp.SetDefaultAnnouncements(state.IPv4, state.IPv6); err != nil {
 			return &mwanv1.AnnounceRoutesResponse{Success: false, Error: err.Error()}, nil

@@ -25,11 +25,23 @@ func TestInstallRouterProvidesUsableNetworkSchema(t *testing.T) {
 		t.Fatalf("MWAN_PROTOCOL_TEST_BINARY must be a regular executable file: %q", binary)
 	}
 	root := t.TempDir()
-	command := exec.CommandContext(t.Context(), binary, "install", "--role", "router", "--apply", "--root", root)
+	command := exec.CommandContext(
+		t.Context(),
+		binary,
+		"install",
+		"--role",
+		"router",
+		"--apply",
+		"--root",
+		root,
+	)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("install router files with the built mwan command: %v\n%s", err, output)
 	}
-	policy, err := networkload.Load(filepath.Join("..", "..", "internal", "networkjson", "testdata", "vpp-router.json"), filepath.Join(root, networkjson.DefaultSchemaDir))
+	policy, err := networkload.Load(
+		filepath.Join("..", "..", "internal", "networkjson", "testdata", "vpp-router.json"),
+		filepath.Join(root, networkjson.DefaultSchemaDir),
+	)
 	if err != nil {
 		t.Fatalf("load router policy with installed schema: %v", err)
 	}

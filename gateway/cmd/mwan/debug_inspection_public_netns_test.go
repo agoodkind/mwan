@@ -40,7 +40,11 @@ func runDebugInspectionPublicNamespace(t *testing.T, binary string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture = bytes.ReplaceAll(fixture, []byte(`"name": "enatt0",`), []byte(`"name": "enatt0", "goodkind-mwan-steering:connection-id": "att-line",`))
+	fixture = bytes.ReplaceAll(
+		fixture,
+		[]byte(`"name": "enatt0",`),
+		[]byte(`"name": "enatt0", "goodkind-mwan-steering:connection-id": "att-line",`),
+	)
 	if err := os.WriteFile(filepath.Join(networkDir, "network.json"), fixture, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +61,10 @@ func runDebugInspectionPublicNamespace(t *testing.T, binary string) {
 	for index, name := range []string{"enatt0", "enmbrains0", "enwebpass0", "enmwanbr0"} {
 		var link netlink.Link = &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: name}}
 		if name == "enmbrains0" {
-			link = &netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: name}, PeerName: "inspection-peer"}
+			link = &netlink.Veth{
+				LinkAttrs: netlink.LinkAttrs{Name: name},
+				PeerName:  "inspection-peer",
+			}
 		}
 		if err := netlink.LinkAdd(link); err != nil {
 			t.Fatal(err)
@@ -65,7 +72,10 @@ func runDebugInspectionPublicNamespace(t *testing.T, binary string) {
 		if err := netlink.LinkSetUp(link); err != nil {
 			t.Fatal(err)
 		}
-		for _, cidr := range []string{fmt.Sprintf("198.51.100.%d/32", index+1), fmt.Sprintf("2001:db8:%d::1/64", index+1)} {
+		for _, cidr := range []string{
+			fmt.Sprintf("198.51.100.%d/32", index+1),
+			fmt.Sprintf("2001:db8:%d::1/64", index+1),
+		} {
 			address, err := netlink.ParseAddr(cidr)
 			if err != nil {
 				t.Fatal(err)
@@ -79,7 +89,12 @@ func runDebugInspectionPublicNamespace(t *testing.T, binary string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := netlink.RouteAdd(&netlink.Route{LinkIndex: link.Attrs().Index, Dst: prefix, Protocol: unix.RTPROT_DHCP, Priority: 23}); err != nil {
+		if err := netlink.RouteAdd(&netlink.Route{
+			LinkIndex: link.Attrs().Index,
+			Dst:       prefix,
+			Protocol:  unix.RTPROT_DHCP,
+			Priority:  23,
+		}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -104,7 +119,17 @@ func runDebugInspectionPublicNamespace(t *testing.T, binary string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.RouteAdd(&netlink.Route{Family: unix.AF_INET6, Dst: multipathPrefix, Table: 100, Protocol: unix.RTPROT_DHCP, Priority: 37, MultiPath: []*netlink.NexthopInfo{{LinkIndex: first.Attrs().Index, Gw: net.ParseIP("fe80::1"), Hops: 0}, {LinkIndex: second.Attrs().Index, Gw: net.ParseIP("fe80::2"), Hops: 2}}}); err != nil {
+	if err := netlink.RouteAdd(&netlink.Route{
+		Family:   unix.AF_INET6,
+		Dst:      multipathPrefix,
+		Table:    100,
+		Protocol: unix.RTPROT_DHCP,
+		Priority: 37,
+		MultiPath: []*netlink.NexthopInfo{
+			{LinkIndex: first.Attrs().Index, Gw: net.ParseIP("fe80::1"), Hops: 0},
+			{LinkIndex: second.Attrs().Index, Gw: net.ParseIP("fe80::2"), Hops: 2},
+		},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	rule := netlink.NewRule()
@@ -127,37 +152,83 @@ func runDebugInspectionPublicNamespace(t *testing.T, binary string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	table := nft.AddTable(&nftables.Table{Family: nftables.TableFamilyIPv6, Name: "nat"})
+	table := nft.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv6,
+		Name:   "nat",
+	})
 	for _, name := range []string{"prerouting", "postrouting"} {
-		chain := nft.AddChain(&nftables.Chain{Table: table, Name: name})
-		nft.AddRule(&nftables.Rule{Table: table, Chain: chain, Exprs: []expr.Any{&expr.Counter{}, &expr.Verdict{Kind: expr.VerdictReturn}}})
+		chain := nft.AddChain(&nftables.Chain{
+			Table: table,
+			Name:  name,
+		})
+		nft.AddRule(&nftables.Rule{
+			Table: table,
+			Chain: chain,
+			Exprs: []expr.Any{&expr.Counter{}, &expr.Verdict{Kind: expr.VerdictReturn}},
+		})
 	}
 	if err := nft.Flush(); err != nil {
 		t.Fatalf("install local nft rules: %v", err)
 	}
-	for _, view := range []string{"npt", "prefixes", "routes", "policy", "status", "stats", "sim4", "sim6"} {
-		t.Run(view, func(t *testing.T) {
-			output, diagnostics, code := runCLIProcess(t, binary, "debug", view, "--config", configPath, "--output-format", "json")
-			if code != 0 {
-				t.Fatalf("%s exit=%d stdout=%s stderr=%s", view, code, output, diagnostics)
-			}
-			if !json.Valid([]byte(output)) || strings.Count(output, "\n") != 1 {
-				t.Fatalf("%s did not encode one record: %s", view, output)
-			}
-			started := time.Now()
-			text, diagnostics, code := runCLIProcess(t, binary, "debug", view, "--config", configPath, "--output-format", "text")
-			finished := time.Now()
-			if code != 0 {
-				t.Fatalf("text %s exit=%d stdout=%s stderr=%s", view, code, text, diagnostics)
-			}
-			if view != "npt" && text == "" {
-				t.Fatalf("%s omitted its text result", view)
-			}
-			checkDebugInspectionJSON(t, view, output, text, started, finished)
-			if view == "prefixes" || view == "status" || view == "stats" || view == "policy" || view == "sim4" || view == "sim6" {
-				assertDebugInspectionFields(t, text, "  ID: \"att-line\"\n  name: \"att\"\n  interface: \"enatt0\"\n")
-			}
-		})
+	for _, view := range []string{
+		"npt",
+		"prefixes",
+		"routes",
+		"policy",
+		"status",
+		"stats",
+		"sim4",
+		"sim6",
+	} {
+		t.Run(
+			view,
+			func(t *testing.T) {
+				output, diagnostics, code := runCLIProcess(
+					t,
+					binary,
+					"debug",
+					view,
+					"--config",
+					configPath,
+					"--output-format",
+					"json",
+				)
+				if code != 0 {
+					t.Fatalf("%s exit=%d stdout=%s stderr=%s", view, code, output, diagnostics)
+				}
+				if !json.Valid([]byte(output)) || strings.Count(output, "\n") != 1 {
+					t.Fatalf("%s did not encode one record: %s", view, output)
+				}
+				started := time.Now()
+				text, diagnostics, code := runCLIProcess(
+					t,
+					binary,
+					"debug",
+					view,
+					"--config",
+					configPath,
+					"--output-format",
+					"text",
+				)
+				finished := time.Now()
+				if code != 0 {
+					t.Fatalf("text %s exit=%d stdout=%s stderr=%s", view, code, text, diagnostics)
+				}
+				if view != "npt" && text == "" {
+					t.Fatalf("%s omitted its text result", view)
+				}
+				checkDebugInspectionJSON(t, view, output, text, started, finished)
+				if view == "prefixes" || view == "status" || view == "stats" || view == "policy" ||
+					view == "sim4" ||
+					view == "sim6" {
+					assertDebugInspectionFields(
+						t,
+						text,
+						"  ID: \"att-line\"\n  name: \"att\"\n  interface: \"enatt0\"\n",
+					)
+				}
+			},
+		)
 	}
 	checkDebugSimulationPresent(t, binary, configPath, first)
 	for _, format := range []string{"text", "json"} {
@@ -165,7 +236,16 @@ func runDebugInspectionPublicNamespace(t *testing.T, binary string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		command := exec.CommandContext(t.Context(), binary, "debug", "policy", "--config", configPath, "--output-format", format)
+		command := exec.CommandContext(
+			t.Context(),
+			binary,
+			"debug",
+			"policy",
+			"--config",
+			configPath,
+			"--output-format",
+			format,
+		)
 		command.Stdout = full
 		var diagnostics bytes.Buffer
 		command.Stderr = &diagnostics
@@ -184,7 +264,16 @@ func runDebugInspectionPublicNamespace(t *testing.T, binary string) {
 	if err := netlink.LinkDel(link); err != nil {
 		t.Fatal(err)
 	}
-	output, diagnostics, code := runCLIProcess(t, binary, "debug", "status", "--config", configPath, "--output-format", "json")
+	output, diagnostics, code := runCLIProcess(
+		t,
+		binary,
+		"debug",
+		"status",
+		"--config",
+		configPath,
+		"--output-format",
+		"json",
+	)
 	if code != 1 || output != "" || !strings.Contains(diagnostics, "enatt0: link state:") {
 		t.Fatalf("failed collection exit=%d stdout=%s stderr=%s", code, output, diagnostics)
 	}
@@ -205,11 +294,24 @@ func runDebugInspectionPublicNamespace(t *testing.T, binary string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(networkDir, "network.json"), missingSources, 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(networkDir, "network.json"),
+		missingSources,
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	for _, view := range []string{"sim4", "sim6"} {
-		text, diagnostics, code := runCLIProcess(t, binary, "debug", view, "--config", configPath, "--output-format", "text")
+		text, diagnostics, code := runCLIProcess(
+			t,
+			binary,
+			"debug",
+			view,
+			"--config",
+			configPath,
+			"--output-format",
+			"text",
+		)
 		if code != 0 || !strings.Contains(diagnostics, "is unset; skipping probes") {
 			t.Fatalf("absent source exit=%d stdout=%s stderr=%s", code, text, diagnostics)
 		}
@@ -217,7 +319,14 @@ func runDebugInspectionPublicNamespace(t *testing.T, binary string) {
 	}
 }
 
-func checkDebugInspectionJSON(t *testing.T, view, output, text string, started, finished time.Time) {
+func checkDebugInspectionJSON(
+	t *testing.T,
+	view string,
+	output string,
+	text string,
+	started time.Time,
+	finished time.Time,
+) {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	switch view {
@@ -230,7 +339,10 @@ func checkDebugInspectionJSON(t *testing.T, view, output, text string, started, 
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(actual.Prerouting, expected.Prerouting) || !reflect.DeepEqual(actual.Postrouting, expected.Postrouting) || len(actual.Prerouting) != 1 || len(actual.Postrouting) != 1 {
+		if !reflect.DeepEqual(actual.Prerouting, expected.Prerouting) ||
+			!reflect.DeepEqual(actual.Postrouting, expected.Postrouting) ||
+			len(actual.Prerouting) != 1 ||
+			len(actual.Postrouting) != 1 {
 			t.Fatalf("NPT rules changed: got=%+v want=%+v", actual, expected)
 		}
 	case "prefixes":
@@ -243,7 +355,8 @@ func checkDebugInspectionJSON(t *testing.T, view, output, text string, started, 
 		if err := json.Unmarshal([]byte(output), &result); err != nil {
 			t.Fatal(err)
 		}
-		if len(result.Prefixes) != 3 || !result.Prefixes[0].Present || result.Prefixes[0].Prefix != "2001:db8:100::/56" {
+		if len(result.Prefixes) != 3 || !result.Prefixes[0].Present ||
+			result.Prefixes[0].Prefix != "2001:db8:100::/56" {
 			t.Fatalf("prefix result=%+v", result)
 		}
 		assertDebugInspectionFields(t, text, "  present: true\n  prefix: \"2001:db8:100::/56\"\n")
@@ -285,11 +398,24 @@ func checkDebugInspectionJSON(t *testing.T, view, output, text string, started, 
 				found = true
 			}
 		}
-		if !found || len(result.Tables) != 3 || result.Tables[0].WAN.Name != "att" || result.Tables[0].WAN.TableID != 100 {
+		if !found || len(result.Tables) != 3 || result.Tables[0].WAN.Name != "att" ||
+			result.Tables[0].WAN.TableID != 100 {
 			t.Fatalf("policy result=%+v", result)
 		}
 		for _, rule := range result.IPv4 {
-			assertDebugInspectionFields(t, text, fmt.Sprintf("  priority: %d\n  from: %q\n  mark: %d\n  input interface: %q\n  UID range: %q\n  table ID: %d\n", rule.Priority, rule.From, rule.Mark, rule.IifName, rule.UIDRange, rule.TableID))
+			assertDebugInspectionFields(
+				t,
+				text,
+				fmt.Sprintf(
+					"  priority: %d\n  from: %q\n  mark: %d\n  input interface: %q\n  UID range: %q\n  table ID: %d\n",
+					rule.Priority,
+					rule.From,
+					rule.Mark,
+					rule.IifName,
+					rule.UIDRange,
+					rule.TableID,
+				),
+			)
 		}
 		for _, table := range result.Tables {
 			assertDebugInspectionRoutes(t, text, table.IPv4)
@@ -306,16 +432,45 @@ func checkDebugInspectionJSON(t *testing.T, view, output, text string, started, 
 		if err := json.Unmarshal([]byte(output), &result); err != nil {
 			t.Fatal(err)
 		}
-		if len(result.Interfaces) != 3 || !result.Interfaces[0].PrefixPresent || len(result.Interfaces[0].Addresses) < 2 || !result.Interfaces[0].State.Carrier {
+		if len(result.Interfaces) != 3 || !result.Interfaces[0].PrefixPresent ||
+			len(result.Interfaces[0].Addresses) < 2 ||
+			!result.Interfaces[0].State.Carrier {
 			t.Fatalf("status result=%+v", result)
 		}
 		for _, record := range result.Interfaces {
-			assertDebugInspectionFields(t, text, fmt.Sprintf("oper: %q\ncarrier: %t\n", record.State.OperState, record.State.Carrier))
+			assertDebugInspectionFields(
+				t,
+				text,
+				fmt.Sprintf(
+					"oper: %q\ncarrier: %t\n",
+					record.State.OperState,
+					record.State.Carrier,
+				),
+			)
 			for _, address := range record.Addresses {
-				assertDebugInspectionFields(t, text, fmt.Sprintf("  CIDR: %q\n  family: %q\n  flags: %d\n  scope: %d\n  preferred lifetime (s): %d\n  valid lifetime (s): %d\n", address.CIDR, address.Family, address.Flags, address.Scope, address.PreferredLifetime, address.ValidLifetime), fmt.Sprintf("  origin: %q\n", address.Origin))
+				assertDebugInspectionFields(
+					t,
+					text,
+					fmt.Sprintf(
+						"  CIDR: %q\n  family: %q\n  flags: %d\n  scope: %d\n  preferred lifetime (s): %d\n  valid lifetime (s): %d\n",
+						address.CIDR,
+						address.Family,
+						address.Flags,
+						address.Scope,
+						address.PreferredLifetime,
+						address.ValidLifetime,
+					),
+					fmt.Sprintf("  origin: %q\n", address.Origin),
+				)
 			}
 		}
-		assertDebugInspectionFields(t, text, "  CIDR: \"fe80::10/64\"\n", "  origin: \"unknown\"\n", "carrier: false\n")
+		assertDebugInspectionFields(
+			t,
+			text,
+			"  CIDR: \"fe80::10/64\"\n",
+			"  origin: \"unknown\"\n",
+			"carrier: false\n",
+		)
 		observations := 0
 		for _, line := range strings.Split(text, "\n") {
 			value, ok := strings.CutPrefix(line, "  observed at: ")
@@ -323,7 +478,8 @@ func checkDebugInspectionJSON(t *testing.T, view, output, text string, started, 
 				continue
 			}
 			observed, err := time.Parse(time.RFC3339Nano, value)
-			if err != nil || observed.Before(started) || observed.After(finished) || observed.Nanosecond()%1000000 == 0 {
+			if err != nil || observed.Before(started) || observed.After(finished) ||
+				observed.Nanosecond()%1000000 == 0 {
 				t.Fatalf("address timestamp %q does not preserve its observation: %v", value, err)
 			}
 			observations++
@@ -353,7 +509,21 @@ func checkDebugInspectionJSON(t *testing.T, view, output, text string, started, 
 				t.Fatalf("counters changed: got=%+v want=%+v", record.Stats, expected)
 			}
 			stats := record.Stats
-			assertDebugInspectionFields(t, text, fmt.Sprintf("RX: bytes %d packets %d errors %d dropped %d\nTX: bytes %d packets %d errors %d dropped %d\n", stats.RxBytes, stats.RxPackets, stats.RxErrors, stats.RxDropped, stats.TxBytes, stats.TxPackets, stats.TxErrors, stats.TxDropped))
+			assertDebugInspectionFields(
+				t,
+				text,
+				fmt.Sprintf(
+					"RX: bytes %d packets %d errors %d dropped %d\nTX: bytes %d packets %d errors %d dropped %d\n",
+					stats.RxBytes,
+					stats.RxPackets,
+					stats.RxErrors,
+					stats.RxDropped,
+					stats.TxBytes,
+					stats.TxPackets,
+					stats.TxErrors,
+					stats.TxDropped,
+				),
+			)
 		}
 	case "sim4", "sim6":
 		var result struct {
@@ -378,8 +548,21 @@ func checkDebugInspectionJSON(t *testing.T, view, output, text string, started, 
 				t.Fatalf("absent route changed: %+v", lookup)
 			}
 		}
-		assertDebugInspectionFields(t, text, fmt.Sprintf("family: %q\ntarget: %q\nsource: %q\nsource present: true\n", result.Family, result.Target, result.Source), "default lookup:\n  mark: 0\n  present: false\n")
-		if strings.Count(text, "  present: false\n  gateway: \"\"\n  output interface: \"\"\n  source: \"\"\n") != 4 {
+		assertDebugInspectionFields(
+			t,
+			text,
+			fmt.Sprintf(
+				"family: %q\ntarget: %q\nsource: %q\nsource present: true\n",
+				result.Family,
+				result.Target,
+				result.Source,
+			),
+			"default lookup:\n  mark: 0\n  present: false\n",
+		)
+		if strings.Count(
+			text,
+			"  present: false\n  gateway: \"\"\n  output interface: \"\"\n  source: \"\"\n",
+		) != 4 {
 			t.Fatalf("simulation omitted absent route values: %s", text)
 		}
 	}
@@ -397,9 +580,35 @@ func assertDebugInspectionFields(t *testing.T, text string, fields ...string) {
 func assertDebugInspectionRoutes(t *testing.T, text string, routes []netif.CurrentRoute) {
 	t.Helper()
 	for _, route := range routes {
-		assertDebugInspectionFields(t, text, fmt.Sprintf("  family: %q\n  destination: %q\n  gateway: %q\n  device: %q\n  table ID: %d\n  protocol: %d\n  metric: %d\n  scope: %d\n  type: %d\n  next hops: %d\n", route.Family, route.Dest, route.Via, route.Dev, route.TableID, route.Protocol, route.Metric, route.Scope, route.Type, len(route.NextHops)))
+		assertDebugInspectionFields(
+			t,
+			text,
+			fmt.Sprintf(
+				"  family: %q\n  destination: %q\n  gateway: %q\n  device: %q\n  table ID: %d\n  protocol: %d\n  metric: %d\n  scope: %d\n  type: %d\n  next hops: %d\n",
+				route.Family,
+				route.Dest,
+				route.Via,
+				route.Dev,
+				route.TableID,
+				route.Protocol,
+				route.Metric,
+				route.Scope,
+				route.Type,
+				len(route.NextHops),
+			),
+		)
 		for _, hop := range route.NextHops {
-			assertDebugInspectionFields(t, text, fmt.Sprintf("    gateway: %q\n    device: %q\n    link index: %d\n    weight: %d\n", hop.Via, hop.Dev, hop.LinkIndex, hop.Weight))
+			assertDebugInspectionFields(
+				t,
+				text,
+				fmt.Sprintf(
+					"    gateway: %q\n    device: %q\n    link index: %d\n    weight: %d\n",
+					hop.Via,
+					hop.Dev,
+					hop.LinkIndex,
+					hop.Weight,
+				),
+			)
 		}
 	}
 }
@@ -425,16 +634,31 @@ func checkDebugSimulationPresent(t *testing.T, binary, config string, outputLink
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := netlink.RouteAdd(&netlink.Route{Dst: destination, LinkIndex: outputLink.Attrs().Index}); err != nil {
+		if err := netlink.RouteAdd(&netlink.Route{
+			Dst:       destination,
+			LinkIndex: outputLink.Attrs().Index,
+		}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for _, view := range []string{"sim4", "sim6"} {
-		text, diagnostics, code := runCLIProcess(t, binary, "debug", view, "--config", config, "--output-format", "text")
+		text, diagnostics, code := runCLIProcess(
+			t,
+			binary,
+			"debug",
+			view,
+			"--config",
+			config,
+			"--output-format",
+			"text",
+		)
 		if code != 0 || diagnostics != "" {
 			t.Fatalf("present simulation exit=%d stdout=%s stderr=%s", code, text, diagnostics)
 		}
-		if strings.Count(text, "  present: true\n  gateway: \"\"\n  output interface: \"enatt0\"\n") != 4 {
+		if strings.Count(
+			text,
+			"  present: true\n  gateway: \"\"\n  output interface: \"enatt0\"\n",
+		) != 4 {
 			t.Fatalf("simulation omitted present route values: %s", text)
 		}
 	}

@@ -19,9 +19,11 @@ func NewAlertManager(log *slog.Logger, cfg AlertConfig) *AlertManager {
 	if log == nil {
 		log = slog.Default()
 	}
+
 	notifyCfg := notify.Config{RepeatEvery: 0, PerKind: nil}
 	if cfg.RepeatEvery > 0 {
 		notifyCfg.RepeatEvery = cfg.RepeatEvery
 	}
+
 	return WrapNotifier(notify.FromConfig(notify.EmailConfig{}, notifyCfg, log, "mwan-ifmgr"))
 }

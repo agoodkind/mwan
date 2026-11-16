@@ -27,14 +27,17 @@ func TestGuestExecSelectsTheConfiguredGateway(t *testing.T) {
 		if err := os.WriteFile(path, []byte(epoch), 0o600); err != nil {
 			t.Fatal(err)
 		}
+
 		listener, err := net.Listen("tcp4", "127.0.0.1:0")
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		server := grpc.NewServer()
 		mwanv1.RegisterMWANAgentServer(server, agent.NewServer(path, logger, nil, nil))
 		go func() { _ = server.Serve(listener) }()
 		t.Cleanup(server.Stop)
+
 		return listener.Addr().String()
 	}
 	config := &watchdogconfig.Config{}
@@ -52,16 +55,20 @@ func TestGuestExecSelectsTheConfiguredGateway(t *testing.T) {
 		{name: "primary", id: "213", want: "101"},
 		{name: "failover", id: "216", want: "202"},
 	} {
-		t.Run(testCase.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			defer cancel()
-			result, err := guest.GuestExec(ctx, testCase.id, "cat", "/var/lib/mwan/last-deploy")
-			if err != nil {
-				t.Fatalf("guest command: %v", err)
-			}
-			if result.ExitCode != 0 || result.Stdout != testCase.want {
-				t.Fatalf("guest result = %+v, want timestamp %s", result, testCase.want)
-			}
-		})
+		t.Run(
+			testCase.name,
+			func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+				defer cancel()
+				result, err := guest.GuestExec(ctx, testCase.id, "cat", "/var/lib/mwan/last-deploy")
+				if err != nil {
+					t.Fatalf("guest command: %v", err)
+				}
+
+				if result.ExitCode != 0 || result.Stdout != testCase.want {
+					t.Fatalf("guest result = %+v, want timestamp %s", result, testCase.want)
+				}
+			},
+		)
 	}
 }

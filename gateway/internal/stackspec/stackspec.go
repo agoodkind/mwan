@@ -49,9 +49,24 @@ func (m YangModule) Path() string {
 func RousetteYangModules() []YangModule {
 	return []YangModule{
 		{Dir: RousetteYangDir, Name: "ietf-restconf", Revision: "2017-01-26", Features: []string{}},
-		{Dir: RousetteYangDir, Name: "ietf-restconf-monitoring", Revision: "2017-01-26", Features: []string{}},
-		{Dir: RousetteYangDir, Name: "ietf-yang-patch", Revision: "2017-02-22", Features: []string{}},
-		{Dir: RousetteYangDir, Name: "ietf-subscribed-notifications", Revision: "2019-09-09", Features: []string{}},
+		{
+			Dir:      RousetteYangDir,
+			Name:     "ietf-restconf-monitoring",
+			Revision: "2017-01-26",
+			Features: []string{},
+		},
+		{
+			Dir:      RousetteYangDir,
+			Name:     "ietf-yang-patch",
+			Revision: "2017-02-22",
+			Features: []string{},
+		},
+		{
+			Dir:      RousetteYangDir,
+			Name:     "ietf-subscribed-notifications",
+			Revision: "2019-09-09",
+			Features: []string{},
+		},
 		{
 			Dir:      RousetteYangDir,
 			Name:     "ietf-restconf-subscribed-notifications",
@@ -101,10 +116,12 @@ func Packages() []Package {
 // Names preserves the order returned by Packages.
 func Names() []string {
 	packages := Packages()
+
 	names := make([]string, 0, len(packages))
 	for _, pkg := range packages {
 		names = append(names, pkg.Name)
 	}
+
 	return names
 }
 
@@ -115,6 +132,7 @@ func (p Package) FileName(arch string) string {
 	if !hasEpoch {
 		withoutEpoch = p.Version
 	}
+
 	return p.Name + "_" + withoutEpoch + "_" + arch + ".deb"
 }
 
@@ -128,12 +146,27 @@ func CheckBuilt(name string, version string, fileName string, arch string) error
 		if pkg.Name != name {
 			continue
 		}
+
 		if pkg.Version != version || pkg.FileName(arch) != fileName {
-			mismatch := fmt.Errorf("%w: built %s version %s, want %s", ErrMismatch, fileName, version, pkg.FileName(arch))
-			slog.Error("stackspec: built package differs from the list", "package", name, "err", mismatch)
+			mismatch := fmt.Errorf(
+				"%w: built %s version %s, want %s",
+				ErrMismatch,
+				fileName,
+				version,
+				pkg.FileName(arch),
+			)
+			slog.Error(
+				"stackspec: built package differs from the list",
+				"package",
+				name,
+				"err",
+				mismatch,
+			)
+
 			return mismatch
 		}
 	}
+
 	return nil
 }
 

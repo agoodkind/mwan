@@ -28,6 +28,7 @@ func WrapNotifier(n notify.Notifier) *AlertManager {
 	if n == nil {
 		n = notify.NullNotifier{}
 	}
+
 	return &AlertManager{n: n}
 }
 
@@ -36,25 +37,33 @@ func (a *AlertManager) NotifyContext(
 	ctx context.Context,
 	now time.Time,
 	level slog.Level,
-	kind,
-	key,
+	kind string,
+	key string,
 	msg string,
 	fields ...slog.Attr,
 ) {
-	a.n.Notify(ctx, notify.Event{
-		Now:        now,
-		Level:      level,
-		Kind:       kind,
-		Key:        key,
-		Message:    msg,
-		Fields:     fields,
-		IsRecovery: false,
-	})
+	a.n.Notify(
+		ctx,
+		notify.Event{
+			Now:        now,
+			Level:      level,
+			Kind:       kind,
+			Key:        key,
+			Message:    msg,
+			Fields:     fields,
+			IsRecovery: false,
+		},
+	)
 }
 
 // Notify emits an alert at the given level via the wrapped Notifier.
 func (a *AlertManager) Notify(
-	now time.Time, level slog.Level, kind, key, msg string, fields ...slog.Attr,
+	now time.Time,
+	level slog.Level,
+	kind string,
+	key string,
+	msg string,
+	fields ...slog.Attr,
 ) {
 	a.NotifyContext(context.Background(), now, level, kind, key, msg, fields...)
 }
@@ -63,8 +72,8 @@ func (a *AlertManager) Notify(
 func (a *AlertManager) ResolveContext(
 	ctx context.Context,
 	now time.Time,
-	kind,
-	key,
+	kind string,
+	key string,
 	msg string,
 	fields ...slog.Attr,
 ) {

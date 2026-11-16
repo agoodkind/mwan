@@ -49,7 +49,12 @@ type healthPolicyFixture struct {
 func newHealthFixture(t *testing.T) *healthFixture {
 	t.Helper()
 	root := t.TempDir()
-	fixture := &healthFixture{config: filepath.Join(root, "config.toml"), network: filepath.Join(root, "network.json"), state: filepath.Join(root, "health.state"), observations: filepath.Join(root, "absent-observations.json")}
+	fixture := &healthFixture{
+		config:       filepath.Join(root, "config.toml"),
+		network:      filepath.Join(root, "network.json"),
+		state:        filepath.Join(root, "health.state"),
+		observations: filepath.Join(root, "absent-observations.json"),
+	}
 	data, err := os.ReadFile(filepath.Join("..", "..", "yang", "instances", "network-min.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -57,13 +62,20 @@ func newHealthFixture(t *testing.T) *healthFixture {
 	if err := json.Unmarshal(data, &fixture.document); err != nil {
 		t.Fatal(err)
 	}
-	if err := json.Unmarshal(fixture.document["ietf-interfaces:interfaces"], &fixture.interfaces); err != nil {
+	if err := json.Unmarshal(
+		fixture.document["ietf-interfaces:interfaces"],
+		&fixture.interfaces,
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := json.Unmarshal(fixture.interfaces["interface"], &fixture.entries); err != nil {
 		t.Fatal(err)
 	}
-	configuration := fmt.Sprintf("[ifmgr]\nrole = 'wan'\n[ifmgr.iface.lo]\n[ifmgr.modules.health]\nobservation_settings_file = %q\nstate_file = %q\n[wanconfig]\npublish = true\n", fixture.observations, fixture.state)
+	configuration := fmt.Sprintf(
+		"[ifmgr]\nrole = 'wan'\n[ifmgr.iface.lo]\n[ifmgr.modules.health]\nobservation_settings_file = %q\nstate_file = %q\n[wanconfig]\npublish = true\n",
+		fixture.observations,
+		fixture.state,
+	)
 	if err := os.WriteFile(fixture.config, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +95,12 @@ func newHealthFixture(t *testing.T) *healthFixture {
 	return fixture
 }
 
-func (fixture *healthFixture) policy(t *testing.T, provider, iface string, policy healthPolicyFixture) {
+func (fixture *healthFixture) policy(
+	t *testing.T,
+	provider string,
+	iface string,
+	policy healthPolicyFixture,
+) {
 	t.Helper()
 	for _, entry := range fixture.entries {
 		data, present := entry["goodkind-mwan-steering:wan"]
@@ -140,7 +157,10 @@ func (fixture *healthFixture) policy(t *testing.T, provider, iface string, polic
 func (fixture *healthFixture) save(t *testing.T, timeoutMillis int) {
 	t.Helper()
 	var group map[string]json.RawMessage
-	if err := json.Unmarshal(fixture.interfaces["goodkind-mwan-steering:steering-group"], &group); err != nil {
+	if err := json.Unmarshal(
+		fixture.interfaces["goodkind-mwan-steering:steering-group"],
+		&group,
+	); err != nil {
 		t.Fatal(err)
 	}
 	var err error
@@ -170,10 +190,25 @@ func (fixture *healthFixture) save(t *testing.T, timeoutMillis int) {
 }
 
 func healthPolicy(urls []string) healthPolicyFixture {
-	return healthPolicyFixture{Enabled: true, PingCount: new(2), Success: 1, Failure: 1, Recovery: 1, Interval: 1, TargetsV4: []string{"127.0.0.1", "127.0.0.2"}, TargetsV6: []string{"::1"}, HTTPURLs: urls}
+	return healthPolicyFixture{
+		Enabled:   true,
+		PingCount: new(2),
+		Success:   1,
+		Failure:   1,
+		Recovery:  1,
+		Interval:  1,
+		TargetsV4: []string{"127.0.0.1", "127.0.0.2"},
+		TargetsV6: []string{"::1"},
+		HTTPURLs:  urls,
+	}
 }
 
-func healthCommand(t *testing.T, binary string, fixture *healthFixture, arguments ...string) *exec.Cmd {
+func healthCommand(
+	t *testing.T,
+	binary string,
+	fixture *healthFixture,
+	arguments ...string,
+) *exec.Cmd {
 	t.Helper()
 	arguments = append([]string{"health", "--config", fixture.config}, arguments...)
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
@@ -188,17 +223,33 @@ func healthCommand(t *testing.T, binary string, fixture *healthFixture, argument
 	return command
 }
 
-func runHealthFixture(t *testing.T, binary string, fixture *healthFixture, arguments ...string) ([]healthcheck.Record, string) {
+func runHealthFixture(
+	t *testing.T,
+	binary string,
+	fixture *healthFixture,
+	arguments ...string,
+) ([]healthcheck.Record, string) {
 	t.Helper()
 	command := healthCommand(t, binary, fixture, append(arguments, "--output-format", "json")...)
 	var output, diagnostics bytes.Buffer
 	command.Stdout, command.Stderr = &output, &diagnostics
 	if err := command.Run(); err != nil {
-		t.Fatalf("health exit=%v output=%s diagnostics=%s", err, output.String(), diagnostics.String())
+		t.Fatalf(
+			"health exit=%v output=%s diagnostics=%s",
+			err,
+			output.String(),
+			diagnostics.String(),
+		)
 	}
 	var records []healthcheck.Record
-	if err := json.Unmarshal(output.Bytes(), &records); err != nil || strings.Count(output.String(), "\n") != 1 {
-		t.Fatalf("finite JSON decode=%v output=%s diagnostics=%s", err, output.String(), diagnostics.String())
+	if err := json.Unmarshal(output.Bytes(), &records); err != nil ||
+		strings.Count(output.String(), "\n") != 1 {
+		t.Fatalf(
+			"finite JSON decode=%v output=%s diagnostics=%s",
+			err,
+			output.String(),
+			diagnostics.String(),
+		)
 	}
 	return records, diagnostics.String()
 }
@@ -258,22 +309,32 @@ func runConfiguredHealthNamespaceRuntime(t *testing.T, binary string) {
 	}
 	pingCounts := make(map[string]int)
 	for _, record := range records {
-		if record.WAN.ID != "health-webpass" || record.WAN.Name != "webpass" || record.WAN.Iface != "lo" || record.Timestamp.Before(started) || record.Timestamp.After(time.Now()) {
+		if record.WAN.ID != "health-webpass" || record.WAN.Name != "webpass" ||
+			record.WAN.Iface != "lo" ||
+			record.Timestamp.Before(started) ||
+			record.Timestamp.After(time.Now()) {
 			t.Fatalf("raw identity=%+v", record)
 		}
 		if record.Ping != nil {
 			attempt := record.Ping
 			pingCounts[attempt.Target]++
-			if attempt.Interface != "lo" || attempt.Attempt != pingCounts[attempt.Target] || attempt.Timeout != 250*time.Millisecond || attempt.Error != "" || attempt.RTT <= 0 {
+			if attempt.Interface != "lo" || attempt.Attempt != pingCounts[attempt.Target] ||
+				attempt.Timeout != 250*time.Millisecond ||
+				attempt.Error != "" ||
+				attempt.RTT <= 0 {
 				t.Fatalf("raw ping=%+v", attempt)
 			}
 		} else if record.HTTP != nil {
 			attempt := record.HTTP
-			if attempt.Interface != "lo" || attempt.Timeout != 250*time.Millisecond || attempt.Iteration < 1 || attempt.Iteration > len(urls) || attempt.Target != urls[attempt.Iteration-1] {
+			if attempt.Interface != "lo" || attempt.Timeout != 250*time.Millisecond ||
+				attempt.Iteration < 1 ||
+				attempt.Iteration > len(urls) ||
+				attempt.Target != urls[attempt.Iteration-1] {
 				t.Fatalf("raw HTTP=%+v", attempt)
 			}
 			if attempt.Iteration == 3 {
-				if attempt.Error != "HTTPGet: HTTP GET: Get \""+attempt.Target+"\": EOF" || attempt.StatusCode != 0 {
+				if attempt.Error != "HTTPGet: HTTP GET: Get \""+attempt.Target+"\": EOF" ||
+					attempt.StatusCode != 0 {
 					t.Fatalf("raw HTTP failure=%+v", attempt)
 				}
 			} else {
@@ -282,7 +343,8 @@ func runConfiguredHealthNamespaceRuntime(t *testing.T, binary string) {
 				if attempt.Iteration == 2 {
 					status, path = http.StatusServiceUnavailable, "/503"
 				}
-				if attempt.StatusCode != status || attempt.Body != "health fixture "+path || attempt.Error != "" {
+				if attempt.StatusCode != status || attempt.Body != "health fixture "+path ||
+					attempt.Error != "" {
 					t.Fatalf("raw HTTP response=%+v", attempt)
 				}
 			}
@@ -304,7 +366,9 @@ func runConfiguredHealthNamespaceRuntime(t *testing.T, binary string) {
 	mutex.Unlock()
 	command := healthCommand(t, binary, fixture)
 	text, err := command.Output()
-	if err != nil || strings.Count(string(text), " WAN webpass (health-webpass) via lo") != 12 || !strings.Contains(string(text), "status 418") || !strings.Contains(string(text), strconv.Quote(records[len(records)-1].HTTP.Error)) {
+	if err != nil || strings.Count(string(text), " WAN webpass (health-webpass) via lo") != 12 ||
+		!strings.Contains(string(text), "status 418") ||
+		!strings.Contains(string(text), strconv.Quote(records[len(records)-1].HTTP.Error)) {
 		t.Fatalf("text error=%v output=%s", err, text)
 	}
 	if _, err := os.Stat(fixture.state); !os.IsNotExist(err) {
@@ -330,7 +394,8 @@ func runConfiguredHealthNamespaceRuntime(t *testing.T, binary string) {
 			t.Fatalf("family=%s records=%+v", family, records)
 		}
 		for _, record := range records {
-			if record.Ping != nil && record.Ping.Family != wantFamily || record.HTTP != nil && record.HTTP.Family != wantFamily {
+			if record.Ping != nil && record.Ping.Family != wantFamily ||
+				record.HTTP != nil && record.HTTP.Family != wantFamily {
 				t.Fatalf("empty family triggered a probe: %+v", record)
 			}
 		}
@@ -341,7 +406,8 @@ func runConfiguredHealthNamespaceRuntime(t *testing.T, binary string) {
 	fixture.policy(t, "webpass", "lo", policy)
 	fixture.save(t, 100)
 	records, _ = runHealthFixture(t, binary, fixture)
-	if len(records) != 3 || records[0].Ping.Error == "" || records[1].Ping.Error == "" || records[2].HTTP.StatusCode != http.StatusTeapot {
+	if len(records) != 3 || records[0].Ping.Error == "" || records[1].Ping.Error == "" ||
+		records[2].HTTP.StatusCode != http.StatusTeapot {
 		t.Fatalf("failed ping attempts=%+v", records)
 	}
 	assertHealthOutputErrors(t, binary, fixture)
@@ -373,7 +439,8 @@ func runConfiguredHealthNamespaceRuntime(t *testing.T, binary string) {
 	command = healthCommand(t, binary, fixture)
 	var rejected bytes.Buffer
 	command.Stderr = &rejected
-	if err := command.Run(); err == nil || !strings.Contains(rejected.String(), "ping-count must be > 0") {
+	if err := command.Run(); err == nil ||
+		!strings.Contains(rejected.String(), "ping-count must be > 0") {
 		t.Fatalf("invalid policy error=%v diagnostics=%s", err, rejected.String())
 	}
 	policy.PingCount = new(2)
@@ -384,13 +451,26 @@ func runConfiguredHealthNamespaceRuntime(t *testing.T, binary string) {
 	command = exec.CommandContext(daemonContext, binary, "ifmgr", "--config", fixture.config)
 	rejected.Reset()
 	command.Stderr = &rejected
-	if output, err := command.Output(); err == nil || !strings.Contains(string(output)+rejected.String(), "load health observations") {
-		t.Fatalf("daemon observation validation error=%v output=%s diagnostics=%s", err, output, rejected.String())
+	if output, err := command.Output(); err == nil ||
+		!strings.Contains(string(output)+rejected.String(), "load health observations") {
+		t.Fatalf(
+			"daemon observation validation error=%v output=%s diagnostics=%s",
+			err,
+			output,
+			rejected.String(),
+		)
 	}
 	assertHealthRejectedProvider(t, binary, fixture, urls, &mutex, counts)
 }
 
-func assertHealthRejectedProvider(t *testing.T, binary string, fixture *healthFixture, urls []string, mutex *sync.Mutex, counts map[string]int) {
+func assertHealthRejectedProvider(
+	t *testing.T,
+	binary string,
+	fixture *healthFixture,
+	urls []string,
+	mutex *sync.Mutex,
+	counts map[string]int,
+) {
 	t.Helper()
 	policy := healthPolicy(urls)
 	fixture.policy(t, "att", "lo", policy)
@@ -411,10 +491,20 @@ func assertHealthRejectedProvider(t *testing.T, binary string, fixture *healthFi
 			command.Stdout, command.Stderr = &output, &diagnostics
 			err := command.Run()
 			var exitError *exec.ExitError
-			if !errors.As(err, &exitError) || exitError.ExitCode() != 1 || output.Len() != 0 || strings.Contains(diagnostics.String(), "Usage:") {
-				t.Fatalf("rejected provider watch=%t format=%s error=%v output=%s diagnostics=%s", watch, format, err, output.String(), diagnostics.String())
+			if !errors.As(err, &exitError) || exitError.ExitCode() != 1 || output.Len() != 0 ||
+				strings.Contains(diagnostics.String(), "Usage:") {
+				t.Fatalf(
+					"rejected provider watch=%t format=%s error=%v output=%s diagnostics=%s",
+					watch,
+					format,
+					err,
+					output.String(),
+					diagnostics.String(),
+				)
 			}
-			if !strings.Contains(diagnostics.String(), "webpass") || !strings.Contains(diagnostics.String(), "health-bad0") || !strings.Contains(diagnostics.String(), "health/ping-count is required") {
+			if !strings.Contains(diagnostics.String(), "webpass") ||
+				!strings.Contains(diagnostics.String(), "health-bad0") ||
+				!strings.Contains(diagnostics.String(), "health/ping-count is required") {
 				t.Fatalf("provider rejection omitted configuration facts: %s", diagnostics.String())
 			}
 		}
@@ -444,8 +534,15 @@ func assertHealthOutputErrors(t *testing.T, binary string, fixture *healthFixtur
 			err = command.Run()
 			_ = full.Close()
 			var exitError *exec.ExitError
-			if !errors.As(err, &exitError) || exitError.ExitCode() != 1 || !strings.Contains(diagnostics.String(), "no space left on device") {
-				t.Fatalf("health output watch=%t format=%s error=%v diagnostics=%s", watch, format, err, diagnostics.String())
+			if !errors.As(err, &exitError) || exitError.ExitCode() != 1 ||
+				!strings.Contains(diagnostics.String(), "no space left on device") {
+				t.Fatalf(
+					"health output watch=%t format=%s error=%v diagnostics=%s",
+					watch,
+					format,
+					err,
+					diagnostics.String(),
+				)
 			}
 		}
 	}
@@ -460,7 +557,11 @@ type healthWatchProcess struct {
 
 func startHealthWatch(t *testing.T, binary string, fixture *healthFixture) *healthWatchProcess {
 	t.Helper()
-	process := &healthWatchProcess{command: healthCommand(t, binary, fixture, "--watch", "--output-format", "json"), records: make(chan healthcheck.Record, 256), decodeError: make(chan error, 1)}
+	process := &healthWatchProcess{
+		command:     healthCommand(t, binary, fixture, "--watch", "--output-format", "json"),
+		records:     make(chan healthcheck.Record, 256),
+		decodeError: make(chan error, 1),
+	}
 	process.command.Stderr = &process.diagnostics
 	stdout, err := process.command.StdoutPipe()
 	if err != nil {
@@ -515,7 +616,11 @@ func stopHealthWatch(t *testing.T, process *healthWatchProcess) []healthcheck.Re
 			go func() { finished <- process.command.Wait() }()
 		case err := <-finished:
 			if err != nil {
-				t.Fatalf("health cancellation error=%v diagnostics=%s", err, process.diagnostics.String())
+				t.Fatalf(
+					"health cancellation error=%v diagnostics=%s",
+					err,
+					process.diagnostics.String(),
+				)
 			}
 			return records
 		case <-deadline.C:
@@ -549,21 +654,27 @@ func runConfiguredHealthWatchNamespaceRuntime(t *testing.T, binary string) {
 		started, finished time.Time
 	}
 	requests := make(chan requestTime, 64)
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		started := time.Now()
-		delay := 200 * time.Millisecond
-		if request.URL.Path == "/slow" {
-			delay = 1200 * time.Millisecond
-		}
-		timer := time.NewTimer(delay)
-		defer timer.Stop()
-		select {
-		case <-timer.C:
-			_, _ = io.WriteString(writer, "health watch fixture")
-			requests <- requestTime{path: request.URL.Path, started: started, finished: time.Now()}
-		case <-request.Context().Done():
-		}
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			started := time.Now()
+			delay := 200 * time.Millisecond
+			if request.URL.Path == "/slow" {
+				delay = 1200 * time.Millisecond
+			}
+			timer := time.NewTimer(delay)
+			defer timer.Stop()
+			select {
+			case <-timer.C:
+				_, _ = io.WriteString(writer, "health watch fixture")
+				requests <- requestTime{
+					path:     request.URL.Path,
+					started:  started,
+					finished: time.Now(),
+				}
+			case <-request.Context().Done():
+			}
+		}),
+	)
 	defer server.Close()
 	port := server.Listener.Addr().(*net.TCPAddr).Port
 	// Accept both configured local interfaces through one real HTTP listener.
@@ -579,7 +690,11 @@ func runConfiguredHealthWatchNamespaceRuntime(t *testing.T, binary string) {
 	fast := healthPolicy([]string{fmt.Sprintf("http://127.0.0.1:%d/fast", port)})
 	fast.TargetsV4, fast.TargetsV6 = []string{"127.0.0.1"}, []string{}
 	slow := fast
-	slow.Interval, slow.TargetsV4, slow.HTTPURLs = 3, []string{"192.0.2.1"}, []string{fmt.Sprintf("http://192.0.2.1:%d/slow", port)}
+	slow.Interval, slow.TargetsV4, slow.HTTPURLs = 3, []string{
+		"192.0.2.1",
+	}, []string{
+		fmt.Sprintf("http://192.0.2.1:%d/slow", port),
+	}
 	fixture.policy(t, "webpass", "lo", fast)
 	fixture.policy(t, "att", "healthslow0", slow)
 	fixture.save(t, 3000)
@@ -606,7 +721,12 @@ func runConfiguredHealthWatchNamespaceRuntime(t *testing.T, binary string) {
 		}
 		for index := 1; index < len(requests); index++ {
 			gap := requests[index].started.Sub(requests[index-1].finished)
-			t.Logf("WAN path=%s configured interval=%s observed delay after completion=%s", path, interval, gap)
+			t.Logf(
+				"WAN path=%s configured interval=%s observed delay after completion=%s",
+				path,
+				interval,
+				gap,
+			)
 			if gap < interval-50*time.Millisecond || gap > interval+750*time.Millisecond {
 				t.Fatalf("path=%s configured=%s measured post-sweep delay=%s", path, interval, gap)
 			}
@@ -624,11 +744,13 @@ func TestConfiguredHealthCancellationNamespaceRuntime(t *testing.T) {
 func runConfiguredHealthCancellationNamespaceRuntime(t *testing.T, binary string) {
 	fixture := newHealthFixture(t)
 	entered, canceled := make(chan struct{}), make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
-		close(entered)
-		<-request.Context().Done()
-		close(canceled)
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+			close(entered)
+			<-request.Context().Done()
+			close(canceled)
+		}),
+	)
 	defer server.Close()
 	policy := healthPolicy([]string{server.URL})
 	policy.TargetsV4, policy.TargetsV6 = []string{"127.0.0.1"}, []string{}
@@ -659,16 +781,18 @@ func TestConfiguredHealthZeroIntervalNamespaceRuntime(t *testing.T) {
 func runConfiguredHealthZeroIntervalNamespaceRuntime(t *testing.T, binary string) {
 	fixture := newHealthFixture(t)
 	completed := make(chan time.Time, 64)
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		timer := time.NewTimer(100 * time.Millisecond)
-		defer timer.Stop()
-		select {
-		case <-timer.C:
-			_, _ = io.WriteString(writer, "zero interval fixture")
-			completed <- time.Now()
-		case <-request.Context().Done():
-		}
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			timer := time.NewTimer(100 * time.Millisecond)
+			defer timer.Stop()
+			select {
+			case <-timer.C:
+				_, _ = io.WriteString(writer, "zero interval fixture")
+				completed <- time.Now()
+			case <-request.Context().Done():
+			}
+		}),
+	)
 	defer server.Close()
 	policy := healthPolicy([]string{server.URL})
 	policy.Interval, policy.TargetsV4, policy.TargetsV6 = 0, []string{"127.0.0.1"}, []string{}
@@ -743,8 +867,17 @@ func runConfiguredHealthZeroIntervalNamespaceRuntime(t *testing.T, binary string
 		t.Fatalf("text watch cancellation=%v diagnostics=%s", err, diagnostics.String())
 	}
 	gap := times[1].Sub(times[0])
-	if gap > 750*time.Millisecond || strings.Count(output.String(), "status 200") < 2 || diagnostics.Len() != 0 {
-		t.Fatalf("zero interval completion gap=%s text=%s diagnostics=%s", gap, output.String(), diagnostics.String())
+	if gap > 750*time.Millisecond || strings.Count(output.String(), "status 200") < 2 ||
+		diagnostics.Len() != 0 {
+		t.Fatalf(
+			"zero interval completion gap=%s text=%s diagnostics=%s",
+			gap,
+			output.String(),
+			diagnostics.String(),
+		)
 	}
-	t.Logf("zero configured interval produced HTTP completions %s apart with 100ms server delay", gap)
+	t.Logf(
+		"zero configured interval produced HTTP completions %s apart with 100ms server delay",
+		gap,
+	)
 }

@@ -36,15 +36,18 @@ type rejectionSummary struct {
 func writeSchemaDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
+
 	for _, module := range schema.Modules() {
 		content, err := schema.Read(module.File)
 		if err != nil {
 			t.Fatalf("read the embedded module: %v", err)
 		}
+
 		if err := os.WriteFile(filepath.Join(dir, module.File), content, 0o600); err != nil {
 			t.Fatalf("write %s: %v", module.File, err)
 		}
 	}
+
 	return dir
 }
 
@@ -54,7 +57,9 @@ func loadEmbedded(t *testing.T) *yangschema.Schema {
 	if err != nil {
 		t.Fatalf("LoadEmbedded: %v", err)
 	}
+
 	t.Cleanup(loaded.Close)
+
 	return loaded
 }
 
@@ -64,6 +69,7 @@ func readFile(t *testing.T, path string) []byte {
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
 	}
+
 	return data
 }
 
@@ -73,6 +79,7 @@ func writeDocument(t *testing.T, document []byte) string {
 	if err := os.WriteFile(path, document, 0o600); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
+
 	return path
 }
 
@@ -81,18 +88,23 @@ func replaceOnce(t *testing.T, base []byte, old string, replacement string) []by
 	if count := strings.Count(string(base), old); count != 1 {
 		t.Fatalf("edit target %q occurs %d times, want 1", old, count)
 	}
+
 	return []byte(strings.Replace(string(base), old, replacement, 1))
 }
 
 func summarizeRejections(rejected []networkjson.Rejection) []rejectionSummary {
 	summaries := make([]rejectionSummary, 0, len(rejected))
 	for _, rejection := range rejected {
-		summaries = append(summaries, rejectionSummary{
-			Interface: rejection.Interface,
-			Provider:  rejection.Provider,
-			Err:       rejection.Err.Error(),
-		})
+		summaries = append(
+			summaries,
+			rejectionSummary{
+				Interface: rejection.Interface,
+				Provider:  rejection.Provider,
+				Err:       rejection.Err.Error(),
+			},
+		)
 	}
+
 	return summaries
 }
 
@@ -103,6 +115,7 @@ func requireSameConfig(t *testing.T, want *networkjson.Config, got *networkjson.
 	if !reflect.DeepEqual(wantRejected, gotRejected) {
 		t.Fatalf("Rejected differs:\nwant %+v\ngot  %+v", wantRejected, gotRejected)
 	}
+
 	wantRest := *want
 	gotRest := *got
 	wantRest.Rejected = nil
@@ -117,105 +130,138 @@ func TestValidateAndDecodeMatchesLoadForValidDocuments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("glob %s: %v", instanceGlob, err)
 	}
+
 	if len(documents) == 0 {
 		t.Fatalf("no network document matches %s", instanceGlob)
 	}
+
 	schemaDir := writeSchemaDir(t)
+
 	for _, path := range documents {
-		t.Run(filepath.Base(path), func(t *testing.T) {
-			data := readFile(t, path)
-			loaded, err := networkload.Load(path, schemaDir)
-			if err != nil {
-				t.Fatalf("Load: %v", err)
-			}
-			decoded, err := networkload.ValidateAndDecode(data, loadEmbedded(t))
-			if err != nil {
-				t.Fatalf("ValidateAndDecode: %v", err)
-			}
-			requireSameConfig(t, loaded, decoded)
-			canonical, err := networkjson.Canonicalize(data)
-			if err != nil {
-				t.Fatalf("Canonicalize: %v", err)
-			}
-			decodedCanonical, err := networkload.ValidateAndDecode(canonical, loadEmbedded(t))
-			if err != nil {
-				t.Fatalf("ValidateAndDecode canonical: %v", err)
-			}
-			requireSameConfig(t, loaded, decodedCanonical)
-		})
+		t.Run(
+			filepath.Base(path),
+			func(t *testing.T) {
+				data := readFile(t, path)
+				loaded, err := networkload.Load(path, schemaDir)
+				if err != nil {
+					t.Fatalf("Load: %v", err)
+				}
+
+				decoded, err := networkload.ValidateAndDecode(data, loadEmbedded(t))
+				if err != nil {
+					t.Fatalf("ValidateAndDecode: %v", err)
+				}
+
+				requireSameConfig(t, loaded, decoded)
+				canonical, err := networkjson.Canonicalize(data)
+				if err != nil {
+					t.Fatalf("Canonicalize: %v", err)
+				}
+
+				decodedCanonical, err := networkload.ValidateAndDecode(canonical, loadEmbedded(t))
+				if err != nil {
+					t.Fatalf("ValidateAndDecode canonical: %v", err)
+				}
+
+				requireSameConfig(t, loaded, decodedCanonical)
+			},
+		)
 	}
 }
 
 func TestValidateAndDecodeClassifiesRejections(t *testing.T) {
 	base := readFile(t, networkMinPath)
 
-	t.Run("duplicate member", func(t *testing.T) {
-		document := replaceOnce(t, base, managementLink, duplicateName)
-		_, err := networkload.ValidateAndDecode(document, loadEmbedded(t))
-		var malformed *networkload.JSONError
-		if !errors.As(err, &malformed) {
-			t.Fatalf("error = %v, want a JSONError", err)
-		}
-		if !strings.Contains(err.Error(), `"name" appears more than once`) {
-			t.Fatalf("error = %q, want the duplicate member", err)
-		}
-	})
+	t.Run(
+		"duplicate member",
+		func(t *testing.T) {
+			document := replaceOnce(t, base, managementLink, duplicateName)
+			_, err := networkload.ValidateAndDecode(document, loadEmbedded(t))
+			var malformed *networkload.JSONError
+			if !errors.As(err, &malformed) {
+				t.Fatalf("error = %v, want a JSONError", err)
+			}
 
-	t.Run("trailing data", func(t *testing.T) {
-		document := append(append([]byte{}, base...), []byte("{}")...)
-		_, err := networkload.ValidateAndDecode(document, loadEmbedded(t))
-		var malformed *networkload.JSONError
-		if !errors.As(err, &malformed) {
-			t.Fatalf("error = %v, want a JSONError", err)
-		}
-	})
+			if !strings.Contains(err.Error(), `"name" appears more than once`) {
+				t.Fatalf("error = %q, want the duplicate member", err)
+			}
+		},
+	)
 
-	t.Run("unknown member", func(t *testing.T) {
-		document := replaceOnce(t, base, managementLink, unknownMember)
-		_, err := networkload.ValidateAndDecode(document, loadEmbedded(t))
-		var rejected *networkload.SchemaError
-		if !errors.As(err, &rejected) {
-			t.Fatalf("error = %v, want a SchemaError", err)
-		}
-		if !strings.Contains(err.Error(), "unknown-member") {
-			t.Fatalf("error = %q, want the unknown member", err)
-		}
-	})
+	t.Run(
+		"trailing data",
+		func(t *testing.T) {
+			document := append(append([]byte{}, base...), []byte("{}")...)
+			_, err := networkload.ValidateAndDecode(document, loadEmbedded(t))
+			var malformed *networkload.JSONError
+			if !errors.As(err, &malformed) {
+				t.Fatalf("error = %v, want a JSONError", err)
+			}
+		},
+	)
 
-	t.Run("semantic defect", func(t *testing.T) {
-		document := replaceOnce(t, base, uniqueTable, duplicateTable)
-		_, err := networkload.ValidateAndDecode(document, loadEmbedded(t))
-		if err == nil || !strings.Contains(err.Error(), duplicateTableMessage) {
-			t.Fatalf("error = %v, want the duplicate table", err)
-		}
-		var malformed *networkload.JSONError
-		var rejected *networkload.SchemaError
-		if errors.As(err, &malformed) || errors.As(err, &rejected) {
-			t.Fatalf("error = %v, want an unclassified semantic error", err)
-		}
-	})
+	t.Run(
+		"unknown member",
+		func(t *testing.T) {
+			document := replaceOnce(t, base, managementLink, unknownMember)
+			_, err := networkload.ValidateAndDecode(document, loadEmbedded(t))
+			var rejected *networkload.SchemaError
+			if !errors.As(err, &rejected) {
+				t.Fatalf("error = %v, want a SchemaError", err)
+			}
 
-	t.Run("closed schema", func(t *testing.T) {
-		closed := loadEmbedded(t)
-		closed.Close()
-		loaded, err := networkload.ValidateAndDecode(base, closed)
-		if !errors.Is(err, yangschema.ErrSchemaClosed) {
-			t.Fatalf("error = %v, want ErrSchemaClosed", err)
-		}
-		if loaded != nil {
-			t.Fatal("ValidateAndDecode decoded a document without schema validation")
-		}
-	})
+			if !strings.Contains(err.Error(), "unknown-member") {
+				t.Fatalf("error = %q, want the unknown member", err)
+			}
+		},
+	)
 
-	t.Run("absent schema", func(t *testing.T) {
-		loaded, err := networkload.ValidateAndDecode(base, nil)
-		if !errors.Is(err, yangschema.ErrSchemaClosed) {
-			t.Fatalf("error = %v, want ErrSchemaClosed", err)
-		}
-		if loaded != nil {
-			t.Fatal("ValidateAndDecode decoded a document without schema validation")
-		}
-	})
+	t.Run(
+		"semantic defect",
+		func(t *testing.T) {
+			document := replaceOnce(t, base, uniqueTable, duplicateTable)
+			_, err := networkload.ValidateAndDecode(document, loadEmbedded(t))
+			if err == nil || !strings.Contains(err.Error(), duplicateTableMessage) {
+				t.Fatalf("error = %v, want the duplicate table", err)
+			}
+
+			var malformed *networkload.JSONError
+			var rejected *networkload.SchemaError
+			if errors.As(err, &malformed) || errors.As(err, &rejected) {
+				t.Fatalf("error = %v, want an unclassified semantic error", err)
+			}
+		},
+	)
+
+	t.Run(
+		"closed schema",
+		func(t *testing.T) {
+			closed := loadEmbedded(t)
+			closed.Close()
+			loaded, err := networkload.ValidateAndDecode(base, closed)
+			if !errors.Is(err, yangschema.ErrSchemaClosed) {
+				t.Fatalf("error = %v, want ErrSchemaClosed", err)
+			}
+
+			if loaded != nil {
+				t.Fatal("ValidateAndDecode decoded a document without schema validation")
+			}
+		},
+	)
+
+	t.Run(
+		"absent schema",
+		func(t *testing.T) {
+			loaded, err := networkload.ValidateAndDecode(base, nil)
+			if !errors.Is(err, yangschema.ErrSchemaClosed) {
+				t.Fatalf("error = %v, want ErrSchemaClosed", err)
+			}
+
+			if loaded != nil {
+				t.Fatal("ValidateAndDecode decoded a document without schema validation")
+			}
+		},
+	)
 }
 
 func TestLoadReturnsPathQualifiedErrors(t *testing.T) {
@@ -227,6 +273,7 @@ func TestLoadReturnsPathQualifiedErrors(t *testing.T) {
 	duplicatePath := writeDocument(t, replaceOnce(t, base, managementLink, duplicateName))
 	truncatedPath := writeDocument(t, base[:len(base)/2])
 	semanticPath := writeDocument(t, replaceOnce(t, base, uniqueTable, duplicateTable))
+
 	cases := []struct {
 		name      string
 		path      string
@@ -235,45 +282,69 @@ func TestLoadReturnsPathQualifiedErrors(t *testing.T) {
 		message   string
 	}{
 		{
-			name: "unreadable document", path: absentPath, schemaDir: schemaDir,
-			prefix: "read " + absentPath + ": ", message: "no such file",
+			name:      "unreadable document",
+			path:      absentPath,
+			schemaDir: schemaDir,
+			prefix:    "read " + absentPath + ": ",
+			message:   "no such file",
 		},
 		{
-			name: "unloadable schema", path: networkMinPath, schemaDir: absentSchemaDir,
-			prefix: "load schema from " + absentSchemaDir + ": ", message: "ly_ctx_new",
+			name:      "unloadable schema",
+			path:      networkMinPath,
+			schemaDir: absentSchemaDir,
+			prefix:    "load schema from " + absentSchemaDir + ": ",
+			message:   "ly_ctx_new",
 		},
 		{
-			name: "schema violation", path: unknownPath, schemaDir: schemaDir,
-			prefix: "validate " + unknownPath + ": ", message: "unknown-member",
+			name:      "schema violation",
+			path:      unknownPath,
+			schemaDir: schemaDir,
+			prefix:    "validate " + unknownPath + ": ",
+			message:   "unknown-member",
 		},
 		{
-			name: "duplicate member", path: duplicatePath, schemaDir: schemaDir,
-			prefix: "decode " + duplicatePath + ": ", message: "appears more than once",
+			name:      "duplicate member",
+			path:      duplicatePath,
+			schemaDir: schemaDir,
+			prefix:    "decode " + duplicatePath + ": ",
+			message:   "appears more than once",
 		},
 		{
-			name: "truncated document", path: truncatedPath, schemaDir: schemaDir,
-			prefix: "decode " + truncatedPath + ": ", message: "unexpected EOF",
+			name:      "truncated document",
+			path:      truncatedPath,
+			schemaDir: schemaDir,
+			prefix:    "decode " + truncatedPath + ": ",
+			message:   "unexpected EOF",
 		},
 		{
-			name: "semantic defect", path: semanticPath, schemaDir: schemaDir,
-			prefix: semanticPath + ": ", message: duplicateTableMessage,
+			name:      "semantic defect",
+			path:      semanticPath,
+			schemaDir: schemaDir,
+			prefix:    semanticPath + ": ",
+			message:   duplicateTableMessage,
 		},
 	}
 	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			loaded, err := networkload.Load(testCase.path, testCase.schemaDir)
-			if err == nil {
-				t.Fatal("Load succeeded")
-			}
-			if loaded != nil {
-				t.Fatalf("Load returned a configuration with error %v", err)
-			}
-			if !strings.HasPrefix(err.Error(), testCase.prefix) {
-				t.Fatalf("error = %q, want prefix %q", err, testCase.prefix)
-			}
-			if !strings.Contains(err.Error(), testCase.message) {
-				t.Fatalf("error = %q, want it to contain %q", err, testCase.message)
-			}
-		})
+		t.Run(
+			testCase.name,
+			func(t *testing.T) {
+				loaded, err := networkload.Load(testCase.path, testCase.schemaDir)
+				if err == nil {
+					t.Fatal("Load succeeded")
+				}
+
+				if loaded != nil {
+					t.Fatalf("Load returned a configuration with error %v", err)
+				}
+
+				if !strings.HasPrefix(err.Error(), testCase.prefix) {
+					t.Fatalf("error = %q, want prefix %q", err, testCase.prefix)
+				}
+
+				if !strings.Contains(err.Error(), testCase.message) {
+					t.Fatalf("error = %q, want it to contain %q", err, testCase.message)
+				}
+			},
+		)
 	}
 }

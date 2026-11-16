@@ -23,6 +23,7 @@ func exprIndex(exprs []expr.Any, pred func(expr.Any) bool) int {
 			return i
 		}
 	}
+
 	return -1
 }
 
@@ -97,25 +98,34 @@ func (f *fakeConn) AddSet(s *nftables.Set, vals []nftables.SetElement) error {
 	s.Name = "__map%d"
 	f.sets = append(f.sets, s)
 	f.elements = append(f.elements, vals)
+
 	return nil
 }
 
 func (f *fakeConn) AddRule(r *nftables.Rule) *nftables.Rule {
 	f.ops = append(f.ops, "addrule:"+r.Chain.Name)
 	f.rules = append(f.rules, r)
+
 	return r
 }
 
 func (f *fakeConn) Flush() error {
 	f.flushCount++
 	f.ops = append(f.ops, "flush")
+
 	return f.flushErr
 }
 
 func newFakeApplier() (*fakeConn, *nftApplier) {
 	fake := &fakeConn{
-		ops: nil, rules: nil, sets: nil, elements: nil, flushCount: 0, flushErr: nil,
+		ops:        nil,
+		rules:      nil,
+		sets:       nil,
+		elements:   nil,
+		flushCount: 0,
+		flushErr:   nil,
 	}
+
 	return fake, &nftApplier{newConn: func() (nftConn, error) { return fake, nil }}
 }
 
@@ -138,27 +148,42 @@ func TestApplierCreatesOwnsAndCommitsInOneTransaction(t *testing.T) {
 	t.Parallel()
 
 	fake, app := newFakeApplier()
-	if err := app.Apply(context.Background(), slog.Default(), spreadRulesForTest(hashModeRandom)); err != nil {
+	if err := app.Apply(
+		context.Background(),
+		slog.Default(),
+		spreadRulesForTest(hashModeRandom),
+	); err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
+
 	if fake.flushCount != 1 {
 		t.Fatalf("Flush called %d times, want exactly 1", fake.flushCount)
 	}
+
 	wantOps := []string{
 		"addtable:mwan_steer",
 		"addchain:prerouting",
 		"addchain:forward",
 		"flushchain:prerouting",
 		"flushchain:forward",
-		"addset", "addrule:prerouting",
-		"addset", "addrule:prerouting",
-		"addset", "addrule:prerouting",
+		"addset",
+		"addrule:prerouting",
+		"addset",
+		"addrule:prerouting",
+		"addset",
+		"addrule:prerouting",
 		"flush",
 	}
 	if len(fake.ops) != len(wantOps) {
-		t.Fatalf("op sequence length = %d, want %d\ngot:  %v\nwant: %v",
-			len(fake.ops), len(wantOps), fake.ops, wantOps)
+		t.Fatalf(
+			"op sequence length = %d, want %d\ngot:  %v\nwant: %v",
+			len(fake.ops),
+			len(wantOps),
+			fake.ops,
+			wantOps,
+		)
 	}
+
 	for i := range wantOps {
 		if fake.ops[i] != wantOps[i] {
 			t.Fatalf("op[%d] = %q, want %q\nfull: %v", i, fake.ops[i], wantOps[i], fake.ops)
@@ -170,22 +195,31 @@ func TestApplierChainPlacement(t *testing.T) {
 	t.Parallel()
 
 	fake, app := newFakeApplier()
-	if err := app.Apply(context.Background(), slog.Default(), spreadRulesForTest(hashModeRandom)); err != nil {
+	if err := app.Apply(
+		context.Background(),
+		slog.Default(),
+		spreadRulesForTest(hashModeRandom),
+	); err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
+
 	chain := fake.rules[0].Chain
 	if chain.Table.Family != nftables.TableFamilyINet || chain.Table.Name != "mwan_steer" {
 		t.Fatalf("table = %v %q, want inet mwan_steer", chain.Table.Family, chain.Table.Name)
 	}
+
 	if chain.Type != nftables.ChainTypeFilter {
 		t.Fatalf("chain type = %q, want filter", chain.Type)
 	}
+
 	if chain.Hooknum == nil || *chain.Hooknum != *nftables.ChainHookPrerouting {
 		t.Fatalf("chain hook = %v, want prerouting", chain.Hooknum)
 	}
+
 	if chain.Priority == nil || *chain.Priority != -99 {
 		t.Fatalf("chain priority = %v, want -99", chain.Priority)
 	}
+
 	if chain.Policy == nil || *chain.Policy != nftables.ChainPolicyAccept {
 		t.Fatalf("chain policy = %v, want accept", chain.Policy)
 	}
@@ -198,13 +232,18 @@ func TestApplierSpreadRuleShape(t *testing.T) {
 	t.Parallel()
 
 	fake, app := newFakeApplier()
-	if err := app.Apply(context.Background(), slog.Default(), spreadRulesForTest(hashModeRandom)); err != nil {
+	if err := app.Apply(
+		context.Background(),
+		slog.Default(),
+		spreadRulesForTest(hashModeRandom),
+	); err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
 
 	var numgen *expr.Numgen
 	var lookup *expr.Lookup
 	markWrites := 0
+
 	for _, e := range fake.rules[0].Exprs {
 		switch v := e.(type) {
 		case *expr.Numgen:
@@ -217,22 +256,33 @@ func TestApplierSpreadRuleShape(t *testing.T) {
 			}
 		}
 	}
+
 	if numgen == nil {
 		t.Fatal("spread rule carries no generator")
 	}
+
 	if numgen.Type != unix.NFT_NG_RANDOM {
 		t.Fatalf("generator type = %d, want random", numgen.Type)
 	}
+
 	if numgen.Modulus != 2 {
 		t.Fatalf("generator modulus = %d, want 2", numgen.Modulus)
 	}
+
 	if lookup == nil || !lookup.IsDestRegSet {
 		t.Fatalf("spread rule carries no map lookup writing a register: %#v", lookup)
 	}
+
 	if lookup.SetID != fake.sets[0].ID || lookup.SetName != fake.sets[0].Name {
-		t.Fatalf("lookup names set %q/%d, want %q/%d",
-			lookup.SetName, lookup.SetID, fake.sets[0].Name, fake.sets[0].ID)
+		t.Fatalf(
+			"lookup names set %q/%d, want %q/%d",
+			lookup.SetName,
+			lookup.SetID,
+			fake.sets[0].Name,
+			fake.sets[0].ID,
+		)
 	}
+
 	if markWrites != 1 {
 		t.Fatalf("mark writes = %d, want exactly 1", markWrites)
 	}
@@ -247,15 +297,28 @@ func TestApplierSpreadRuleShape(t *testing.T) {
 	if len(got) != len(wantElements) {
 		t.Fatalf("map has %d elements, want %d", len(got), len(wantElements))
 	}
+
 	for i := range wantElements {
-		if !bytes.Equal(got[i].Key, wantElements[i].Key) || !bytes.Equal(got[i].Val, wantElements[i].Val) {
-			t.Fatalf("map element %d = %v -> %v, want %v -> %v",
-				i, got[i].Key, got[i].Val, wantElements[i].Key, wantElements[i].Val)
+		if !bytes.Equal(got[i].Key, wantElements[i].Key) ||
+			!bytes.Equal(got[i].Val, wantElements[i].Val) {
+			t.Fatalf(
+				"map element %d = %v -> %v, want %v -> %v",
+				i,
+				got[i].Key,
+				got[i].Val,
+				wantElements[i].Key,
+				wantElements[i].Val,
+			)
 		}
 	}
+
 	if !fake.sets[0].IsMap || !fake.sets[0].Anonymous || !fake.sets[0].Constant {
-		t.Fatalf("set flags = map:%v anonymous:%v constant:%v, want all true",
-			fake.sets[0].IsMap, fake.sets[0].Anonymous, fake.sets[0].Constant)
+		t.Fatalf(
+			"set flags = map:%v anonymous:%v constant:%v, want all true",
+			fake.sets[0].IsMap,
+			fake.sets[0].Anonymous,
+			fake.sets[0].Constant,
+		)
 	}
 
 	// Position, not just presence: the mark-zero guard and the new-flow guard
@@ -271,14 +334,28 @@ func TestApplierSpreadRuleShape(t *testing.T) {
 	generatorIndex := exprIndex(exprs, isGenerator)
 	lookupIndex := exprIndex(exprs, isLookup)
 	markWriteIndex := exprIndex(exprs, isMarkWrite)
-	if markZeroIndex < 0 || ctStateIndex < 0 || generatorIndex < 0 || lookupIndex < 0 || markWriteIndex < 0 {
-		t.Fatalf("one or more expressions missing: markZero=%d ctState=%d generator=%d lookup=%d markWrite=%d",
-			markZeroIndex, ctStateIndex, generatorIndex, lookupIndex, markWriteIndex)
+	if markZeroIndex < 0 || ctStateIndex < 0 || generatorIndex < 0 || lookupIndex < 0 ||
+		markWriteIndex < 0 {
+		t.Fatalf(
+			"one or more expressions missing: markZero=%d ctState=%d generator=%d lookup=%d markWrite=%d",
+			markZeroIndex,
+			ctStateIndex,
+			generatorIndex,
+			lookupIndex,
+			markWriteIndex,
+		)
 	}
+
 	if !(markZeroIndex < ctStateIndex && ctStateIndex < generatorIndex &&
 		generatorIndex < lookupIndex && lookupIndex < markWriteIndex) {
-		t.Fatalf("expression order wrong: markZero=%d ctState=%d generator=%d lookup=%d markWrite=%d, want strictly increasing",
-			markZeroIndex, ctStateIndex, generatorIndex, lookupIndex, markWriteIndex)
+		t.Fatalf(
+			"expression order wrong: markZero=%d ctState=%d generator=%d lookup=%d markWrite=%d, want strictly increasing",
+			markZeroIndex,
+			ctStateIndex,
+			generatorIndex,
+			lookupIndex,
+			markWriteIndex,
+		)
 	}
 }
 
@@ -290,11 +367,17 @@ func TestApplierGuardsEverySpreadRule(t *testing.T) {
 	t.Parallel()
 
 	fake, app := newFakeApplier()
-	if err := app.Apply(context.Background(), slog.Default(), spreadRulesForTest(hashModeRandom)); err != nil {
+	if err := app.Apply(
+		context.Background(),
+		slog.Default(),
+		spreadRulesForTest(hashModeRandom),
+	); err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
+
 	for index, rule := range fake.rules {
 		sawMarkRead, sawCtState, sawCtMask := false, false, false
+
 		for _, e := range rule.Exprs {
 			switch v := e.(type) {
 			case *expr.Meta:
@@ -311,9 +394,15 @@ func TestApplierGuardsEverySpreadRule(t *testing.T) {
 				}
 			}
 		}
+
 		if !sawMarkRead || !sawCtState || !sawCtMask {
-			t.Fatalf("rule %d missing a guard: mark=%v ct=%v mask=%v",
-				index, sawMarkRead, sawCtState, sawCtMask)
+			t.Fatalf(
+				"rule %d missing a guard: mark=%v ct=%v mask=%v",
+				index,
+				sawMarkRead,
+				sawCtState,
+				sawCtMask,
+			)
 		}
 
 		// Position, not just presence: the mark-zero guard must run before the
@@ -324,8 +413,13 @@ func TestApplierGuardsEverySpreadRule(t *testing.T) {
 		ctStateIndex := exprIndex(rule.Exprs, isCtStateGuard)
 		generatorIndex := exprIndex(rule.Exprs, isGenerator)
 		if !(markZeroIndex >= 0 && markZeroIndex < ctStateIndex && ctStateIndex < generatorIndex) {
-			t.Fatalf("rule %d guard order wrong: markZero=%d ctState=%d generator=%d, want strictly increasing",
-				index, markZeroIndex, ctStateIndex, generatorIndex)
+			t.Fatalf(
+				"rule %d guard order wrong: markZero=%d ctState=%d generator=%d, want strictly increasing",
+				index,
+				markZeroIndex,
+				ctStateIndex,
+				generatorIndex,
+			)
 		}
 	}
 }
@@ -349,21 +443,27 @@ func TestApplierSingleMemberSetsTheMarkOutright(t *testing.T) {
 	if err := app.Apply(context.Background(), slog.Default(), rules); err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
+
 	if len(fake.sets) != 0 {
 		t.Fatalf("added %d maps for a single provider, want 0", len(fake.sets))
 	}
+
 	var immediate *expr.Immediate
+
 	for _, e := range fake.rules[0].Exprs {
 		if value, isImmediate := e.(*expr.Immediate); isImmediate {
 			immediate = value
 		}
+
 		if _, isNumgen := e.(*expr.Numgen); isNumgen {
 			t.Fatal("single-provider rule carries a generator")
 		}
 	}
+
 	if immediate == nil {
 		t.Fatal("single-provider rule carries no immediate mark")
 	}
+
 	if !bytes.Equal(immediate.Data, binaryutil.NativeEndian.PutUint32(3)) {
 		t.Fatalf("immediate mark = %v, want 3", immediate.Data)
 	}
@@ -376,35 +476,48 @@ func TestApplierSourceHashUsesJenkinsOverTheSourceAddress(t *testing.T) {
 	t.Parallel()
 
 	fake, app := newFakeApplier()
-	if err := app.Apply(context.Background(), slog.Default(), spreadRulesForTest(hashModeSource)); err != nil {
+	if err := app.Apply(
+		context.Background(),
+		slog.Default(),
+		spreadRulesForTest(hashModeSource),
+	); err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
+
 	var hash *expr.Hash
+
 	for _, e := range fake.rules[0].Exprs {
 		if value, isHash := e.(*expr.Hash); isHash {
 			hash = value
 		}
+
 		if _, isNumgen := e.(*expr.Numgen); isNumgen {
 			t.Fatal("source mode carries a random generator")
 		}
 	}
+
 	if hash == nil {
 		t.Fatal("source mode carries no hash")
 	}
+
 	if hash.Type != expr.HashTypeJenkins {
 		t.Fatalf("hash type = %d, want jenkins", hash.Type)
 	}
+
 	// The first rule matches the internal IPv4 network, so the hash reads the
 	// four-byte IPv4 source address only.
 	if hash.Length != 4 {
 		t.Fatalf("hash length = %d, want 4 (IPv4 source only)", hash.Length)
 	}
+
 	if hash.Modulus != 2 {
 		t.Fatalf("hash modulus = %d, want 2", hash.Modulus)
 	}
+
 	if hash.Seed == 0 {
 		t.Fatal("hash seed is zero; the binding omits the attribute and the kernel picks its own")
 	}
+
 	if hash.SourceRegister != unix.NFT_REG32_00 {
 		t.Fatalf("hash source register = %d, want NFT_REG32_00", hash.SourceRegister)
 	}
@@ -417,13 +530,19 @@ func TestApplierSourceDestinationHashReadsBothAddresses(t *testing.T) {
 	t.Parallel()
 
 	fake, app := newFakeApplier()
-	if err := app.Apply(context.Background(), slog.Default(), spreadRulesForTest(hashModeSourceDestination)); err != nil {
+	if err := app.Apply(
+		context.Background(),
+		slog.Default(),
+		spreadRulesForTest(hashModeSourceDestination),
+	); err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
+
 	// The third rule matches the internal IPv6 prefix, so both addresses are
 	// sixteen bytes and the destination sits four 32-bit slots along.
 	var hash *expr.Hash
 	daddrLoads := 0
+
 	for _, e := range fake.rules[2].Exprs {
 		switch value := e.(type) {
 		case *expr.Hash:
@@ -434,12 +553,15 @@ func TestApplierSourceDestinationHashReadsBothAddresses(t *testing.T) {
 			}
 		}
 	}
+
 	if hash == nil {
 		t.Fatal("source-destination mode carries no hash")
 	}
+
 	if daddrLoads != 1 {
 		t.Fatalf("destination loads = %d, want 1", daddrLoads)
 	}
+
 	if hash.Length != 32 {
 		t.Fatalf("hash length = %d, want 32 (both IPv6 addresses)", hash.Length)
 	}
@@ -455,13 +577,23 @@ func TestApplierEmptyStillCreatesAndCommits(t *testing.T) {
 	if err := app.Apply(context.Background(), slog.Default(), nil); err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
+
 	if fake.flushCount != 1 {
 		t.Fatalf("Flush called %d times, want 1", fake.flushCount)
 	}
+
 	if len(fake.rules) != 0 {
 		t.Fatalf("added %d rules, want 0", len(fake.rules))
 	}
-	want := []string{"addtable:mwan_steer", "addchain:prerouting", "addchain:forward", "flushchain:prerouting", "flushchain:forward", "flush"}
+
+	want := []string{
+		"addtable:mwan_steer",
+		"addchain:prerouting",
+		"addchain:forward",
+		"flushchain:prerouting",
+		"flushchain:forward",
+		"flush",
+	}
 	if len(fake.ops) != len(want) {
 		t.Fatalf("ops = %v, want %v", fake.ops, want)
 	}
@@ -479,6 +611,7 @@ func TestApplierPropagatesFlushError(t *testing.T) {
 	if err == nil {
 		t.Fatal("Apply returned nil error, want the wrapped flush error")
 	}
+
 	if !errors.Is(err, fake.flushErr) {
 		t.Fatalf("Apply error = %v, want it to wrap %v", err, fake.flushErr)
 	}

@@ -33,7 +33,9 @@ func TestOwnedDHCPv4Lifecycle(t *testing.T) {
 	const iface = "owned-dhcp4"
 	const tableID = 500
 	const metric = 398
-	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: iface}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{Name: iface},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	link, err := netlink.LinkByName(iface)
@@ -55,8 +57,11 @@ func TestOwnedDHCPv4Lifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	foreignRoute := &netlink.Route{
-		LinkIndex: link.Attrs().Index, Table: tableID,
-		Dst: foreignDestination, Priority: metric, Protocol: unix.RTPROT_STATIC,
+		LinkIndex: link.Attrs().Index,
+		Table:     tableID,
+		Dst:       foreignDestination,
+		Priority:  metric,
+		Protocol:  unix.RTPROT_STATIC,
 	}
 	if err := netlink.RouteAdd(foreignRoute); err != nil {
 		t.Fatal(err)
@@ -81,7 +86,9 @@ func TestOwnedDHCPv4Lifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	lease := &LeaseInfo{
-		State: LeaseBound, IP: net.IPv4(192, 0, 2, 8), PrefixLen: 24,
+		State:     LeaseBound,
+		IP:        net.IPv4(192, 0, 2, 8),
+		PrefixLen: 24,
 		Routes: []LeaseRoute{
 			{Destination: defaultDestination, Gateway: net.IPv4(203, 0, 114, 1)},
 			{Destination: downstreamDestination, Gateway: net.IPv4(203, 0, 114, 1)},
@@ -91,7 +98,15 @@ func TestOwnedDHCPv4Lifecycle(t *testing.T) {
 	}
 	reconcile := func(current *LeaseInfo) error {
 		t.Helper()
-		return reconciler.Reconcile(context.Background(), "test-oob-table", "connection-1", iface, tableID, metric, current)
+		return reconciler.Reconcile(
+			context.Background(),
+			"test-oob-table",
+			"connection-1",
+			iface,
+			tableID,
+			metric,
+			current,
+		)
 	}
 	conflictingAddress, err := netlink.ParseAddr("192.0.2.8/24")
 	if err != nil {
@@ -138,23 +153,38 @@ func TestOwnedDHCPv4Lifecycle(t *testing.T) {
 	}
 	assertDHCPv4Objects(t, link, tableID, metric, "", "", 0)
 	mainLease := &LeaseInfo{
-		State: LeaseBound, IP: net.IPv4(192, 0, 2, 10), PrefixLen: 24,
-		Routes: []LeaseRoute{{Destination: defaultDestination, Gateway: net.IPv4(192, 0, 2, 1)}},
+		State:     LeaseBound,
+		IP:        net.IPv4(192, 0, 2, 10),
+		PrefixLen: 24,
+		Routes:    []LeaseRoute{{Destination: defaultDestination, Gateway: net.IPv4(192, 0, 2, 1)}},
 	}
 	mainReconcile := func(current *LeaseInfo) error {
 		t.Helper()
-		return reconciler.Reconcile(context.Background(), "test-main-table", "connection-2", iface, unix.RT_TABLE_MAIN, metric, current)
+		return reconciler.Reconcile(
+			context.Background(),
+			"test-main-table",
+			"connection-2",
+			iface,
+			unix.RT_TABLE_MAIN,
+			metric,
+			current,
+		)
 	}
 	if err := mainReconcile(mainLease); err != nil {
 		t.Fatal(err)
 	}
-	mainRoutes, err := netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: unix.RT_TABLE_MAIN}, netlink.RT_FILTER_TABLE)
+	mainRoutes, err := netlink.RouteListFiltered(
+		unix.AF_INET,
+		&netlink.Route{Table: unix.RT_TABLE_MAIN},
+		netlink.RT_FILTER_TABLE,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	foundMain := false
 	for _, route := range mainRoutes {
-		if route.Protocol == OwnedDHCPv4RouteProtocol && route.Priority == metric && route.Gw.Equal(net.IPv4(192, 0, 2, 1)) {
+		if route.Protocol == OwnedDHCPv4RouteProtocol && route.Priority == metric &&
+			route.Gw.Equal(net.IPv4(192, 0, 2, 1)) {
 			foundMain = true
 		}
 	}
@@ -164,7 +194,11 @@ func TestOwnedDHCPv4Lifecycle(t *testing.T) {
 	if err := mainReconcile(&LeaseInfo{State: LeaseExpired}); err != nil {
 		t.Fatal(err)
 	}
-	mainRoutes, err = netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: unix.RT_TABLE_MAIN}, netlink.RT_FILTER_TABLE)
+	mainRoutes, err = netlink.RouteListFiltered(
+		unix.AF_INET,
+		&netlink.Route{Table: unix.RT_TABLE_MAIN},
+		netlink.RT_FILTER_TABLE,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,8 +209,11 @@ func TestOwnedDHCPv4Lifecycle(t *testing.T) {
 	}
 
 	conflict := &netlink.Route{
-		LinkIndex: link.Attrs().Index, Table: tableID,
-		Dst: defaultDestination, Priority: metric, Protocol: unix.RTPROT_STATIC,
+		LinkIndex: link.Attrs().Index,
+		Table:     tableID,
+		Dst:       defaultDestination,
+		Priority:  metric,
+		Protocol:  unix.RTPROT_STATIC,
 	}
 	if err := netlink.RouteAdd(conflict); err != nil {
 		t.Fatal(err)
@@ -184,7 +221,11 @@ func TestOwnedDHCPv4Lifecycle(t *testing.T) {
 	if err := reconcile(lease); err == nil {
 		t.Fatal("foreign default route was overwritten")
 	}
-	routes, err := netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: tableID}, netlink.RT_FILTER_TABLE)
+	routes, err := netlink.RouteListFiltered(
+		unix.AF_INET,
+		&netlink.Route{Table: tableID},
+		netlink.RT_FILTER_TABLE,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +250,15 @@ func TestOwnedDHCPv4Lifecycle(t *testing.T) {
 	}
 }
 
-func assertDHCPv4Objects(t *testing.T, link netlink.Link, tableID, metric int, prefix, gateway string, routeCount int) {
+func assertDHCPv4Objects(
+	t *testing.T,
+	link netlink.Link,
+	tableID int,
+	metric int,
+	prefix string,
+	gateway string,
+	routeCount int,
+) {
 	t.Helper()
 	addresses, err := netlink.AddrList(link, unix.AF_INET)
 	if err != nil {
@@ -228,7 +277,11 @@ func assertDHCPv4Objects(t *testing.T, link netlink.Link, tableID, metric int, p
 	if !foundOwned || !foundForeign {
 		t.Fatalf("addresses = %v, want owned %q and foreign address", addresses, prefix)
 	}
-	routes, err := netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: tableID}, netlink.RT_FILTER_TABLE)
+	routes, err := netlink.RouteListFiltered(
+		unix.AF_INET,
+		&netlink.Route{Table: tableID},
+		netlink.RT_FILTER_TABLE,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,10 +290,12 @@ func assertDHCPv4Objects(t *testing.T, link netlink.Link, tableID, metric int, p
 	for _, route := range routes {
 		if route.Protocol == OwnedDHCPv4RouteProtocol && route.Priority == metric {
 			ownedCount++
-			if (route.Dst == nil || route.Dst.String() == "0.0.0.0/0") && !route.Gw.Equal(net.ParseIP(gateway)) {
+			if (route.Dst == nil || route.Dst.String() == "0.0.0.0/0") &&
+				!route.Gw.Equal(net.ParseIP(gateway)) {
 				t.Fatalf("default route = %+v, want gateway %s", route, gateway)
 			}
-			if route.Dst != nil && route.Dst.String() != "0.0.0.0/0" && route.Gw == nil && route.Scope != netlink.SCOPE_LINK {
+			if route.Dst != nil && route.Dst.String() != "0.0.0.0/0" && route.Gw == nil &&
+				route.Scope != netlink.SCOPE_LINK {
 				t.Fatalf("on-link route lacks link scope: %+v", route)
 			}
 		}

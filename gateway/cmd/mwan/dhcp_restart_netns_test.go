@@ -45,7 +45,9 @@ func testOOBDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected bo
 	}
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
-	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
+	child.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS),
+	}
 	child.Env = append(os.Environ(), dhcpRestartChildEnv+"=1", dhcpRestartBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("isolated DHCP restart test: %v: %s", err, output)
@@ -70,7 +72,15 @@ func runOOBDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected boo
 	}
 	bindStartupDirectory(t, stateDir, "/var/lib/mwan")
 	setRuntimeLoopback(t)
-	downstream := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29"}, []string{"192.0.2.2/29"}, "")
+	downstream := newRuntimePeer(
+		t,
+		gateway,
+		"enmwanbr0",
+		"lan-host",
+		[]string{"192.0.2.1/29"},
+		[]string{"192.0.2.2/29"},
+		"",
+	)
 	defer downstream.namespace.Close()
 	provider := newRuntimePeer(t, gateway, "wan-under", "wan-host", nil, nil, "")
 	defer provider.namespace.Close()
@@ -78,7 +88,10 @@ func runOOBDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected boo
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "enatt0", ParentIndex: parent.Attrs().Index}, VlanId: 101}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Vlan{
+		LinkAttrs: netlink.LinkAttrs{Name: "enatt0", ParentIndex: parent.Attrs().Index},
+		VlanId:    101,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	configureRuntimeLink(t, "enatt0", nil)
@@ -87,7 +100,10 @@ func runOOBDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected boo
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "wan-vlan", ParentIndex: parent.Attrs().Index}, VlanId: 101}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Vlan{
+		LinkAttrs: netlink.LinkAttrs{Name: "wan-vlan", ParentIndex: parent.Attrs().Index},
+		VlanId:    101,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	configureRuntimeLink(t, "wan-vlan", []string{"198.51.100.2/24"})
@@ -95,7 +111,15 @@ func runOOBDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected boo
 	if rejected {
 		leaseSeconds = 8
 	}
-	service := startDHCPv4RuntimeKea(t, root, false, leaseSeconds, "198.51.100.2", "198.51.100.100", true)
+	service := startDHCPv4RuntimeKea(
+		t,
+		root,
+		false,
+		leaseSeconds,
+		"198.51.100.2",
+		"198.51.100.100",
+		true,
+	)
 	serviceRunning := true
 	defer func() {
 		if serviceRunning {
@@ -109,7 +133,10 @@ func runOOBDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected boo
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(root, "config.toml")
-	config := fmt.Sprintf("[ifmgr]\nrole = \"oob\"\nreconcile_interval = \"1h\"\nlease_directory = %q\n[ifmgr.iface.enatt0]\ndhcp_v4 = true\n[ifmgr.modules.oobv6]\niface = \"enatt0\"\noob_addr = \"2001:db8::100/128\"\noob_table_id = 100\nmanage_slaac_source_rule = false\n[ifmgr.modules.oobv4]\niface = \"enatt0\"\noob_table_id = 100\n[ifmgr.modules.ra_lost]\niface = \"enatt0\"\n[[ifmgr.modules.policy_rules.rule]]\nfamily = \"ipv4\"\npriority = 100\nfrom = \"192.0.2.2/32\"\ntable_id = 100\n", leaseDirectory)
+	config := fmt.Sprintf(
+		"[ifmgr]\nrole = \"oob\"\nreconcile_interval = \"1h\"\nlease_directory = %q\n[ifmgr.iface.enatt0]\ndhcp_v4 = true\n[ifmgr.modules.oobv6]\niface = \"enatt0\"\noob_addr = \"2001:db8::100/128\"\noob_table_id = 100\nmanage_slaac_source_rule = false\n[ifmgr.modules.oobv4]\niface = \"enatt0\"\noob_table_id = 100\n[ifmgr.modules.ra_lost]\niface = \"enatt0\"\n[[ifmgr.modules.policy_rules.rule]]\nfamily = \"ipv4\"\npriority = 100\nfrom = \"192.0.2.2/32\"\ntable_id = 100\n",
+		leaseDirectory,
+	)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +187,9 @@ func runOOBDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected boo
 		waitStaticRuntimeAddress(t, daemon, "enatt0", "198.51.100.101/24", false)
 		waitRoleDHCPv4Route(t, daemon, 100, false)
 		logContent := runtimeDaemonLog(t, daemon)
-		if !strings.Contains(logContent, "dhcp: saved lease unavailable") || !strings.Contains(logContent, "state=EXPIRED") || strings.Contains(logContent, "state=BOUND") {
+		if !strings.Contains(logContent, "dhcp: saved lease unavailable") ||
+			!strings.Contains(logContent, "state=EXPIRED") ||
+			strings.Contains(logContent, "state=BOUND") {
 			t.Fatalf("saved lease rejection not observed: %s", runtimeLogTail(t, daemon, 30))
 		}
 		entries, err := os.ReadDir(filepath.Join(leaseDirectory, "roles"))
@@ -184,7 +213,10 @@ func runOOBDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected boo
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := netlink.LinkAdd(&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "enatt0", ParentIndex: parent.Attrs().Index}, VlanId: 101}); err != nil {
+		if err := netlink.LinkAdd(&netlink.Vlan{
+			LinkAttrs: netlink.LinkAttrs{Name: "enatt0", ParentIndex: parent.Attrs().Index},
+			VlanId:    101,
+		}); err != nil {
 			t.Fatal(err)
 		}
 		link, err := netlink.LinkByName("enatt0")
@@ -197,7 +229,10 @@ func runOOBDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected boo
 		configureRuntimeLink(t, "enatt0", nil)
 	}
 	packet := readDHCPRecoveryPacket(t, observer)
-	if packet.MessageType() != dhcpv4.MessageTypeRequest || !packet.RequestedIPAddress().Equal(net.IPv4(198, 51, 100, 101)) || !packet.ClientIPAddr.Equal(net.IPv4zero) || packet.Options.Has(dhcpv4.OptionServerIdentifier) {
+	if packet.MessageType() != dhcpv4.MessageTypeRequest ||
+		!packet.RequestedIPAddress().Equal(net.IPv4(198, 51, 100, 101)) ||
+		!packet.ClientIPAddr.Equal(net.IPv4zero) ||
+		packet.Options.Has(dhcpv4.OptionServerIdentifier) {
 		t.Fatalf("first restart packet = %s", packet.Summary())
 	}
 	if lateInterface {
@@ -231,14 +266,18 @@ func waitDHCPRecoveryMainLoop(t *testing.T, daemon *runtimeDaemon) {
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
 		logContent := runtimeDaemonLog(t, daemon)
-		if strings.Contains(logContent, `"phase":"initial-reconcile"`) && strings.Contains(logContent, "ifmgr: entering main loop") {
+		if strings.Contains(logContent, `"phase":"initial-reconcile"`) &&
+			strings.Contains(logContent, "ifmgr: entering main loop") {
 			assertRuntimeDaemonRunning(t, daemon)
 			return
 		}
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("daemon did not finish startup reconciliation before interface creation: %s", runtimeLogTail(t, daemon, 30))
+	t.Fatalf(
+		"daemon did not finish startup reconciliation before interface creation: %s",
+		runtimeLogTail(t, daemon, 30),
+	)
 }
 
 func readDHCPRecoveryPacket(t *testing.T, observer *net.UDPConn) *dhcpv4.DHCPv4 {

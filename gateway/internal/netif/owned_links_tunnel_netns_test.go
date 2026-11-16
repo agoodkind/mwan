@@ -19,7 +19,12 @@ func TestOwnedTunnelCreatesConfiguredDevice(t *testing.T) {
 	}
 	underlay := addTunnelUnderlay(t, tunnelUnderlayName)
 	reconciler := newTunnelReconciler(t, filepath.Join(t.TempDir(), "links.json"))
-	connection := tunnelConnection(tunnelUnderlayName, tunnelRemoteOuter, new(uint8(32)), new(uint32(1400)))
+	connection := tunnelConnection(
+		tunnelUnderlayName,
+		tunnelRemoteOuter,
+		new(uint8(32)),
+		new(uint32(1400)),
+	)
 
 	result := reconcileTunnel(t, reconciler, externalConnection(tunnelUnderlayName), connection)
 
@@ -33,12 +38,24 @@ func TestOwnedTunnelCreatesConfiguredDevice(t *testing.T) {
 		t.Fatalf("result index = %d, device index = %d", result.IfIndex, device.Attrs().Index)
 	}
 	if !strings.HasPrefix(device.Attrs().Alias, "mwan-link:"+tunnelName+":") {
-		t.Fatalf("device alias = %q, want the ownership tag of %s", device.Attrs().Alias, tunnelName)
+		t.Fatalf(
+			"device alias = %q, want the ownership tag of %s",
+			device.Attrs().Alias,
+			tunnelName,
+		)
 	}
-	monitor := NewMonitor(t.Context(), tunnelTestLog(), MonitorConfig{Iface: tunnelName, Connection: &connection})
-	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
-		return snapshot.IfIndex == device.Attrs().Index && snapshot.ActualIface == tunnelName
-	})
+	monitor := NewMonitor(
+		t.Context(),
+		tunnelTestLog(),
+		MonitorConfig{Iface: tunnelName, Connection: &connection},
+	)
+	waitObservedSnapshot(
+		t,
+		monitor.Events,
+		func(snapshot *Snapshot) bool {
+			return snapshot.IfIndex == device.Attrs().Index && snapshot.ActualIface == tunnelName
+		},
+	)
 }
 
 func TestOwnedTunnelRemovalKeepsUnrecordedDevices(t *testing.T) {
@@ -48,12 +65,23 @@ func TestOwnedTunnelRemovalKeepsUnrecordedDevices(t *testing.T) {
 	addTunnelUnderlay(t, tunnelUnderlayName)
 	reconciler := newTunnelReconciler(t, filepath.Join(t.TempDir(), "links.json"))
 	underlay := externalConnection(tunnelUnderlayName)
-	requireTunnelReady(t, reconcileTunnel(t, reconciler, underlay,
-		tunnelConnection(tunnelUnderlayName, tunnelRemoteOuter, nil, nil)))
+	requireTunnelReady(
+		t,
+		reconcileTunnel(
+			t,
+			reconciler,
+			underlay,
+			tunnelConnection(tunnelUnderlayName, tunnelRemoteOuter, nil, nil),
+		),
+	)
 	// The unrecorded device has the ownership alias prefix and no journal record.
 	foreign := netlink.NewLinkAttrs()
 	foreign.Name = "foreign-sit"
-	if err := netlink.LinkAdd(&netlink.Sittun{LinkAttrs: foreign, Remote: net.ParseIP("198.51.100.9"), Proto: unix.IPPROTO_IPV6}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Sittun{
+		LinkAttrs: foreign,
+		Remote:    net.ParseIP("198.51.100.9"),
+		Proto:     unix.IPPROTO_IPV6,
+	}); err != nil {
 		t.Fatalf("create unrecorded sit device: %v", err)
 	}
 	foreignLink, err := netlink.LinkByName("foreign-sit")
@@ -66,7 +94,12 @@ func TestOwnedTunnelRemovalKeepsUnrecordedDevices(t *testing.T) {
 	_, fallbackErr := netlink.LinkByName("sit0")
 	fallbackPresent := fallbackErr == nil
 
-	results, err := reconciler.Reconcile(t.Context(), tunnelTestLog(), []interfaceintent.Connection{underlay}, nil)
+	results, err := reconciler.Reconcile(
+		t.Context(),
+		tunnelTestLog(),
+		[]interfaceintent.Connection{underlay},
+		nil,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +141,11 @@ func TestOwnedTunnelRestartAdoptsDevice(t *testing.T) {
 	}
 	adopted := tunnelDevice(t, tunnelName)
 	if adopted.Attrs().Index != created.Attrs().Index || result.IfIndex != created.Attrs().Index {
-		t.Fatalf("restart recreated the tunnel: index %d became %d", created.Attrs().Index, adopted.Attrs().Index)
+		t.Fatalf(
+			"restart recreated the tunnel: index %d became %d",
+			created.Attrs().Index,
+			adopted.Attrs().Index,
+		)
 	}
 	requireTunnelAttributes(t, adopted, underlay, tunnelRemoteOuter, 32, 1400)
 }
@@ -120,8 +157,10 @@ func TestOwnedTunnelWaitsForUnderlay(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "links.json")
 	reconciler := newTunnelReconciler(t, statePath)
 	independent := interfaceintent.Connection{
-		ID: "independent", Name: "independent", Owner: interfaceintent.OwnerMWAN,
-		Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+		ID:    "independent",
+		Name:  "independent",
+		Owner: interfaceintent.OwnerMWAN,
+		Link:  &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 	}
 	connections := []interfaceintent.Connection{
 		tunnelConnection(tunnelUnderlayName, tunnelRemoteOuter, nil, nil),

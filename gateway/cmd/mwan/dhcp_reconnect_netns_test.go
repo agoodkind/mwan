@@ -75,13 +75,25 @@ func (r *dhcpReconnectRuntime) snapshot() []dhcpReconnectPacket {
 	return append([]dhcpReconnectPacket(nil), r.packets...)
 }
 
-func (r *dhcpReconnectRuntime) answer(conn net.PacketConn, peer net.Addr, packet *dhcpv4.DHCPv4, t1, t2 time.Duration) {
+func (r *dhcpReconnectRuntime) answer(
+	conn net.PacketConn,
+	peer net.Addr,
+	packet *dhcpv4.DHCPv4,
+	t1 time.Duration,
+	t2 time.Duration,
+) {
 	requested := packet.RequestedIPAddress()
 	r.mu.Lock()
-	r.packets = append(r.packets, dhcpReconnectPacket{
-		Type: packet.MessageType(), Client: packet.ClientIPAddr, Requested: requested,
-		Server: packet.ServerIdentifier(), At: time.Now(),
-	})
+	r.packets = append(
+		r.packets,
+		dhcpReconnectPacket{
+			Type:      packet.MessageType(),
+			Client:    packet.ClientIPAddr,
+			Requested: requested,
+			Server:    packet.ServerIdentifier(),
+			At:        time.Now(),
+		},
+	)
 	r.mu.Unlock()
 	if requested == nil {
 		requested = packet.ClientIPAddr
@@ -104,7 +116,8 @@ func (r *dhcpReconnectRuntime) answer(conn net.PacketConn, peer net.Addr, packet
 			responseType = dhcpv4.MessageTypeNak
 		}
 	}
-	reply, err := dhcpv4.NewReplyFromRequest(packet,
+	reply, err := dhcpv4.NewReplyFromRequest(
+		packet,
 		dhcpv4.WithMessageType(responseType),
 		dhcpv4.WithYourIP(net.ParseIP(assigned)),
 		dhcpv4.WithOption(dhcpv4.OptServerIdentifier(net.ParseIP(dhcpReconnectServerAddress))),
@@ -119,12 +132,21 @@ func (r *dhcpReconnectRuntime) answer(conn net.PacketConn, peer net.Addr, packet
 	}
 }
 
-func startDHCPReconnectRuntime(t *testing.T, gateway netns.NsHandle, t1 time.Duration) *dhcpReconnectRuntime {
+func startDHCPReconnectRuntime(
+	t *testing.T,
+	gateway netns.NsHandle,
+	t1 time.Duration,
+) *dhcpReconnectRuntime {
 	t.Helper()
 	return startDHCPReconnectRuntimeWithT2(t, gateway, t1, dhcpReconnectLongT2)
 }
 
-func startDHCPReconnectRuntimeWithT2(t *testing.T, gateway netns.NsHandle, t1, t2 time.Duration) *dhcpReconnectRuntime {
+func startDHCPReconnectRuntimeWithT2(
+	t *testing.T,
+	gateway netns.NsHandle,
+	t1 time.Duration,
+	t2 time.Duration,
+) *dhcpReconnectRuntime {
 	t.Helper()
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		t.Fatal(err)
@@ -136,17 +158,36 @@ func startDHCPReconnectRuntimeWithT2(t *testing.T, gateway netns.NsHandle, t1, t
 	}
 	bindStartupDirectory(t, stateDir, "/var/lib/mwan")
 	setRuntimeLoopback(t)
-	downstream := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29"}, []string{"192.0.2.2/29"}, "")
+	downstream := newRuntimePeer(
+		t,
+		gateway,
+		"enmwanbr0",
+		"lan-host",
+		[]string{"192.0.2.1/29"},
+		[]string{"192.0.2.2/29"},
+		"",
+	)
 	t.Cleanup(func() { _ = downstream.namespace.Close() })
-	provider := newRuntimePeer(t, gateway, "enatt0", "wan-vlan", nil, []string{dhcpReconnectServerAddress + "/24"}, "")
+	provider := newRuntimePeer(
+		t,
+		gateway,
+		"enatt0",
+		"wan-vlan",
+		nil,
+		[]string{dhcpReconnectServerAddress + "/24"},
+		"",
+	)
 	t.Cleanup(func() { _ = provider.namespace.Close() })
 	reconnect := &dhcpReconnectRuntime{}
 	setRuntimeNamespace(t, provider.namespace)
 	reconnect.captureLeaseRequests(t, "wan-vlan")
-	server, err := server4.NewServer("wan-vlan", &net.UDPAddr{IP: net.IPv4zero, Port: 67},
+	server, err := server4.NewServer(
+		"wan-vlan",
+		&net.UDPAddr{IP: net.IPv4zero, Port: 67},
 		func(conn net.PacketConn, peer net.Addr, packet *dhcpv4.DHCPv4) {
 			reconnect.answer(conn, peer, packet, t1, t2)
-		})
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,9 +201,21 @@ func startDHCPReconnectRuntimeWithT2(t *testing.T, gateway netns.NsHandle, t1, t
 	})
 	setRuntimeNamespace(t, gateway)
 	configPath := writeDHCPAcquireBackoffConfig(t, root)
-	reconnect.daemon = startRoleDHCPv4RuntimeDaemon(t, os.Getenv(dhcpAcquireBackoffBinaryEnv), configPath, root, "oob")
+	reconnect.daemon = startRoleDHCPv4RuntimeDaemon(
+		t,
+		os.Getenv(dhcpAcquireBackoffBinaryEnv),
+		configPath,
+		root,
+		"oob",
+	)
 	t.Cleanup(func() { stopRuntimeDaemon(t, reconnect.daemon) })
-	waitStaticRuntimeAddress(t, reconnect.daemon, "enatt0", dhcpReconnectOriginalAddress+"/24", true)
+	waitStaticRuntimeAddress(
+		t,
+		reconnect.daemon,
+		"enatt0",
+		dhcpReconnectOriginalAddress+"/24",
+		true,
+	)
 	reconnect.link, err = netlink.LinkByName("enatt0")
 	if err != nil {
 		t.Fatal(err)
@@ -190,14 +243,19 @@ func (r *dhcpReconnectRuntime) requireVerification(t *testing.T, flappedAt time.
 			if packet.At.Before(flappedAt) || packet.Type != dhcpv4.MessageTypeRequest {
 				continue
 			}
-			if !packet.Client.IsUnspecified() || !packet.Requested.Equal(net.ParseIP(dhcpReconnectOriginalAddress)) || packet.Server != nil {
+			if !packet.Client.IsUnspecified() ||
+				!packet.Requested.Equal(net.ParseIP(dhcpReconnectOriginalAddress)) ||
+				packet.Server != nil {
 				t.Fatalf("The verification request does not have the INIT-REBOOT form: %+v", packet)
 			}
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("The server did not receive a verification request after the interface returned. Daemon log: %s", runtimeLogTail(t, r.daemon, 30))
+	t.Fatalf(
+		"The server did not receive a verification request after the interface returned. Daemon log: %s",
+		runtimeLogTail(t, r.daemon, 30),
+	)
 }
 
 func (r *dhcpReconnectRuntime) hasAddress(t *testing.T, cidr string) bool {
@@ -220,12 +278,21 @@ func (r *dhcpReconnectRuntime) requireReplacement(t *testing.T, wait time.Durati
 	deadline := time.Now().Add(wait)
 	for !r.hasAddress(t, cidr) {
 		if !time.Now().Before(deadline) {
-			t.Fatalf("Address %s was absent after %s. Daemon log: %s", cidr, wait, runtimeLogTail(t, r.daemon, 30))
+			t.Fatalf(
+				"Address %s was absent after %s. Daemon log: %s",
+				cidr,
+				wait,
+				runtimeLogTail(t, r.daemon, 30),
+			)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	if r.hasAddress(t, dhcpReconnectOriginalAddress+"/24") {
-		t.Fatalf("The replaced address %s remained on the interface. Daemon log: %s", dhcpReconnectOriginalAddress+"/24", runtimeLogTail(t, r.daemon, 30))
+		t.Fatalf(
+			"The replaced address %s remained on the interface. Daemon log: %s",
+			dhcpReconnectOriginalAddress+"/24",
+			runtimeLogTail(t, r.daemon, 30),
+		)
 	}
 }
 
@@ -264,7 +331,9 @@ func TestOOBDHCPv4ReconnectDiscoversUpstreamThatIgnoresRequest(t *testing.T) {
 func (r *dhcpReconnectRuntime) requireUnrelatedChangesIgnored(t *testing.T, mtu int) {
 	t.Helper()
 	if _, err := netlink.LinkByName("unrelated0"); err != nil {
-		if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "unrelated0"}}); err != nil {
+		if err := netlink.LinkAdd(&netlink.Dummy{
+			LinkAttrs: netlink.LinkAttrs{Name: "unrelated0"},
+		}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -286,7 +355,11 @@ func (r *dhcpReconnectRuntime) requireUnrelatedChangesIgnored(t *testing.T, mtu 
 	}
 	time.Sleep(3 * time.Second)
 	if count := len(r.snapshot()) - before; count != 0 {
-		t.Fatalf("Changes to unrelated interfaces and the interface MTU caused the client to send %d DHCP packets. Daemon log: %s", count, runtimeLogTail(t, r.daemon, 30))
+		t.Fatalf(
+			"Changes to unrelated interfaces and the interface MTU caused the client to send %d DHCP packets. Daemon log: %s",
+			count,
+			runtimeLogTail(t, r.daemon, 30),
+		)
 	}
 }
 
@@ -300,13 +373,18 @@ func TestOOBDHCPv4ReconnectDuringRenewalVerifiesWithoutStaleRepeat(t *testing.T)
 	for {
 		renewing := false
 		for _, packet := range reconnect.snapshot() {
-			renewing = renewing || (packet.Type == dhcpv4.MessageTypeRequest && !packet.Client.IsUnspecified())
+			renewing = renewing ||
+				(packet.Type == dhcpv4.MessageTypeRequest && !packet.Client.IsUnspecified())
 		}
 		if renewing {
 			break
 		}
 		if !time.Now().Before(renewalDeadline) {
-			t.Fatalf("The T1 renewal request did not arrive within %s. Daemon log: %s", dhcpReconnectInFlightT1+dhcpReconnectT1Tolerance, runtimeLogTail(t, reconnect.daemon, 30))
+			t.Fatalf(
+				"The T1 renewal request did not arrive within %s. Daemon log: %s",
+				dhcpReconnectInFlightT1+dhcpReconnectT1Tolerance,
+				runtimeLogTail(t, reconnect.daemon, 30),
+			)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -331,7 +409,12 @@ func TestOOBDHCPv4ReconnectBeforeT1ReplacesLeaseBeforeT2(t *testing.T) {
 	if !dhcpAcquireBackoffIsolated(t) {
 		return
 	}
-	reconnect := startDHCPReconnectRuntimeWithT2(t, dhcpReconnectGateway(t), dhcpReconnectNearT1, dhcpReconnectFarT2)
+	reconnect := startDHCPReconnectRuntimeWithT2(
+		t,
+		dhcpReconnectGateway(t),
+		dhcpReconnectNearT1,
+		dhcpReconnectFarT2,
+	)
 	boundAt := time.Now()
 	reconnect.behavior.Store(int32(dhcpReconnectIgnoreOriginal))
 	time.Sleep(dhcpReconnectBeforeT1)
@@ -344,7 +427,12 @@ func TestOOBDHCPv4ReconnectBeforeT1SilentServerKeepsLeaseT1AndT2(t *testing.T) {
 	if !dhcpAcquireBackoffIsolated(t) {
 		return
 	}
-	reconnect := startDHCPReconnectRuntimeWithT2(t, dhcpReconnectGateway(t), dhcpReconnectNearT1, dhcpReconnectNearT2)
+	reconnect := startDHCPReconnectRuntimeWithT2(
+		t,
+		dhcpReconnectGateway(t),
+		dhcpReconnectNearT1,
+		dhcpReconnectNearT2,
+	)
 	boundAt := time.Now()
 	reconnect.behavior.Store(int32(dhcpReconnectSilent))
 	time.Sleep(dhcpReconnectBeforeT1)
@@ -353,7 +441,10 @@ func TestOOBDHCPv4ReconnectBeforeT1SilentServerKeepsLeaseT1AndT2(t *testing.T) {
 	cidr := dhcpReconnectOriginalAddress + "/24"
 	for time.Now().Before(deadline) {
 		if !reconnect.hasAddress(t, cidr) {
-			t.Fatalf("The client ended the lease while the server stayed silent. Daemon log: %s", runtimeLogTail(t, reconnect.daemon, 30))
+			t.Fatalf(
+				"The client ended the lease while the server stayed silent. Daemon log: %s",
+				runtimeLogTail(t, reconnect.daemon, 30),
+			)
 		}
 		if _, found := reconnect.firstRequestTo(net.IPv4bcast); found {
 			break
@@ -363,25 +454,51 @@ func TestOOBDHCPv4ReconnectBeforeT1SilentServerKeepsLeaseT1AndT2(t *testing.T) {
 	reconnect.requireTimedRenewal(t, boundAt, dhcpReconnectNearT1)
 	rebinding, found := reconnect.firstRequestTo(net.IPv4bcast)
 	if !found {
-		t.Fatalf("T2 rebinding request did not arrive %s after lease binding; daemon log: %s", dhcpReconnectNearT2, runtimeLogTail(t, reconnect.daemon, 30))
+		t.Fatalf(
+			"T2 rebinding request did not arrive %s after lease binding; daemon log: %s",
+			dhcpReconnectNearT2,
+			runtimeLogTail(t, reconnect.daemon, 30),
+		)
 	}
-	if elapsed := rebinding.At.Sub(boundAt); elapsed < dhcpReconnectNearT2-dhcpReconnectT1Tolerance || elapsed > dhcpReconnectNearT2+dhcpReconnectT1Tolerance {
-		t.Fatalf("The T2 rebinding request arrived %s after the lease was bound; expected %s.", elapsed, dhcpReconnectNearT2)
+	if elapsed := rebinding.At.Sub(
+		boundAt,
+	); elapsed < dhcpReconnectNearT2-dhcpReconnectT1Tolerance ||
+		elapsed > dhcpReconnectNearT2+dhcpReconnectT1Tolerance {
+		t.Fatalf(
+			"The T2 rebinding request arrived %s after the lease was bound; expected %s.",
+			elapsed,
+			dhcpReconnectNearT2,
+		)
 	}
 }
 
-func (r *dhcpReconnectRuntime) requireTimedRenewal(t *testing.T, boundAt time.Time, t1 time.Duration) {
+func (r *dhcpReconnectRuntime) requireTimedRenewal(
+	t *testing.T,
+	boundAt time.Time,
+	t1 time.Duration,
+) {
 	t.Helper()
 	renewal, found := r.firstRequestTo(net.ParseIP(dhcpReconnectServerAddress))
 	if !found {
-		t.Fatalf("The T1 renewal request did not arrive within %s. Daemon log: %s", t1+dhcpReconnectT1Tolerance, runtimeLogTail(t, r.daemon, 30))
+		t.Fatalf(
+			"The T1 renewal request did not arrive within %s. Daemon log: %s",
+			t1+dhcpReconnectT1Tolerance,
+			runtimeLogTail(t, r.daemon, 30),
+		)
 	}
-	if elapsed := renewal.At.Sub(boundAt); elapsed < t1-dhcpReconnectT1Tolerance || elapsed > t1+dhcpReconnectT1Tolerance {
-		t.Fatalf("The T1 renewal request arrived %s after the lease was bound; expected %s.", elapsed, t1)
+	if elapsed := renewal.At.Sub(boundAt); elapsed < t1-dhcpReconnectT1Tolerance ||
+		elapsed > t1+dhcpReconnectT1Tolerance {
+		t.Fatalf(
+			"The T1 renewal request arrived %s after the lease was bound; expected %s.",
+			elapsed,
+			t1,
+		)
 	}
 }
 
-func (r *dhcpReconnectRuntime) firstRequestTo(destination net.IP) (dhcpReconnectCapturedRequest, bool) {
+func (r *dhcpReconnectRuntime) firstRequestTo(
+	destination net.IP,
+) (dhcpReconnectCapturedRequest, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, request := range r.requests {
@@ -403,7 +520,10 @@ func (r *dhcpReconnectRuntime) captureLeaseRequests(t *testing.T, iface string) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := unix.Bind(fd, &unix.SockaddrLinklayer{Protocol: protocol, Ifindex: device.Index}); err != nil {
+	if err := unix.Bind(
+		fd,
+		&unix.SockaddrLinklayer{Protocol: protocol, Ifindex: device.Index},
+	); err != nil {
 		t.Fatal(err)
 	}
 	timeout := unix.NsecToTimeval((100 * time.Millisecond).Nanoseconds())
@@ -447,23 +567,35 @@ func (r *dhcpReconnectRuntime) recordLeaseRequest(datagram []byte) {
 		return
 	}
 	packet, err := dhcpv4.FromBytes(datagram[headerLength+8:])
-	if err != nil || packet.MessageType() != dhcpv4.MessageTypeRequest || packet.ClientIPAddr.IsUnspecified() {
+	if err != nil || packet.MessageType() != dhcpv4.MessageTypeRequest ||
+		packet.ClientIPAddr.IsUnspecified() {
 		return
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.requests = append(r.requests, dhcpReconnectCapturedRequest{
-		At: time.Now(), Destination: append(net.IP(nil), datagram[16:20]...),
-	})
+	r.requests = append(
+		r.requests,
+		dhcpReconnectCapturedRequest{
+			At:          time.Now(),
+			Destination: append(net.IP(nil), datagram[16:20]...),
+		},
+	)
 }
 
-func (r *dhcpReconnectRuntime) requireScheduledRenewal(t *testing.T, boundAt time.Time, t1 time.Duration) {
+func (r *dhcpReconnectRuntime) requireScheduledRenewal(
+	t *testing.T,
+	boundAt time.Time,
+	t1 time.Duration,
+) {
 	t.Helper()
 	cidr := dhcpReconnectOriginalAddress + "/24"
 	deadline := boundAt.Add(t1 + dhcpReconnectT1Tolerance)
 	for time.Now().Before(deadline) {
 		if !r.hasAddress(t, cidr) {
-			t.Fatalf("The client ended the lease while the server stayed silent. Daemon log: %s", runtimeLogTail(t, r.daemon, 30))
+			t.Fatalf(
+				"The client ended the lease while the server stayed silent. Daemon log: %s",
+				runtimeLogTail(t, r.daemon, 30),
+			)
 		}
 		for _, packet := range r.snapshot() {
 			if packet.Type != dhcpv4.MessageTypeRequest || packet.Client.IsUnspecified() {
@@ -471,11 +603,19 @@ func (r *dhcpReconnectRuntime) requireScheduledRenewal(t *testing.T, boundAt tim
 			}
 			elapsed := packet.At.Sub(boundAt)
 			if elapsed < t1-dhcpReconnectT1Tolerance {
-				t.Fatalf("The T1 renewal request arrived %s after the lease was bound; expected %s.", elapsed, t1)
+				t.Fatalf(
+					"The T1 renewal request arrived %s after the lease was bound; expected %s.",
+					elapsed,
+					t1,
+				)
 			}
 			return
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	t.Fatalf("The T1 renewal request did not arrive within %s. Daemon log: %s", t1+dhcpReconnectT1Tolerance, runtimeLogTail(t, r.daemon, 30))
+	t.Fatalf(
+		"The T1 renewal request did not arrive within %s. Daemon log: %s",
+		t1+dhcpReconnectT1Tolerance,
+		runtimeLogTail(t, r.daemon, 30),
+	)
 }

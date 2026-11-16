@@ -64,5 +64,6 @@ func Read(file string) ([]byte, error) {
 		slog.Warn("schema: read the embedded module failed", "name", file, "err", err)
 		return nil, fmt.Errorf("read the embedded module %s: %w", file, err)
 	}
+
 	return content, nil
 }

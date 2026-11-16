@@ -53,11 +53,31 @@ func combinedTunnelLoss(t *testing.T, c *combinedRun) {
 	t.Helper()
 	since := time.Now()
 	setTunnelRuntimeFault(t, c.topology.tunnel, true)
-	measured := waitCombinedUnavailable(t, c.daemon, c.run.read, tunnelRuntimeDevice, since, "probe", "bgp-session")
-	requireCombinedBound(t, "tunnel loss to unavailable", measured, c.faultBound(t, tunnelRuntimeDevice))
-	waitBGPRuntime(t, c.daemon, c.run.read, "endpoint without the home prefix", tunnelRuntimeRecoverWindow, func() bool {
-		return !c.tunnel.kernelRoute(t, combinedHome())
-	})
+	measured := waitCombinedUnavailable(
+		t,
+		c.daemon,
+		c.run.read,
+		tunnelRuntimeDevice,
+		since,
+		"probe",
+		"bgp-session",
+	)
+	requireCombinedBound(
+		t,
+		"tunnel loss to unavailable",
+		measured,
+		c.faultBound(t, tunnelRuntimeDevice),
+	)
+	waitBGPRuntime(
+		t,
+		c.daemon,
+		c.run.read,
+		"endpoint without the home prefix",
+		tunnelRuntimeRecoverWindow,
+		func() bool {
+			return !c.tunnel.kernelRoute(t, combinedHome())
+		},
+	)
 	requireCombinedPaths(t, c.daemon, c.run.read, c.topology, combinedOrdinary, c.provider.device)
 	c.requireOrdinaryUnchanged(t, since)
 
@@ -71,13 +91,38 @@ func combinedUnderlayLoss(t *testing.T, c *combinedRun) {
 	t.Helper()
 	since := time.Now()
 	setTunnelRuntimeISPLink(t, c.topology.tunnel, false)
-	measured := waitCombinedUnavailable(t, c.daemon, c.run.read, tunnelRuntimeDevice, since, "probe", "bgp-session", "underlay")
-	requireCombinedBound(t, "underlay loss to unavailable", measured, c.faultBound(t, tunnelRuntimeDevice))
+	measured := waitCombinedUnavailable(
+		t,
+		c.daemon,
+		c.run.read,
+		tunnelRuntimeDevice,
+		since,
+		"probe",
+		"bgp-session",
+		"underlay",
+	)
+	requireCombinedBound(
+		t,
+		"underlay loss to unavailable",
+		measured,
+		c.faultBound(t, tunnelRuntimeDevice),
+	)
 	waitCombinedUnavailable(t, c.daemon, c.run.read, tunnelRuntimeDevice, since, "underlay")
 	requireCombinedSince(t, c.run.read, tunnelRuntimeDevice, "ipv6")
-	waitBGPRuntime(t, c.daemon, c.run.read, "underlay IPv4 path unavailable", tunnelRuntimeRecoverWindow, func() bool {
-		return readCombinedPath(c.run.read, tunnelRuntimeUnderlay, "ipv4").State == combinedUnavailable
-	})
+	waitBGPRuntime(
+		t,
+		c.daemon,
+		c.run.read,
+		"underlay IPv4 path unavailable",
+		tunnelRuntimeRecoverWindow,
+		func() bool {
+			return readCombinedPath(
+				c.run.read,
+				tunnelRuntimeUnderlay,
+				"ipv4",
+			).State == combinedUnavailable
+		},
+	)
 	requireCombinedPaths(t, c.daemon, c.run.read, c.topology, combinedOrdinary, c.provider.device)
 	c.requireIPv4PathsUnchanged(t, since, tunnelRuntimeAlternate, combinedOrdinary)
 	requireCombinedUnchanged(t, c.run.read, since, "ipv6", combinedOrdinary)
@@ -88,7 +133,12 @@ func combinedUnderlayLoss(t *testing.T, c *combinedRun) {
 	c.recovered(t, tunnelRuntimeDevice, restored, c.recoverBound(t, tunnelRuntimeDevice))
 	c.requireIPv4PathsUnchanged(t, since, tunnelRuntimeAlternate, combinedOrdinary)
 	requireCombinedUnchanged(t, c.run.read, since, "ipv6", combinedOrdinary)
-	waitTunnelRuntimeIPv4Selection(t, c.daemon, "the assignment before the underlay fault", func(selection string) bool {
-		return selection == c.ipv4
-	})
+	waitTunnelRuntimeIPv4Selection(
+		t,
+		c.daemon,
+		"the assignment before the underlay fault",
+		func(selection string) bool {
+			return selection == c.ipv4
+		},
+	)
 }

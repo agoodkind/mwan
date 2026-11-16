@@ -29,6 +29,7 @@ func TestMain(m *testing.M) {
 	if os.Getenv(connectChildEnv) != "" {
 		os.Exit(runConnectChild())
 	}
+
 	os.Exit(m.Run())
 }
 
@@ -38,10 +39,12 @@ func runConnectChild() int {
 		fmt.Fprint(os.Stdout, err.Error())
 		return connectChildFailed
 	}
+
 	if err := publisher.Close(); err != nil {
 		fmt.Fprint(os.Stdout, err.Error())
 		return connectChildFailed
 	}
+
 	return 0
 }
 
@@ -50,6 +53,7 @@ func TestNewWithoutSysrepoGroupReturnsErrorNamingTheGroup(t *testing.T) {
 	if _, err := user.LookupGroup(missingGroupName); err == nil {
 		t.Skip("the sysrepo group exists on this host; the missing-group case cannot run")
 	}
+
 	repository := t.TempDir()
 	shmPrefix := fmt.Sprintf("yangpubgroup%d_", os.Getpid())
 	t.Cleanup(func() {
@@ -58,6 +62,7 @@ func TestNewWithoutSysrepoGroupReturnsErrorNamingTheGroup(t *testing.T) {
 			t.Errorf("list shared memory: %v", err)
 			return
 		}
+
 		for _, segment := range segments {
 			if err := os.Remove(segment); err != nil {
 				t.Errorf("remove shared memory %s: %v", segment, err)
@@ -66,13 +71,17 @@ func TestNewWithoutSysrepoGroupReturnsErrorNamingTheGroup(t *testing.T) {
 	})
 
 	command := exec.Command(os.Args[0])
+
 	for _, entry := range os.Environ() {
 		if strings.HasPrefix(entry, sysrepoTestModeEnv+"=") {
 			continue
 		}
+
 		command.Env = append(command.Env, entry)
 	}
-	command.Env = append(command.Env,
+
+	command.Env = append(
+		command.Env,
 		connectChildEnv+"=1",
 		sysrepoRepositoryEnv+"="+repository,
 		sysrepoShmPrefixEnv+"="+shmPrefix,
@@ -85,9 +94,15 @@ func TestNewWithoutSysrepoGroupReturnsErrorNamingTheGroup(t *testing.T) {
 
 	var exitErr *exec.ExitError
 	if !errors.As(runErr, &exitErr) || exitErr.ExitCode() != connectChildFailed {
-		t.Fatalf("child run error = %v, want exit code %d\nstdout:\n%s\nstderr:\n%s",
-			runErr, connectChildFailed, stdout.String(), stderr.String())
+		t.Fatalf(
+			"child run error = %v, want exit code %d\nstdout:\n%s\nstderr:\n%s",
+			runErr,
+			connectChildFailed,
+			stdout.String(),
+			stderr.String(),
+		)
 	}
+
 	want := `group "` + missingGroupName + `" does not exist`
 	if !strings.Contains(stdout.String(), want) {
 		t.Fatalf("New error = %q, want it to contain %q", stdout.String(), want)

@@ -9,7 +9,14 @@ import (
 )
 
 // SetForwardingReady configures ifmgr readiness polling for BGP announcements. When requireAllFamilies is true, AnnounceRoutes requires every configured family to be ready.
-func (a *Server) SetForwardingReady(path string, pollInterval, readTimeout time.Duration, ipv4, ipv6, requireAllFamilies bool) {
+func (a *Server) SetForwardingReady(
+	path string,
+	pollInterval time.Duration,
+	readTimeout time.Duration,
+	ipv4 bool,
+	ipv6 bool,
+	requireAllFamilies bool,
+) {
 	a.forwardingMu.Lock()
 	defer a.forwardingMu.Unlock()
 	a.forwardingPath = path

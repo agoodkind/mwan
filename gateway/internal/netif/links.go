@@ -33,15 +33,20 @@ func ListLinkIdentities(log *slog.Logger) ([]LinkIdentity, error) {
 		log.Warn("link: LinkList failed", "err", err)
 		return nil, fmt.Errorf("LinkList: %w", err)
 	}
+
 	identities := make([]LinkIdentity, 0, len(links))
 	for _, link := range links {
 		attrs := link.Attrs()
-		identities = append(identities, LinkIdentity{
-			Name:            attrs.Name,
-			HardwareAddress: strings.ToLower(attrs.HardwareAddr.String()),
-			Driver:          linkDriver(attrs.Name),
-		})
+		identities = append(
+			identities,
+			LinkIdentity{
+				Name:            attrs.Name,
+				HardwareAddress: strings.ToLower(attrs.HardwareAddr.String()),
+				Driver:          linkDriver(attrs.Name),
+			},
+		)
 	}
+
 	return identities, nil
 }
 
@@ -53,41 +58,53 @@ func linkDriver(name string) string {
 	if err != nil {
 		return ""
 	}
+
 	return filepath.Base(target)
 }
 
 // resolveConnectionLink matches a configured connection against current kernel links.
 // Networkd controls legacy physical device names. Its devices require observed
 // identity checks rather than a global driver match across identical devices.
-func resolveConnectionLink(log *slog.Logger, connection interfaceintent.Connection) (netlink.Link, error) {
+func resolveConnectionLink(
+	log *slog.Logger,
+	connection interfaceintent.Connection,
+) (netlink.Link, error) {
 	if connection.Link == nil {
 		return nil, nil
 	}
+
 	if connection.Owner == interfaceintent.OwnerNetworkd &&
 		(connection.Link.Kind == interfaceintent.KindPhysical || connection.Link.Kind == "") {
 		link, err := ObserveLegacyLink(connection)
 		if IsLinkNotFound(err) {
 			return nil, nil
 		}
+
 		return link, err
 	}
+
 	links, err := netlink.LinkList()
 	if err != nil {
 		log.Warn("link: LinkList failed", "connection", connection.ID, "err", err)
 		return nil, fmt.Errorf("list links for %s: %w", connection.ID, err)
 	}
+
 	var matches []netlink.Link
+
 	for _, link := range links {
 		if linkMatchesConnection(link, connection) {
 			matches = append(matches, link)
 		}
 	}
+
 	if len(matches) > 1 {
 		return nil, fmt.Errorf("connection %s matches %d kernel links", connection.ID, len(matches))
 	}
+
 	if len(matches) == 0 {
 		return nil, nil
 	}
+
 	return matches[0], nil
 }
 
@@ -97,11 +114,13 @@ func linkMatchesConnection(link netlink.Link, connection interfaceintent.Connect
 	if configured == nil || attrs == nil {
 		return false
 	}
+
 	switch configured.Kind {
 	case interfaceintent.KindBridge:
 		return link.Type() == "bridge" && attrs.Name == connection.Name
 	case interfaceintent.KindTunnel:
-		return configured.Tunnel != nil && link.Type() == tunnelKernelType(configured.Tunnel.Protocol) &&
+		return configured.Tunnel != nil &&
+			link.Type() == tunnelKernelType(configured.Tunnel.Protocol) &&
 			attrs.Name == connection.Name
 	case interfaceintent.KindVLAN:
 		vlan, ok := link.(*netlink.Vlan)
@@ -109,21 +128,27 @@ func linkMatchesConnection(link netlink.Link, connection interfaceintent.Connect
 			vlan.VlanProtocol != netlink.VLAN_PROTOCOL_8021Q {
 			return false
 		}
+
 		parent, err := netlink.LinkByIndex(attrs.ParentIndex)
+
 		return err == nil && parent.Attrs() != nil && parent.Attrs().Name == configured.VLAN.Parent
 	case interfaceintent.KindPhysical, "":
 		if link.Type() == "vlan" || link.Type() == "bridge" {
 			return false
 		}
+
 		match := configured.Match
 		if match.HardwareAddress != "" {
 			address := attrs.PermHWAddr
 			if len(address) == 0 {
 				address = attrs.HardwareAddr
 			}
+
 			return strings.EqualFold(address.String(), match.HardwareAddress)
 		}
+
 		return match.Driver != "" && linkDriver(attrs.Name) == match.Driver
 	}
+
 	return false
 }

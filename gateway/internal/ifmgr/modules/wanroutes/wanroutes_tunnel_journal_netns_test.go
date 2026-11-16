@@ -38,7 +38,11 @@ func requireEndpointReceipts(t *testing.T, fixture *tunnelRouteFixture, want int
 		t.Fatal(err)
 	}
 	if receipts.OrdinaryObjects != want || receipts.Released() != (want == 0) {
-		t.Fatalf("release receipts of the tunnel connection = %+v, want %d endpoint routes", receipts, want)
+		t.Fatalf(
+			"release receipts of the tunnel connection = %+v, want %d endpoint routes",
+			receipts,
+			want,
+		)
 	}
 }
 
@@ -66,7 +70,12 @@ func TestTunnelEndpointRouteAdoptedAfterAnOlderReleaseSavedTheJournal(t *testing
 	}
 	requireEndpointReceipts(t, fixture, 0)
 
-	upgraded := restartTunnelRouteModule(t, fixture, true, openTunnelRouteJournal(t, fixture.journalPath))
+	upgraded := restartTunnelRouteModule(
+		t,
+		fixture,
+		true,
+		openTunnelRouteJournal(t, fixture.journalPath),
+	)
 	if err := upgraded.Reconcile(ctx, upgraded.Log); err != nil {
 		t.Fatalf("Reconcile after the journal lost the record: %v", err)
 	}
@@ -74,7 +83,12 @@ func TestTunnelEndpointRouteAdoptedAfterAnOlderReleaseSavedTheJournal(t *testing
 	requireTunnelEndpointRoute(t, tunnelRouteGateway)
 	requireEndpointReceipts(t, fixture, 1)
 
-	removed := restartTunnelRouteModule(t, fixture, false, openTunnelRouteJournal(t, fixture.journalPath))
+	removed := restartTunnelRouteModule(
+		t,
+		fixture,
+		false,
+		openTunnelRouteJournal(t, fixture.journalPath),
+	)
 	if err := removed.Reconcile(ctx, removed.Log); err != nil {
 		t.Fatalf("Reconcile without the tunnel: %v", err)
 	}
@@ -92,10 +106,19 @@ func TestForeignRouteAfterARecordedFailedEndpointWriteSurvives(t *testing.T) {
 	fixture := newTunnelRouteFixture(ctx, t)
 	journal := openTunnelRouteJournal(t, fixture.journalPath)
 	unreachable := netif.RouteSpec{
-		Family: familyV4, Dest: tunnelRouteEndpoint, Via: "10.9.9.9", Dev: tunnelRouteUnderlay,
-		TableID: tunnelRouteUnderTbl, Protocol: netif.TunnelEndpointRouteProtocol,
+		Family:   familyV4,
+		Dest:     tunnelRouteEndpoint,
+		Via:      "10.9.9.9",
+		Dev:      tunnelRouteUnderlay,
+		TableID:  tunnelRouteUnderTbl,
+		Protocol: netif.TunnelEndpointRouteProtocol,
 	}
-	if err := journal.EnsureTunnelEndpointRoute(ctx, fixture.module.Log, tunnelRouteID, unreachable); err == nil {
+	if err := journal.EnsureTunnelEndpointRoute(
+		ctx,
+		fixture.module.Log,
+		tunnelRouteID,
+		unreachable,
+	); err == nil {
 		t.Fatal("the kernel accepted an endpoint route through an unreachable gateway")
 	}
 	requireEndpointReceipts(t, fixture, 1)
@@ -104,7 +127,10 @@ func TestForeignRouteAfterARecordedFailedEndpointWriteSurvives(t *testing.T) {
 	module := restartTunnelRouteModule(t, fixture, true, journal)
 	err := module.Reconcile(ctx, module.Log)
 	if err == nil || !strings.Contains(err.Error(), "conflicts with an unowned route") {
-		t.Fatalf("Reconcile with a foreign route at a recorded destination = %v, want a conflict error", err)
+		t.Fatalf(
+			"Reconcile with a foreign route at a recorded destination = %v, want a conflict error",
+			err,
+		)
 	}
 	requireForeignTableRoute(t, tunnelRouteEndpoint, unix.RTPROT_STATIC)
 	requireTunnelRouting(t, fixture.store.Snapshot(), false, reasonEndpointRouteAbsent)

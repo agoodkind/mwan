@@ -58,6 +58,7 @@ func writeSharedFile(t *testing.T, text string) string {
 	if err := os.WriteFile(configPath, []byte(text), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
+
 	return configPath
 }
 
@@ -70,8 +71,13 @@ func TestLoadPathAcceptsBothWatchdogStatusSources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load config with both watchdog status sources failed: %v", err)
 	}
+
 	if cfg.Path != configPath || cfg.IfMgr.Role != "wan" {
-		t.Errorf("config path or ifmgr role differs from expected values: %q %q", cfg.Path, cfg.IfMgr.Role)
+		t.Errorf(
+			"config path or ifmgr role differs from expected values: %q %q",
+			cfg.Path,
+			cfg.IfMgr.Role,
+		)
 	}
 }
 
@@ -86,13 +92,24 @@ func TestLoadPathAcceptsHypervisorSections(t *testing.T) {
 	}
 
 	if cfg.Hostname != "gateway-test" || cfg.MwanVMID != "4100" {
-		t.Errorf("hostname = %q mwan_vmid = %q, want gateway-test and 4100", cfg.Hostname, cfg.MwanVMID)
+		t.Errorf(
+			"hostname = %q mwan_vmid = %q, want gateway-test and 4100",
+			cfg.Hostname,
+			cfg.MwanVMID,
+		)
 	}
+
 	agentLoaded := cfg.Agent.VsockPort == 50071 && cfg.Agent.TCPAddr == "[::]:50052"
 	bgpLoaded := cfg.BGP.ASN == 65001 && cfg.BGP.RouterID == "192.0.2.3"
 	ifmgrLoaded := cfg.IfMgr.Role == "wan" && cfg.IfMgr.ReconcileInterval == "30s"
 	if cfg.Path != configPath || !agentLoaded || !bgpLoaded || !ifmgrLoaded {
-		t.Errorf("config path or gateway settings differ from expected values: %q %+v %+v %q %q",
-			cfg.Path, cfg.Agent, cfg.BGP, cfg.IfMgr.Role, cfg.IfMgr.ReconcileInterval)
+		t.Errorf(
+			"config path or gateway settings differ from expected values: %q %+v %+v %q %q",
+			cfg.Path,
+			cfg.Agent,
+			cfg.BGP,
+			cfg.IfMgr.Role,
+			cfg.IfMgr.ReconcileInterval,
+		)
 	}
 }

@@ -65,13 +65,16 @@ func ValidateAndDecode(data []byte, schema *yangschema.Schema) (*networkjson.Con
 	if _, err := networkjson.Canonicalize(data); err != nil {
 		return nil, &JSONError{err: err}
 	}
+
 	if err := schema.ValidateConfigJSON(data); err != nil {
 		return nil, &SchemaError{err: err}
 	}
+
 	loaded, err := networkjson.Decode(data)
 	if err != nil {
 		return nil, &SemanticError{err: err}
 	}
+
 	return loaded, nil
 }
 
@@ -89,6 +92,7 @@ func Load(path string, schemaDir string) (*networkjson.Config, error) {
 		slog.Error("networkjson: read failed", "err", err, "path", path)
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
+
 	schema, err := yangschema.LoadSchema(schemaDir)
 	if err != nil {
 		slog.Error("networkjson: schema load failed", "err", err, "schema_dir", schemaDir)
@@ -99,6 +103,7 @@ func Load(path string, schemaDir string) (*networkjson.Config, error) {
 	if err != nil {
 		return nil, loadFailed(path, err)
 	}
+
 	return loaded, nil
 }
 
@@ -108,20 +113,24 @@ func loadFailed(path string, err error) error {
 		slog.Error("networkjson: schema validation failed", "err", rejected.Unwrap(), "path", path)
 		return fmt.Errorf("validate %s: %w", path, rejected.Unwrap())
 	}
+
 	var malformed *JSONError
 	if errors.As(err, &malformed) {
 		slog.Error("networkjson: decode failed", "err", malformed.Unwrap(), "path", path)
 		return fmt.Errorf("decode %s: %w", path, malformed.Unwrap())
 	}
+
 	var syntax *networkjson.SyntaxError
 	if errors.As(err, &syntax) {
 		slog.Error("networkjson: decode failed", "err", syntax.Unwrap(), "path", path)
 		return fmt.Errorf("decode %s: %w", path, syntax.Unwrap())
 	}
+
 	// build returns a missing group-wide value, a provider-set conflict (a
 	// duplicate routing number, a reserved table), and a document with no
 	// loadable provider. The wrapped error text states which.
 	slog.Error("networkjson: configuration rejected", "err", err, "path", path)
+
 	return fmt.Errorf("%s: %w", path, err)
 }
 
@@ -132,7 +141,9 @@ func ApplyFrom(cfg *config.Config, path string, schemaDir string) error {
 	if err != nil {
 		return err
 	}
+
 	loaded.Apply(cfg)
+
 	return nil
 }
 

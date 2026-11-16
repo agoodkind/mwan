@@ -24,7 +24,16 @@ func TestVersionReportsTheStampedBuild(t *testing.T) {
 	binaryPath := filepath.Join(t.TempDir(), "mwan")
 	ldflags := "-X goodkind.io/gklog/version.Commit=" + versionTestCommit +
 		" -X goodkind.io/gklog/version.Dirty=false"
-	build := exec.CommandContext(t.Context(), "go", "build", "-ldflags", ldflags, "-o", binaryPath, ".")
+	build := exec.CommandContext(
+		t.Context(),
+		"go",
+		"build",
+		"-ldflags",
+		ldflags,
+		"-o",
+		binaryPath,
+		".",
+	)
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, output)
 	}
@@ -33,6 +42,7 @@ func TestVersionReportsTheStampedBuild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read built binary: %v", err)
 	}
+
 	digest := sha256.Sum256(binary)
 	binhash := hex.EncodeToString(digest[:])[:12]
 
@@ -45,8 +55,14 @@ func TestVersionReportsTheStampedBuild(t *testing.T) {
 		t.Fatalf("mwan version: %v\nstderr: %s", err, stderr.String())
 	}
 
-	want := fmt.Sprintf("version=%s+%s commit=%s dirty=clean binhash=%s libsysrepo=%s",
-		versionTestCommit, binhash, versionTestCommit, binhash, linkedSysrepoVersion())
+	want := fmt.Sprintf(
+		"version=%s+%s commit=%s dirty=clean binhash=%s libsysrepo=%s",
+		versionTestCommit,
+		binhash,
+		versionTestCommit,
+		binhash,
+		linkedSysrepoVersion(),
+	)
 	if got := strings.TrimSuffix(string(stdout), "\n"); got != want {
 		t.Fatalf("mwan version printed\n%q\nwant\n%q", got, want)
 	}

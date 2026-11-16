@@ -23,7 +23,11 @@ func TestNativeAdmissionTrafficControl(t *testing.T) {
 	observation := admissionObservation(t, fixture.sender, fixture.input, flow.TupleOrig)
 	fixture.requireCandidate(t, observation, flow, flow.TupleOrig, 0, fixture.output, fixture.peer)
 	var err error
-	fixture.module.events, err = offload.NewConntrackEvents(fixture.ctx, 16, nativeCaptureSocketBytes)
+	fixture.module.events, err = offload.NewConntrackEvents(
+		fixture.ctx,
+		16,
+		nativeCaptureSocketBytes,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,18 +41,34 @@ func TestNativeAdmissionTrafficControl(t *testing.T) {
 		t.Fatalf("unchanged real kernel evidence rejected its guard: %v", err)
 	}
 	previous := fixture.module.forwarding.Generation()
-	if err := netlink.QdiscAdd(&netlink.Clsact{QdiscAttrs: netlink.QdiscAttrs{
-		LinkIndex: fixture.output.Index, Handle: netlink.MakeHandle(0xffff, 0), Parent: netlink.HANDLE_CLSACT,
-	}}); err != nil {
+	if err := netlink.QdiscAdd(&netlink.Clsact{
+		QdiscAttrs: netlink.QdiscAttrs{
+			LinkIndex: fixture.output.Index,
+			Handle:    netlink.MakeHandle(0xffff, 0),
+			Parent:    netlink.HANDLE_CLSACT,
+		},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	fixture.awaitTrafficPolicyChange(t, previous)
 	fixture.requireCandidate(t, observation, flow, flow.TupleOrig, 0, fixture.output, fixture.peer)
 	guard = fixture.module.evidenceFor(fixture.module.currentEvidenceEpoch()).guard
-	filter := &netlink.MatchAll{FilterAttrs: netlink.FilterAttrs{
-		LinkIndex: fixture.output.Index, Parent: netlink.HANDLE_MIN_EGRESS,
-		Handle: 1, Priority: 1, Protocol: unix.ETH_P_ALL,
-	}, Actions: []netlink.Action{&netlink.GenericAction{ActionAttrs: netlink.ActionAttrs{Action: netlink.TC_ACT_SHOT}}}}
+	filter := &netlink.MatchAll{
+		FilterAttrs: netlink.FilterAttrs{
+			LinkIndex: fixture.output.Index,
+			Parent:    netlink.HANDLE_MIN_EGRESS,
+			Handle:    1,
+			Priority:  1,
+			Protocol:  unix.ETH_P_ALL,
+		},
+		Actions: []netlink.Action{
+			&netlink.GenericAction{
+				ActionAttrs: netlink.ActionAttrs{
+					Action: netlink.TC_ACT_SHOT,
+				},
+			},
+		},
+	}
 	previous = fixture.module.forwarding.Generation()
 	if err := netlink.FilterAdd(filter); err != nil {
 		t.Fatal(err)
@@ -74,7 +94,10 @@ func (fixture admissionFixture) awaitTrafficPolicyChange(t *testing.T, previous 
 		case err := <-fixture.module.forwarding.Errors:
 			t.Fatalf("traffic-control observations failed: %v", err)
 		case <-fixture.ctx.Done():
-			t.Fatalf("traffic-control mutation did not invalidate native evidence: %v", fixture.ctx.Err())
+			t.Fatalf(
+				"traffic-control mutation did not invalidate native evidence: %v",
+				fixture.ctx.Err(),
+			)
 		}
 	}
 	if err := fixture.module.forwarding.Err(); err != nil {

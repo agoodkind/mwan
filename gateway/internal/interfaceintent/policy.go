@@ -62,23 +62,31 @@ func IPv4PolicySource(address string) *PolicySource {
 	if address == "" {
 		return &PolicySource{Kind: PolicySourceNone, Prefix: netip.Prefix{}}
 	}
+
 	source := PolicySource{Kind: PolicySourceConfigured, Prefix: netip.Prefix{}}
 	if parsed, err := netip.ParseAddr(address); err == nil {
 		source.Prefix = netip.PrefixFrom(parsed, parsed.BitLen())
 	}
+
 	return &source
 }
 
 // IPv6PolicySource returns PolicySourceNone when prefixTranslation is false.
 // With prefix translation, externalConfigured selects a masked configured prefix.
 // With prefix translation, an unconfigured prefix selects PolicySourceRuntime.
-func IPv6PolicySource(prefixTranslation bool, externalConfigured bool, external netip.Prefix) *PolicySource {
+func IPv6PolicySource(
+	prefixTranslation bool,
+	externalConfigured bool,
+	external netip.Prefix,
+) *PolicySource {
 	if !prefixTranslation {
 		return &PolicySource{Kind: PolicySourceNone, Prefix: netip.Prefix{}}
 	}
+
 	if externalConfigured {
 		return &PolicySource{Kind: PolicySourceConfigured, Prefix: external.Masked()}
 	}
+
 	return &PolicySource{Kind: PolicySourceRuntime, Prefix: netip.Prefix{}}
 }
 
@@ -108,9 +116,11 @@ func NewPolicyProvider(
 	if ipv4Configured {
 		provider.IPv4 = IPv4PolicySource(ipv4Address)
 	}
+
 	if ipv6Configured {
 		provider.IPv6 = IPv6PolicySource(prefixTranslation, externalConfigured, external)
 	}
+
 	return provider
 }
 
@@ -142,7 +152,11 @@ type PolicyRule struct {
 
 // PolicyFamilyConditions returns the shared activation conditions for a family.
 func PolicyFamilyConditions() []PolicyCondition {
-	return []PolicyCondition{PolicyConditionTranslation, PolicyConditionGateway, PolicyConditionHealth}
+	return []PolicyCondition{
+		PolicyConditionTranslation,
+		PolicyConditionGateway,
+		PolicyConditionHealth,
+	}
 }
 
 // ConfiguredPolicyRules returns mark and source rules for each configured family.
@@ -157,44 +171,57 @@ func ConfiguredPolicyRules(provider PolicyProvider) []PolicyRule {
 		{name: PolicyFamilyIPv6, source: provider.IPv6},
 	}
 	var rules []PolicyRule
+
 	for _, family := range families {
 		if family.source == nil {
 			continue
 		}
-		rules = append(rules, PolicyRule{
-			ConnectionID:         provider.ConnectionID,
-			Family:               family.name,
-			Kind:                 PolicyRuleFwmark,
-			Priority:             provider.MarkPriority,
-			TableID:              provider.TableID,
-			Mark:                 provider.Mark,
-			Source:               netip.Prefix{},
-			SourceKind:           PolicySourceNone,
-			ActivationConditions: PolicyFamilyConditions(),
-		})
-		if family.source.Kind != PolicySourceConfigured && family.source.Kind != PolicySourceRuntime {
+
+		rules = append(
+			rules,
+			PolicyRule{
+				ConnectionID:         provider.ConnectionID,
+				Family:               family.name,
+				Kind:                 PolicyRuleFwmark,
+				Priority:             provider.MarkPriority,
+				TableID:              provider.TableID,
+				Mark:                 provider.Mark,
+				Source:               netip.Prefix{},
+				SourceKind:           PolicySourceNone,
+				ActivationConditions: PolicyFamilyConditions(),
+			},
+		)
+		if family.source.Kind != PolicySourceConfigured &&
+			family.source.Kind != PolicySourceRuntime {
 			continue
 		}
+
 		conditions := PolicyFamilyConditions()
 		if family.name == PolicyFamilyIPv6 {
 			// IPv6 source rules require an external prefix from NPTv6 translation state.
 			conditions = append(conditions, PolicyConditionSourcePrefix)
 		}
+
 		source := netip.Prefix{}
 		if family.source.Kind == PolicySourceConfigured {
 			source = family.source.Prefix
 		}
-		rules = append(rules, PolicyRule{
-			ConnectionID:         provider.ConnectionID,
-			Family:               family.name,
-			Kind:                 PolicyRuleSource,
-			Priority:             provider.SourcePriority,
-			TableID:              provider.TableID,
-			Mark:                 0,
-			Source:               source,
-			SourceKind:           family.source.Kind,
-			ActivationConditions: conditions,
-		})
+
+		rules = append(
+			rules,
+			PolicyRule{
+				ConnectionID:         provider.ConnectionID,
+				Family:               family.name,
+				Kind:                 PolicyRuleSource,
+				Priority:             provider.SourcePriority,
+				TableID:              provider.TableID,
+				Mark:                 0,
+				Source:               source,
+				SourceKind:           family.source.Kind,
+				ActivationConditions: conditions,
+			},
+		)
 	}
+
 	return rules
 }

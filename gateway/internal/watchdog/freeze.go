@@ -27,38 +27,47 @@ func (w *watchdog) ensureGuestThawed(parent context.Context, phase string) {
 	if w.cfg.GuestType == watchdogconfig.GuestTypeLXC {
 		return
 	}
-	ctx, cancel := context.WithTimeout(
-		context.WithoutCancel(parent), thawGuardTimeout,
-	)
+
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), thawGuardTimeout)
 	defer cancel()
 	log := w.tracedLogger(ctx)
 	status, err := w.ops.VMFSFreezeStatus(ctx, w.cfg.MwanVMID)
 	if err != nil {
-		log.DebugContext(ctx, "fsfreeze-status unavailable",
-			"phase", phase, "err", err)
+		log.DebugContext(ctx, "fsfreeze-status unavailable", "phase", phase, "err", err)
+
 		return
 	}
+
 	if !strings.Contains(status, "frozen") {
 		return
 	}
-	log.WarnContext(ctx, "guest filesystems left frozen; thawing",
-		"phase", phase, "status", status)
+
+	log.WarnContext(ctx, "guest filesystems left frozen; thawing", "phase", phase, "status", status)
 	if err := w.ops.VMFSFreezeThaw(ctx, w.cfg.MwanVMID); err != nil {
-		log.ErrorContext(ctx, "fsfreeze-thaw failed",
-			"phase", phase, "err", err)
+		log.ErrorContext(ctx, "fsfreeze-thaw failed", "phase", phase, "err", err)
+
 		return
 	}
+
 	after, err := w.ops.VMFSFreezeStatus(ctx, w.cfg.MwanVMID)
 	if err != nil {
-		log.WarnContext(ctx, "fsfreeze-status recheck unavailable after thaw",
-			"phase", phase, "err", err)
+		log.WarnContext(
+			ctx,
+			"fsfreeze-status recheck unavailable after thaw",
+			"phase",
+			phase,
+			"err",
+			err,
+		)
+
 		return
 	}
+
 	if strings.Contains(after, "frozen") {
-		log.WarnContext(ctx, "guest still frozen after thaw",
-			"phase", phase, "status_after", after)
+		log.WarnContext(ctx, "guest still frozen after thaw", "phase", phase, "status_after", after)
+
 		return
 	}
-	log.InfoContext(ctx, "guest thawed after stuck freeze",
-		"phase", phase, "status_after", after)
+
+	log.InfoContext(ctx, "guest thawed after stuck freeze", "phase", phase, "status_after", after)
 }

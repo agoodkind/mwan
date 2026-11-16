@@ -44,10 +44,12 @@ func unusedPort(t *testing.T, address netip.Addr) uint16 {
 	if err != nil {
 		t.Fatalf("reserve a TCP port on %s: %v", address, err)
 	}
+
 	port := netip.MustParseAddrPort(listener.Addr().String()).Port()
 	if err := listener.Close(); err != nil {
 		t.Fatalf("release the reserved TCP port: %v", err)
 	}
+
 	return port
 }
 
@@ -72,16 +74,20 @@ func startTestPeer(
 	neighborASN uint32,
 ) *testPeer {
 	t.Helper()
-	return startTestPeerWithOptions(t, testPeerOptions{
-		asn:          asn,
-		routerID:     routerID,
-		listen:       listen,
-		neighbor:     neighbor,
-		neighborASN:  neighborASN,
-		neighborPort: 0,
-		families:     []apipb.Family_Afi{apipb.Family_AFI_IP6},
-		restartTime:  0,
-	})
+
+	return startTestPeerWithOptions(
+		t,
+		testPeerOptions{
+			asn:          asn,
+			routerID:     routerID,
+			listen:       listen,
+			neighbor:     neighbor,
+			neighborASN:  neighborASN,
+			neighborPort: 0,
+			families:     []apipb.Family_Afi{apipb.Family_AFI_IP6},
+			restartTime:  0,
+		},
+	)
 }
 
 func startTestPeerWithOptions(t *testing.T, options testPeerOptions) *testPeer {
@@ -91,6 +97,7 @@ func startTestPeerWithOptions(t *testing.T, options testPeerOptions) *testPeer {
 	var bgpServer *server.BgpServer
 	var port uint16
 	var startErr error
+
 	for range peerStartAttempts {
 		port = unusedPort(t, options.listen)
 		bgpServer = server.NewBgpServer()
@@ -105,11 +112,14 @@ func startTestPeerWithOptions(t *testing.T, options testPeerOptions) *testPeer {
 		if startErr == nil {
 			break
 		}
+
 		bgpServer.Stop()
 	}
+
 	if startErr != nil {
 		t.Fatalf("start test peer after %d attempts: %v", peerStartAttempts, startErr)
 	}
+
 	t.Cleanup(bgpServer.Stop)
 	transport := &apipb.Transport{PassiveMode: true}
 	if options.neighborPort != 0 {
@@ -118,21 +128,29 @@ func startTestPeerWithOptions(t *testing.T, options testPeerOptions) *testPeer {
 			RemotePort:   uint32(options.neighborPort),
 		}
 	}
+
 	afiSafis := make([]*apipb.AfiSafi, 0, len(options.families))
 	for _, family := range options.families {
-		afiSafi := &apipb.AfiSafi{Config: &apipb.AfiSafiConfig{
-			Family:  &apipb.Family{Afi: family, Safi: apipb.Family_SAFI_UNICAST},
-			Enabled: true,
-		}}
-		if options.restartTime > 0 {
-			afiSafi.MpGracefulRestart = &apipb.MpGracefulRestart{Config: &apipb.MpGracefulRestartConfig{Enabled: true}}
+		afiSafi := &apipb.AfiSafi{
+			Config: &apipb.AfiSafiConfig{
+				Family:  &apipb.Family{Afi: family, Safi: apipb.Family_SAFI_UNICAST},
+				Enabled: true,
+			},
 		}
+		if options.restartTime > 0 {
+			afiSafi.MpGracefulRestart = &apipb.MpGracefulRestart{
+				Config: &apipb.MpGracefulRestartConfig{Enabled: true},
+			}
+		}
+
 		afiSafis = append(afiSafis, afiSafi)
 	}
+
 	var gracefulRestart *apipb.GracefulRestart
 	if options.restartTime > 0 {
 		gracefulRestart = &apipb.GracefulRestart{Enabled: true, RestartTime: options.restartTime}
 	}
+
 	peer := &apipb.Peer{
 		GracefulRestart: gracefulRestart,
 		Conf: &apipb.PeerConf{
@@ -140,15 +158,18 @@ func startTestPeerWithOptions(t *testing.T, options testPeerOptions) *testPeer {
 			PeerAsn:         options.neighborASN,
 		},
 		Transport: transport,
-		Timers: &apipb.Timers{Config: &apipb.TimersConfig{
-			KeepaliveInterval: uint64(keepaliveSeconds),
-			HoldTime:          uint64(holdSeconds),
-		}},
+		Timers: &apipb.Timers{
+			Config: &apipb.TimersConfig{
+				KeepaliveInterval: uint64(keepaliveSeconds),
+				HoldTime:          uint64(holdSeconds),
+			},
+		},
 		AfiSafis: afiSafis,
 	}
 	if err := bgpServer.AddPeer(t.Context(), &apipb.AddPeerRequest{Peer: peer}); err != nil {
 		t.Fatalf("add the session as a test peer neighbor: %v", err)
 	}
+
 	return &testPeer{server: bgpServer, port: port, neighbor: options.neighbor}
 }
 
@@ -156,6 +177,7 @@ func prefixRouteFamily(prefix netip.Prefix) bgppkt.Family {
 	if prefix.Addr().Is4() {
 		return bgppkt.RF_IPv4_UC
 	}
+
 	return bgppkt.RF_IPv6_UC
 }
 
@@ -171,14 +193,19 @@ func nextHopAttribute(
 		if err != nil {
 			t.Fatalf("build IPv4 NEXT_HOP path attribute: %s: %v", prefix, err)
 		}
+
 		return attribute
 	}
+
 	mpReach, err := bgppkt.NewPathAttributeMpReachNLRI(
-		bgppkt.RF_IPv6_UC, []bgppkt.PathNLRI{{NLRI: nlri}}, nextHop,
+		bgppkt.RF_IPv6_UC,
+		[]bgppkt.PathNLRI{{NLRI: nlri}},
+		nextHop,
 	)
 	if err != nil {
 		t.Fatalf("build MP_REACH_NLRI for %s: %v", prefix, err)
 	}
+
 	return mpReach
 }
 
@@ -189,12 +216,18 @@ func (p *testPeer) announce(t *testing.T, prefix netip.Prefix, nextHop netip.Add
 
 // GoBGP sends no update for a path that differs from the announced path only
 // in the next hop. A different MED makes GoBGP send the new next hop.
-func (p *testPeer) announceWithMED(t *testing.T, prefix netip.Prefix, nextHop netip.Addr, med uint32) {
+func (p *testPeer) announceWithMED(
+	t *testing.T,
+	prefix netip.Prefix,
+	nextHop netip.Addr,
+	med uint32,
+) {
 	t.Helper()
 	nlri, err := bgppkt.NewIPAddrPrefix(prefix)
 	if err != nil {
 		t.Fatalf("build NLRI for %s: %v", prefix, err)
 	}
+
 	path := &apiutil.Path{
 		Family: prefixRouteFamily(prefix),
 		Nlri:   nlri,
@@ -204,7 +237,9 @@ func (p *testPeer) announceWithMED(t *testing.T, prefix netip.Prefix, nextHop ne
 			bgppkt.NewPathAttributeMultiExitDisc(med),
 		},
 	}
-	if _, err := p.server.AddPath(apiutil.AddPathRequest{Paths: []*apiutil.Path{path}}); err != nil {
+	if _, err := p.server.AddPath(apiutil.AddPathRequest{
+		Paths: []*apiutil.Path{path},
+	}); err != nil {
 		t.Fatalf("test peer announce %s: %v", prefix, err)
 	}
 }
@@ -215,6 +250,7 @@ func (p *testPeer) withdraw(t *testing.T, prefix netip.Prefix) {
 	if err != nil {
 		t.Fatalf("build NLRI for %s: %v", prefix, err)
 	}
+
 	path := &apiutil.Path{Family: prefixRouteFamily(prefix), Nlri: nlri, Withdrawal: true}
 	request := apiutil.DeletePathRequest{Paths: []*apiutil.Path{path}}
 	if err := p.server.DeletePath(request); err != nil {
@@ -230,46 +266,60 @@ func (p *testPeer) received(t *testing.T) map[netip.Prefix]*apiutil.Path {
 		Family:    bgppkt.RF_IPv6_UC,
 	}
 	learned := make(map[netip.Prefix]*apiutil.Path)
-	err := p.server.ListPath(request, func(nlri bgppkt.NLRI, paths []*apiutil.Path) {
-		for _, path := range paths {
-			learned[netip.MustParsePrefix(nlri.String())] = path
-		}
-	})
+	err := p.server.ListPath(
+		request,
+		func(nlri bgppkt.NLRI, paths []*apiutil.Path) {
+			for _, path := range paths {
+				learned[netip.MustParsePrefix(nlri.String())] = path
+			}
+		},
+	)
 	if err != nil {
 		t.Fatalf("list the test peer's received paths: %v", err)
 	}
+
 	return learned
 }
 
 func (p *testPeer) receivedPrefixes(t *testing.T) []netip.Prefix {
 	t.Helper()
 	prefixes := make([]netip.Prefix, 0)
+
 	for prefix := range p.received(t) {
 		prefixes = append(prefixes, prefix)
 	}
+
 	slices.SortFunc(prefixes, netip.Prefix.Compare)
+
 	return prefixes
 }
 
 func eventually(t *testing.T, description string, condition func() bool) {
 	t.Helper()
+
 	deadline := time.Now().Add(waitTimeout)
 	for time.Now().Before(deadline) {
 		if condition() {
 			return
 		}
+
 		time.Sleep(pollInterval)
 	}
+
 	t.Fatalf("timed out waiting for %s", description)
 }
 
 func waitReceived(t *testing.T, peer *testPeer, want ...netip.Prefix) {
 	t.Helper()
 	var got []netip.Prefix
-	eventually(t, "the test peer to receive the wanted prefixes", func() bool {
-		got = peer.receivedPrefixes(t)
-		return slices.Equal(got, want)
-	})
+	eventually(
+		t,
+		"the test peer to receive the wanted prefixes",
+		func() bool {
+			got = peer.receivedPrefixes(t)
+			return slices.Equal(got, want)
+		},
+	)
 }
 
 func baseSessionConfig(name string, remoteASN uint32, peer *testPeer) bgp.SessionConfig {
@@ -292,20 +342,27 @@ func startSession(t *testing.T, cfg bgp.SessionConfig) *bgp.Session {
 	if err != nil {
 		t.Fatalf("create session %q: %v", cfg.Name, err)
 	}
+
 	if err := session.Start(t.Context()); err != nil {
 		t.Fatalf("start session %q: %v", cfg.Name, err)
 	}
+
 	t.Cleanup(func() {
 		if err := session.Stop(t.Context()); err != nil {
 			t.Errorf("stop session %q: %v", cfg.Name, err)
 		}
 	})
+
 	return session
 }
 
 func waitEstablished(t *testing.T, session *bgp.Session) {
 	t.Helper()
-	eventually(t, "the session to establish", func() bool {
-		return session.State().Established
-	})
+	eventually(
+		t,
+		"the session to establish",
+		func() bool {
+			return session.State().Established
+		},
+	)
 }

@@ -27,6 +27,7 @@ func TestReloadIfRunningReturnsErrorForOtherConnectionFailures(t *testing.T) {
 	if err := os.WriteFile(notASocket, nil, 0o600); err != nil {
 		t.Fatalf("create regular file: %v", err)
 	}
+
 	t.Setenv(systemBusAddressEnv, "unix:path="+notASocket)
 
 	if err := networkd.ReloadIfRunning(t.Context()); err == nil {

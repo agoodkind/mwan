@@ -16,8 +16,14 @@ const sysrepoVersionUnavailable = "unavailable"
 // installs, so it reads only what is compiled into the binary and the binary
 // file itself: no config, no socket, and no privilege.
 func runVersion(output io.Writer) int {
-	fmt.Fprintf(output, "version=%s %s libsysrepo=%s\n",
-		version.BuildVersion(), version.BuildVersionString(), linkedSysrepoVersion())
+	fmt.Fprintf(
+		output,
+		"version=%s %s libsysrepo=%s\n",
+		version.BuildVersion(),
+		version.BuildVersionString(),
+		linkedSysrepoVersion(),
+	)
+
 	return 0
 }
 
@@ -26,5 +32,6 @@ func linkedSysrepoVersion() string {
 	if err != nil {
 		return sysrepoVersionUnavailable
 	}
+
 	return sysrepoVersion
 }

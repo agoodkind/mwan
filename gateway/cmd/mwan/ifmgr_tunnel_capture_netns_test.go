@@ -27,7 +27,12 @@ func openTunnelRuntimeCapture(t *testing.T, topology tunnelRuntimeTopology) int 
 	return openTunnelRuntimeLinkCapture(t, topology, topology.isp, tunnelRuntimeISPLink)
 }
 
-func openTunnelRuntimeLinkCapture(t *testing.T, topology tunnelRuntimeTopology, router netns.NsHandle, name string) int {
+func openTunnelRuntimeLinkCapture(
+	t *testing.T,
+	topology tunnelRuntimeTopology,
+	router netns.NsHandle,
+	name string,
+) int {
 	t.Helper()
 	setRuntimeNamespace(t, router)
 	defer setRuntimeNamespace(t, topology.gateway)
@@ -43,7 +48,10 @@ func openTunnelRuntimeLinkCapture(t *testing.T, topology tunnelRuntimeTopology, 
 	if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_RCVBUFFORCE, 64<<20); err != nil {
 		t.Fatalf("size the ISP link capture: %v", err)
 	}
-	if err := unix.Bind(fd, &unix.SockaddrLinklayer{Protocol: protocol, Ifindex: link.Attrs().Index}); err != nil {
+	if err := unix.Bind(
+		fd,
+		&unix.SockaddrLinklayer{Protocol: protocol, Ifindex: link.Attrs().Index},
+	); err != nil {
 		t.Fatalf("bind the ISP link capture: %v", err)
 	}
 	return fd
@@ -77,7 +85,10 @@ func readTunnelRuntimeCapture(t *testing.T, fd int) []tunnelRuntimeFrame {
 		if captured < ethernetHeader {
 			continue
 		}
-		frame := tunnelRuntimeFrame{etherType: uint16(buffer[12])<<8 | uint16(buffer[13]), length: length}
+		frame := tunnelRuntimeFrame{
+			etherType: uint16(buffer[12])<<8 | uint16(buffer[13]),
+			length:    length,
+		}
 		if frame.etherType == tunnelRuntimeEtherIPv4 && captured >= ethernetHeader+ipv4Header {
 			header := buffer[ethernetHeader:captured]
 			frame.protocol = header[9]

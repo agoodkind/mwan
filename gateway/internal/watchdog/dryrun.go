@@ -21,6 +21,7 @@ func (d *dryRunOps) VMStatus(ctx context.Context, vmid string) (bool, error) {
 		d.log.WarnContext(ctx, "read vm status failed", "vmid", vmid, "err", err)
 		return running, fmt.Errorf("read vm status: %w", err)
 	}
+
 	return running, nil
 }
 
@@ -45,38 +46,36 @@ func (d *dryRunOps) VMSnapshots(ctx context.Context, vmid string) ([]byte, error
 		d.log.WarnContext(ctx, "list snapshots failed", "vmid", vmid, "err", err)
 		return out, fmt.Errorf("list snapshots: %w", err)
 	}
+
 	return out, nil
 }
 
 func (d *dryRunOps) VMSnapshot(ctx context.Context, vmid, snapName string) error {
-	d.log.InfoContext(
-		ctx,
-		"[DRY-RUN] would snapshot VM",
-		"vmid", vmid,
-		"snapshot", snapName,
-	)
+	d.log.InfoContext(ctx, "[DRY-RUN] would snapshot VM", "vmid", vmid, "snapshot", snapName)
+
 	return nil
 }
 
 func (d *dryRunOps) VMDelSnapshot(ctx context.Context, vmid, snapName string) error {
-	d.log.InfoContext(
-		ctx,
-		"[DRY-RUN] would delete snapshot",
-		"vmid", vmid,
-		"snapshot", snapName,
-	)
+	d.log.InfoContext(ctx, "[DRY-RUN] would delete snapshot", "vmid", vmid, "snapshot", snapName)
+
 	return nil
 }
 
 func (d *dryRunOps) VMDelSnapshotForce(
-	ctx context.Context, vmid, snapName string,
+	ctx context.Context,
+	vmid string,
+	snapName string,
 ) error {
 	d.log.InfoContext(
 		ctx,
 		"[DRY-RUN] would force-delete snapshot",
-		"vmid", vmid,
-		"snapshot", snapName,
+		"vmid",
+		vmid,
+		"snapshot",
+		snapName,
 	)
+
 	return nil
 }
 
@@ -87,6 +86,7 @@ func (d *dryRunOps) VMLock(ctx context.Context, vmid string) (string, error) {
 		d.log.WarnContext(ctx, "read guest lock failed", "vmid", vmid, "err", err)
 		return "", fmt.Errorf("read guest lock: %w", err)
 	}
+
 	return lock, nil
 }
 
@@ -97,18 +97,22 @@ func (d *dryRunOps) VMUnlock(ctx context.Context, vmid string) error {
 
 // VMHasRunningTask reads state and changes nothing, so it passes through.
 func (d *dryRunOps) VMHasRunningTask(
-	ctx context.Context, vmid string,
+	ctx context.Context,
+	vmid string,
 ) (bool, error) {
 	running, err := d.inner.VMHasRunningTask(ctx, vmid)
 	if err != nil {
 		d.log.WarnContext(ctx, "task liveness check failed", "vmid", vmid, "err", err)
 		return false, fmt.Errorf("task liveness: %w", err)
 	}
+
 	return running, nil
 }
 
 func (d *dryRunOps) GuestExec(
-	ctx context.Context, vmid string, args ...string,
+	ctx context.Context,
+	vmid string,
+	args ...string,
 ) (ops.GuestExecResult, error) {
 	// The error path returns the inner result unchanged, so it keeps the
 	// exit code the wrapped ops reported.
@@ -117,6 +121,7 @@ func (d *dryRunOps) GuestExec(
 		d.log.WarnContext(ctx, "guest exec failed", "vmid", vmid, "err", err)
 		return result, fmt.Errorf("guest exec: %w", err)
 	}
+
 	return result, nil
 }
 
@@ -125,18 +130,21 @@ func (d *dryRunOps) Ping(ctx context.Context, bin, target string) bool {
 }
 
 func (d *dryRunOps) GetConfigState(
-	ctx context.Context, vmid string,
+	ctx context.Context,
+	vmid string,
 ) (*mwanv1.GetConfigStateResponse, string, error) {
 	state, channel, err := d.inner.GetConfigState(ctx, vmid)
 	if err != nil {
 		d.log.WarnContext(ctx, "get config state failed", "vmid", vmid, "err", err)
 		return state, channel, fmt.Errorf("get config state: %w", err)
 	}
+
 	return state, channel, nil
 }
 
 func (d *dryRunOps) GetBGPStatus(
-	ctx context.Context, vmid string,
+	ctx context.Context,
+	vmid string,
 ) (*mwanv1.GetBGPStatusResponse, error) {
 	d.log.InfoContext(ctx, "[DRY-RUN] would get BGP status", "vmid", vmid)
 	return &mwanv1.GetBGPStatusResponse{}, nil
@@ -158,6 +166,7 @@ func (d *dryRunOps) VMFSFreezeStatus(ctx context.Context, vmid string) (string, 
 		d.log.WarnContext(ctx, "fsfreeze-status query failed", "vmid", vmid, "err", err)
 		return "", fmt.Errorf("fsfreeze-status: %w", err)
 	}
+
 	return status, nil
 }
 

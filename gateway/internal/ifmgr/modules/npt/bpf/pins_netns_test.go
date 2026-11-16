@@ -69,7 +69,11 @@ func mountPinTestBPFFS(t *testing.T) string {
 }
 
 func pinTestPolicies(link netlink.Link) []InterfacePolicy {
-	pair := nptpolicy.PrefixPair{ID: 1, Internal: netip.MustParsePrefix("fd00:1::/48"), External: netip.MustParsePrefix("2001:db8:1::/48")}
+	pair := nptpolicy.PrefixPair{
+		ID:       1,
+		Internal: netip.MustParsePrefix("fd00:1::/48"),
+		External: netip.MustParsePrefix("2001:db8:1::/48"),
+	}
 	return []InterfacePolicy{{IfIndex: link.Attrs().Index, Pairs: []nptpolicy.PrefixPair{pair}}}
 }
 
@@ -120,12 +124,24 @@ func TestThirdGenerationAdoptsSecondGenerationPins(t *testing.T) {
 		t.Fatal("third translator opened the first generation's program")
 	}
 	if previousID != secondID {
-		t.Fatalf("third translator opened program %d, want second generation program %d", previousID, secondID)
+		t.Fatalf(
+			"third translator opened program %d, want second generation program %d",
+			previousID,
+			secondID,
+		)
 	}
-	if err := third.VerifyUnused([]int{pinTestAbsentIndex}, netip.MustParseAddr("2001:db8:ffff::1"), nil); err != nil {
+	if err := third.VerifyUnused(
+		[]int{pinTestAbsentIndex},
+		netip.MustParseAddr("2001:db8:ffff::1"),
+		nil,
+	); err != nil {
 		t.Fatalf("second generation program was not matched through the pins: %v", err)
 	}
-	if err := third.VerifyUnused([]int{pinTestAbsentIndex}, netip.MustParseAddr("2001:db8:1::1"), nil); err == nil {
+	if err := third.VerifyUnused(
+		[]int{pinTestAbsentIndex},
+		netip.MustParseAddr("2001:db8:1::1"),
+		nil,
+	); err == nil {
 		t.Fatal("edge inside the second generation policy prefix was released")
 	}
 }
@@ -222,10 +238,18 @@ func TestEdgeReleaseMatchesPreviousProgramThroughPins(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { second.Close() })
-	if err := second.VerifyUnused([]int{pinTestAbsentIndex}, netip.MustParseAddr("2001:db8:ffff::1"), nil); err != nil {
+	if err := second.VerifyUnused(
+		[]int{pinTestAbsentIndex},
+		netip.MustParseAddr("2001:db8:ffff::1"),
+		nil,
+	); err != nil {
 		t.Fatalf("previous program was not matched through the pins: %v", err)
 	}
-	if err := second.VerifyUnused([]int{pinTestAbsentIndex}, netip.MustParseAddr("2001:db8:1::1"), nil); err == nil {
+	if err := second.VerifyUnused(
+		[]int{pinTestAbsentIndex},
+		netip.MustParseAddr("2001:db8:1::1"),
+		nil,
+	); err == nil {
 		t.Fatal("edge inside the previous policy prefix was released")
 	}
 }

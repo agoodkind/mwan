@@ -71,6 +71,7 @@ func newGuestConfigStateSource(t *testing.T) *watchdog.GuestConfigStateSource {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg := &watchdogconfig.Config{GuestType: watchdogconfig.GuestTypeLXC}
+
 	return watchdog.NewGuestConfigStateSource(
 		ops.NewRealOps(cfg, logger),
 		statusVMID,
@@ -86,6 +87,7 @@ func encodeConfigState(t *testing.T, state configstate.State) string {
 	if err != nil {
 		t.Fatalf("encode config state: %v", err)
 	}
+
 	return string(payload)
 }
 
@@ -102,9 +104,15 @@ func installConfigDriftCommands(t *testing.T, directory, first, second string) {
 			"if [ -e '%[5]s' ]; then printf '%%s\\n' '%[7]s'\n"+
 			"else : > '%[5]s'; printf '%%s\\n' '%[6]s'; fi ;;\n"+
 			"*) exit 1 ;;\nesac\n",
-		statusVMID, statusBinary, configStateVerb, argvMismatchExit,
-		filepath.Join(directory, configDriftMarkerFile), first, second,
+		statusVMID,
+		statusBinary,
+		configStateVerb,
+		argvMismatchExit,
+		filepath.Join(directory, configDriftMarkerFile),
+		first,
+		second,
 	)
+
 	scripts := map[string]string{
 		"pct":   pct,
 		"ping":  "#!/bin/sh\nexit 0\n",
@@ -116,6 +124,7 @@ func installConfigDriftCommands(t *testing.T, directory, first, second string) {
 			t.Fatalf("os.WriteFile failed for %s: %v", name, err)
 		}
 	}
+
 	t.Setenv("PATH", commands)
 }
 
@@ -150,17 +159,22 @@ func readConfigDriftLog(t *testing.T, directory string) []configDriftLogRecord {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	var records []configDriftLogRecord
+
 	for line := range strings.SplitSeq(string(data), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
+
 		var record configDriftLogRecord
 		if err := json.Unmarshal([]byte(line), &record); err != nil {
 			t.Fatalf("json.Unmarshal failed for %q: %v", line, err)
 		}
+
 		records = append(records, record)
 	}
+
 	return records
 }
 
@@ -169,6 +183,7 @@ func TestRunReportsConfigDriftFromTheConfigStateCommand(t *testing.T) {
 		runConfigDriftChild(t)
 		return
 	}
+
 	directory := t.TempDir()
 	drifted := driftedConfigState()
 	installConfigDriftCommands(
@@ -179,23 +194,31 @@ func TestRunReportsConfigDriftFromTheConfigStateCommand(t *testing.T) {
 	)
 
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
-	child.Env = append(os.Environ(), configDriftChildEnv+"=1", configDriftDirectoryEnv+"="+directory)
+	child.Env = append(
+		os.Environ(),
+		configDriftChildEnv+"=1",
+		configDriftDirectoryEnv+"="+directory,
+	)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("The watchdog test subprocess failed: %v: %s", err, output)
 	}
 
 	var drifts []configDriftLogRecord
+
 	for _, record := range readConfigDriftLog(t, directory) {
 		if record.AlertKind == vsockFallbackAlertKind {
 			t.Fatalf("The log contains unexpected alert_kind %q", record.AlertKind)
 		}
+
 		if record.Message == configDriftMessage {
 			drifts = append(drifts, record)
 		}
 	}
+
 	if len(drifts) != 1 {
 		t.Fatalf("The log contains %d drift records; the test requires 1", len(drifts))
 	}
+
 	want := configDriftLogRecord{
 		Message:   configDriftMessage,
 		Level:     slog.LevelWarn.String(),
@@ -221,6 +244,7 @@ func TestGuestConfigStateSourceDecodesTheCommandOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal("config state read failed")
 	}
+
 	if state != want {
 		t.Fatalf("state = %+v, want %+v", state, want)
 	}
@@ -228,6 +252,7 @@ func TestGuestConfigStateSourceDecodesTheCommandOutput(t *testing.T) {
 
 func TestGuestConfigStateSourceReportsNothingOnFailure(t *testing.T) {
 	payload := encodeConfigState(t, wantConfigState())
+
 	cases := []struct {
 		name     string
 		stdout   string
@@ -240,20 +265,24 @@ func TestGuestConfigStateSourceReportsNothingOnFailure(t *testing.T) {
 		{name: "the output is empty", stdout: "", exitCode: 0, missing: false},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			installGuestVerb(t, configStateVerb, tc.stdout, tc.exitCode)
-			if tc.missing {
-				t.Setenv("PATH", t.TempDir())
-			}
-			source := newGuestConfigStateSource(t)
+		t.Run(
+			tc.name,
+			func(t *testing.T) {
+				installGuestVerb(t, configStateVerb, tc.stdout, tc.exitCode)
+				if tc.missing {
+					t.Setenv("PATH", t.TempDir())
+				}
 
-			state, _, err := source.Latest(context.Background())
+				source := newGuestConfigStateSource(t)
 
-			ok := err == nil
-			none := configstate.State{ConfigHash: "", ConfigManifest: "", LastDeployEpoch: 0}
-			if ok || state != none {
-				t.Fatalf("state = %+v, ok = %t, want %+v, false", state, ok, none)
-			}
-		})
+				state, _, err := source.Latest(context.Background())
+
+				ok := err == nil
+				none := configstate.State{ConfigHash: "", ConfigManifest: "", LastDeployEpoch: 0}
+				if ok || state != none {
+					t.Fatalf("state = %+v, ok = %t, want %+v, false", state, ok, none)
+				}
+			},
+		)
 	}
 }

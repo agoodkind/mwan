@@ -40,6 +40,7 @@ func TestMatchesEchoReply4(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse echo reply: %v", err)
 	}
+
 	if !matchesEchoReply4(parsedMessage, id, seq) {
 		t.Fatal("matching echo reply was rejected")
 	}
@@ -56,9 +57,11 @@ func TestPeerMatchesTarget(t *testing.T) {
 	if !peerMatchesTarget(&net.IPAddr{IP: net.ParseIP("1.1.1.1")}, target) {
 		t.Fatal("reply from the target was rejected")
 	}
+
 	if peerMatchesTarget(&net.IPAddr{IP: net.ParseIP("8.8.8.8")}, target) {
 		t.Fatal("reply from a different target was accepted")
 	}
+
 	if peerMatchesTarget(&net.UDPAddr{IP: net.ParseIP("1.1.1.1")}, target) {
 		t.Fatal("reply with an unexpected peer type was accepted")
 	}
@@ -67,17 +70,23 @@ func TestPeerMatchesTarget(t *testing.T) {
 func TestHTTPCheck4ReturnsStatusCode(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(
-		response http.ResponseWriter, _ *http.Request,
-	) {
-		response.WriteHeader(http.StatusTeapot)
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(
+			func(
+				response http.ResponseWriter,
+				_ *http.Request,
+			) {
+				response.WriteHeader(http.StatusTeapot)
+			},
+		),
+	)
 	defer server.Close()
 
 	statusCode, err := HTTPCheck4(context.Background(), "", server.URL, time.Second)
 	if err != nil {
 		t.Fatalf("HTTPCheck: %v", err)
 	}
+
 	if statusCode != http.StatusTeapot {
 		t.Fatalf("HTTPCheck status = %d, want %d", statusCode, http.StatusTeapot)
 	}
@@ -86,14 +95,19 @@ func TestHTTPCheck4ReturnsStatusCode(t *testing.T) {
 func TestHTTPGetReturnsStatusAndTrimmedBody(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(
-		response http.ResponseWriter, _ *http.Request,
-	) {
-		response.WriteHeader(http.StatusTeapot)
-		if _, err := response.Write([]byte("  192.0.2.10\n")); err != nil {
-			t.Errorf("write response: %v", err)
-		}
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(
+			func(
+				response http.ResponseWriter,
+				_ *http.Request,
+			) {
+				response.WriteHeader(http.StatusTeapot)
+				if _, err := response.Write([]byte("  192.0.2.10\n")); err != nil {
+					t.Errorf("write response: %v", err)
+				}
+			},
+		),
+	)
 	defer server.Close()
 
 	result, err := HTTPGet(
@@ -107,13 +121,11 @@ func TestHTTPGetReturnsStatusAndTrimmedBody(t *testing.T) {
 	if err != nil {
 		t.Fatalf("HTTPGet: %v", err)
 	}
+
 	if result.StatusCode != http.StatusTeapot {
-		t.Fatalf(
-			"HTTPGet status = %d, want %d",
-			result.StatusCode,
-			http.StatusTeapot,
-		)
+		t.Fatalf("HTTPGet status = %d, want %d", result.StatusCode, http.StatusTeapot)
 	}
+
 	if result.Body != "192.0.2.10" {
 		t.Fatalf("HTTPGet body = %q, want %q", result.Body, "192.0.2.10")
 	}
@@ -122,13 +134,18 @@ func TestHTTPGetReturnsStatusAndTrimmedBody(t *testing.T) {
 func TestHTTPGetRejectsResponseBodyOverLimit(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(
-		response http.ResponseWriter, _ *http.Request,
-	) {
-		if _, err := response.Write([]byte(strings.Repeat("x", 4097))); err != nil {
-			t.Errorf("write response: %v", err)
-		}
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(
+			func(
+				response http.ResponseWriter,
+				_ *http.Request,
+			) {
+				if _, err := response.Write([]byte(strings.Repeat("x", 4097))); err != nil {
+					t.Errorf("write response: %v", err)
+				}
+			},
+		),
+	)
 	defer server.Close()
 
 	_, err := HTTPGet(context.Background(), slog.Default(), "", "", server.URL, time.Second)
@@ -140,19 +157,25 @@ func TestHTTPGetRejectsResponseBodyOverLimit(t *testing.T) {
 func TestHTTPCheck4DoesNotApplyHTTPGetBodyLimit(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(
-		response http.ResponseWriter, _ *http.Request,
-	) {
-		if _, err := response.Write([]byte(strings.Repeat("x", 4097))); err != nil {
-			t.Errorf("write response: %v", err)
-		}
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(
+			func(
+				response http.ResponseWriter,
+				_ *http.Request,
+			) {
+				if _, err := response.Write([]byte(strings.Repeat("x", 4097))); err != nil {
+					t.Errorf("write response: %v", err)
+				}
+			},
+		),
+	)
 	defer server.Close()
 
 	statusCode, err := HTTPCheck4(context.Background(), "", server.URL, time.Second)
 	if err != nil {
 		t.Fatalf("HTTPCheck: %v", err)
 	}
+
 	if statusCode != http.StatusOK {
 		t.Fatalf("HTTPCheck status = %d, want %d", statusCode, http.StatusOK)
 	}

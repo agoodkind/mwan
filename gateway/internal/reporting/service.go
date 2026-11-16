@@ -68,15 +68,18 @@ func NewService(options Options) (*Service, error) {
 	if options.Notifications == nil || options.Log == nil {
 		return nil, errors.New("reporting service requires notifications and a logger")
 	}
+
 	store, err := OpenStore(options.Config, options.Network)
 	if err != nil {
 		return nil, err
 	}
+
 	renderer, err := NewRenderer(options.Config, options.Network, store)
 	if err != nil {
 		_ = store.Close()
 		return nil, err
 	}
+
 	service := new(Service)
 	service.settings = options.Config
 	service.store = store
@@ -94,6 +97,7 @@ func NewService(options Options) (*Service, error) {
 		service.log.Warn("reporting delivery state read failed", "error", err)
 		return nil, fmt.Errorf("read reporting delivery state: %w", err)
 	}
+
 	return service, nil
 }
 
@@ -101,16 +105,20 @@ func (service *Service) acquire() error {
 	if service.lock != nil {
 		return nil
 	}
+
 	lock := flock.New(filepath.Join(service.settings.StateDirectory, "writer.lock"))
 	locked, err := lock.TryLock()
 	if err != nil {
 		service.log.Warn("reporting writer lock failed", "error", err)
 		return fmt.Errorf("acquire reporting writer lock: %w", err)
 	}
+
 	if !locked {
 		return errors.New("another reporting monitor owns this state directory")
 	}
+
 	service.lock = lock
+
 	return nil
 }
 
@@ -120,10 +128,16 @@ func (service *Service) save() error {
 		service.log.Warn("reporting delivery state encoding failed", "error", err)
 		return fmt.Errorf("encode reporting delivery state: %w", err)
 	}
-	if err := renameio.WriteFile(filepath.Join(service.settings.StateDirectory, "state.json"), data, 0o600); err != nil {
+
+	if err := renameio.WriteFile(
+		filepath.Join(service.settings.StateDirectory, "state.json"),
+		data,
+		0o600,
+	); err != nil {
 		service.log.Warn("reporting delivery state save failed", "error", err)
 		return fmt.Errorf("save reporting delivery state: %w", err)
 	}
+
 	return nil
 }
 
@@ -138,7 +152,11 @@ func (service *Service) enqueue(kind Kind, incident IncidentView, end time.Time)
 			start = incident.Start.Add(-window)
 		}
 	}
-	service.state.Pending = append(service.state.Pending, pendingDelivery{Kind: kind, Incident: incident, Start: start, End: end})
+
+	service.state.Pending = append(
+		service.state.Pending,
+		pendingDelivery{Kind: kind, Incident: incident, Start: start, End: end},
+	)
 }
 
 // RecordMinute stores one interval and evaluates scheduled reports and alerts.
@@ -148,40 +166,57 @@ func (service *Service) RecordMinute(ctx context.Context, minute Minute) error {
 	if err := service.acquire(); err != nil {
 		return err
 	}
+
 	if !service.state.LastMinute.IsZero() && !minute.End.After(service.state.LastMinute) {
 		return errors.New("reporting minute must follow the last recorded interval")
 	}
+
 	if err := service.store.Record(ctx, minute); err != nil {
 		return err
 	}
+
 	if service.state.PeriodStart.IsZero() {
 		service.state.PeriodStart = minute.Start
 		service.state.PeriodEnd = service.store.periodEnd(minute.Start)
 	}
+
 	if err := service.evaluateIncident(minute.End); err != nil {
 		return err
 	}
+
 	for !minute.End.Before(service.state.PeriodEnd) {
 		var incident IncidentView
 		history, err := service.store.history(service.state.PeriodStart, service.state.PeriodEnd)
 		if err != nil {
 			return err
 		}
+
 		if len(history) > 0 {
 			service.enqueue(Daily, incident, service.state.PeriodEnd)
 		} else {
-			service.log.WarnContext(ctx, "daily reporting period did not contain observations", "start", service.state.PeriodStart, "end", service.state.PeriodEnd)
+			service.log.WarnContext(
+				ctx,
+				"daily reporting period did not contain observations",
+				"start",
+				service.state.PeriodStart,
+				"end",
+				service.state.PeriodEnd,
+			)
 		}
+
 		service.state.PeriodStart = service.state.PeriodEnd
 		service.state.PeriodEnd = service.store.periodEnd(service.state.PeriodStart)
 	}
+
 	service.state.LastMinute = minute.End
 	if err := service.save(); err != nil {
 		return err
 	}
+
 	if minute.Partial {
 		return nil
 	}
+
 	return service.deliverPending(ctx)
 }
 
@@ -190,20 +225,37 @@ func (service *Service) deliverPending(ctx context.Context) error {
 		pending := service.state.Pending[0]
 		timeout, _ := time.ParseDuration(service.settings.MailTimeout)
 		sendContext, cancel := context.WithTimeout(ctx, timeout)
-		message, err := service.renderer.messagePeriod(sendContext, pending.Kind, pending.Incident, pending.Start, pending.End)
+		message, err := service.renderer.messagePeriod(
+			sendContext,
+			pending.Kind,
+			pending.Incident,
+			pending.Start,
+			pending.End,
+		)
 		if err == nil {
 			err = service.notifications.SendReport(sendContext, message)
 		}
+
 		cancel()
 		if err != nil {
-			service.log.WarnContext(ctx, "report delivery remains pending", "kind", pending.Kind, "error", err)
+			service.log.WarnContext(
+				ctx,
+				"report delivery remains pending",
+				"kind",
+				pending.Kind,
+				"error",
+				err,
+			)
+
 			return &deliveryError{err: err}
 		}
+
 		service.state.Pending = service.state.Pending[1:]
 		if err := service.save(); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -212,12 +264,14 @@ func (service *Service) Watch(ctx context.Context, collector *Collector) error {
 	if collector == nil {
 		return errors.New("reporting watch requires a collector")
 	}
+
 	service.mu.Lock()
 	err := service.acquire()
 	service.mu.Unlock()
 	if err != nil {
 		return err
 	}
+
 	queue := make(chan Minute, 8)
 	writerErrors := make(chan error, 1)
 	runContext, cancel := context.WithCancel(ctx)
@@ -228,11 +282,18 @@ func (service *Service) Watch(ctx context.Context, collector *Collector) error {
 			if err := service.RecordMinute(runContext, minute); err != nil {
 				var pending *deliveryError
 				if errors.As(err, &pending) {
-					service.log.WarnContext(runContext, "report retry scheduled after the next minute", "error", err)
+					service.log.WarnContext(
+						runContext,
+						"report retry scheduled after the next minute",
+						"error",
+						err,
+					)
 					continue
 				}
+
 				writerErrors <- err
 				cancel()
+
 				return
 			}
 		}
@@ -244,6 +305,7 @@ func (service *Service) Watch(ctx context.Context, collector *Collector) error {
 	}()
 	step, _ := time.ParseDuration(service.settings.SampleInterval)
 	start := service.clock.Now()
+
 	for {
 		end := start.Truncate(step).Add(step)
 		minute, err := collector.Sample(runContext, start, end)
@@ -253,8 +315,10 @@ func (service *Service) Watch(ctx context.Context, collector *Collector) error {
 				return writerError
 			default:
 			}
+
 			return err
 		}
+
 		minute.Partial = end.Sub(start) != step
 		start, err = service.queueMinute(runContext, queue, writerErrors, minute)
 		if err != nil {
@@ -263,12 +327,18 @@ func (service *Service) Watch(ctx context.Context, collector *Collector) error {
 	}
 }
 
-func (service *Service) queueMinute(ctx context.Context, queue chan<- Minute, failures <-chan error, minute Minute) (time.Time, error) {
+func (service *Service) queueMinute(
+	ctx context.Context,
+	queue chan<- Minute,
+	failures <-chan error,
+	minute Minute,
+) (time.Time, error) {
 	select {
 	case queue <- minute:
 		return minute.End, nil
 	default:
 	}
+
 	service.log.WarnContext(ctx, "reporting collection is waiting for the writer queue")
 	select {
 	case queue <- minute:
@@ -289,15 +359,18 @@ func (service *Service) SendDaily(ctx context.Context) error {
 	if end.IsZero() {
 		return errors.New("reporting history is empty; run mwan report watch first")
 	}
+
 	var incident IncidentView
 	message, err := service.renderer.Message(ctx, Daily, incident, end)
 	if err != nil {
 		return err
 	}
+
 	if err := service.notifications.SendReport(ctx, message); err != nil {
 		service.log.WarnContext(ctx, "daily report delivery failed", "error", err)
 		return fmt.Errorf("send daily report: %w", err)
 	}
+
 	return nil
 }
 
@@ -310,9 +383,11 @@ func (service *Service) Close() error {
 		lockError = service.lock.Close()
 		service.lock = nil
 	}
+
 	err := errors.Join(service.store.Close(), lockError)
 	if err != nil {
 		service.log.Warn("reporting close failed", "error", err)
 	}
+
 	return err
 }

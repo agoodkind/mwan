@@ -41,7 +41,11 @@ func writeDHCPOwnedRuntimeNetwork(t *testing.T, directory string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(strings.Replace(string(content), `"from-prio":55}`, dhcpOwnedHealth, 1)), 0o600); err != nil {
+	if err := os.WriteFile(
+		path,
+		[]byte(strings.Replace(string(content), `"from-prio":55}`, dhcpOwnedHealth, 1)),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -107,11 +111,23 @@ func startDHCPOwnedRuntime(t *testing.T, gateway netns.NsHandle) *dhcpOwnedRunti
 	writeDHCPOwnedRuntimeNetwork(t, networkDir)
 	configPath := filepath.Join(root, "config.toml")
 	config := "[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n" +
-		"[ifmgr.modules.links]\nstate_file = \"" + filepath.Join(root, "owned-links.json") + "\"\n" +
-		"[ifmgr.modules.addresses]\nstate_file = \"" + filepath.Join(root, "owned-addresses.json") + "\"\n" +
-		"[ifmgr.modules.autoconfiguration]\nstate_file = \"" + filepath.Join(root, "kernel-policy.json") + "\"\n" +
+		"[ifmgr.modules.links]\nstate_file = \"" + filepath.Join(
+		root,
+		"owned-links.json",
+	) + "\"\n" +
+		"[ifmgr.modules.addresses]\nstate_file = \"" + filepath.Join(
+		root,
+		"owned-addresses.json",
+	) + "\"\n" +
+		"[ifmgr.modules.autoconfiguration]\nstate_file = \"" + filepath.Join(
+		root,
+		"kernel-policy.json",
+	) + "\"\n" +
 		"[ifmgr.modules.health]\nstate_file = \"" + filepath.Join(root, "health.state") + "\"\n" +
-		"[ifmgr.modules.wan.routes]\nhealth_state_file = \"" + filepath.Join(root, "health.state") + "\"\n" +
+		"[ifmgr.modules.wan.routes]\nhealth_state_file = \"" + filepath.Join(
+		root,
+		"health.state",
+	) + "\"\n" +
 		"[wanconfig]\npublish = false\n"
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
@@ -120,9 +136,25 @@ func startDHCPOwnedRuntime(t *testing.T, gateway netns.NsHandle) *dhcpOwnedRunti
 		t.Fatal(err)
 	}
 	setRuntimeLoopback(t)
-	management := newRuntimePeer(t, gateway, "enmgmt0", "mgmt-host", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
+	management := newRuntimePeer(
+		t,
+		gateway,
+		"enmgmt0",
+		"mgmt-host",
+		[]string{"203.0.113.1/24"},
+		[]string{"203.0.113.2/24"},
+		"",
+	)
 	t.Cleanup(func() { _ = management.namespace.Close() })
-	downstream := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29"}, []string{"192.0.2.2/29"}, "")
+	downstream := newRuntimePeer(
+		t,
+		gateway,
+		"enmwanbr0",
+		"lan-host",
+		[]string{"192.0.2.1/29"},
+		[]string{"192.0.2.2/29"},
+		"",
+	)
 	t.Cleanup(func() { _ = downstream.namespace.Close() })
 	bridgeHost := newRuntimePeer(t, gateway, "wan-under", "wan-host", nil, nil, "")
 	t.Cleanup(func() { _ = bridgeHost.namespace.Close() })
@@ -132,9 +164,21 @@ func startDHCPOwnedRuntime(t *testing.T, gateway netns.NsHandle) *dhcpOwnedRunti
 	if err != nil {
 		t.Fatal(err)
 	}
-	guestPort := dhcpOwnedAddLink(t, &netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "wan-vlan", ParentIndex: parent.Attrs().Index}, VlanId: 101})
+	guestPort := dhcpOwnedAddLink(
+		t,
+		&netlink.Vlan{
+			LinkAttrs: netlink.LinkAttrs{Name: "wan-vlan", ParentIndex: parent.Attrs().Index},
+			VlanId:    101,
+		},
+	)
 	bridge := dhcpOwnedAddLink(t, &netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "br0"}})
-	uplink := dhcpOwnedAddLink(t, &netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: dhcpOwnedUplink}, PeerName: dhcpOwnedUpstream})
+	uplink := dhcpOwnedAddLink(
+		t,
+		&netlink.Veth{
+			LinkAttrs: netlink.LinkAttrs{Name: dhcpOwnedUplink},
+			PeerName:  dhcpOwnedUpstream,
+		},
+	)
 	for _, port := range []netlink.Link{guestPort, uplink} {
 		if err := netlink.LinkSetMaster(port, bridge); err != nil {
 			t.Fatal(err)
@@ -169,10 +213,13 @@ func startDHCPOwnedRuntime(t *testing.T, gateway netns.NsHandle) *dhcpOwnedRunti
 	}
 	reconnect := &dhcpReconnectRuntime{}
 	reconnect.captureLeaseRequests(t, dhcpOwnedUpstream)
-	server, err := server4.NewServer(dhcpOwnedUpstream, &net.UDPAddr{IP: net.IPv4zero, Port: 67},
+	server, err := server4.NewServer(
+		dhcpOwnedUpstream,
+		&net.UDPAddr{IP: net.IPv4zero, Port: 67},
 		func(conn net.PacketConn, peer net.Addr, packet *dhcpv4.DHCPv4) {
 			reconnect.answer(conn, peer, packet, dhcpReconnectLongT1, dhcpReconnectLongT2)
-		})
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,14 +232,31 @@ func startDHCPOwnedRuntime(t *testing.T, gateway netns.NsHandle) *dhcpOwnedRunti
 		}
 	})
 	setRuntimeNamespace(t, gateway)
-	reconnect.daemon = startRuntimeDaemon(t, os.Getenv(dhcpAcquireBackoffBinaryEnv), configPath, root, "dhcpv4")
+	reconnect.daemon = startRuntimeDaemon(
+		t,
+		os.Getenv(dhcpAcquireBackoffBinaryEnv),
+		configPath,
+		root,
+		"dhcpv4",
+	)
 	t.Cleanup(func() { stopRuntimeDaemon(t, reconnect.daemon) })
-	waitStaticRuntimeAddress(t, reconnect.daemon, "enatt0", dhcpReconnectOriginalAddress+"/24", true)
+	waitStaticRuntimeAddress(
+		t,
+		reconnect.daemon,
+		"enatt0",
+		dhcpReconnectOriginalAddress+"/24",
+		true,
+	)
 	reconnect.link, err = netlink.LinkByName("enatt0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &dhcpOwnedRuntime{dhcpReconnectRuntime: reconnect, gateway: gateway, bridge: bridgeHost.namespace, upstream: upstream}
+	return &dhcpOwnedRuntime{
+		dhcpReconnectRuntime: reconnect,
+		gateway:              gateway,
+		bridge:               bridgeHost.namespace,
+		upstream:             upstream,
+	}
 }
 
 func TestOwnedDHCPv4ReconnectNAKReplacesLease(t *testing.T) {
@@ -247,7 +311,12 @@ func TestOwnedDHCPv4UpstreamChangeBehindBridgeReplacesLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	setRuntimeNamespace(t, reconnect.upstream)
-	dhcpOwnedSetAddress(t, dhcpOwnedUpstream, dhcpReconnectServerAddress+"/24", dhcpOwnedNewServerPeer)
+	dhcpOwnedSetAddress(
+		t,
+		dhcpOwnedUpstream,
+		dhcpReconnectServerAddress+"/24",
+		dhcpOwnedNewServerPeer,
+	)
 	setRuntimeNamespace(t, reconnect.bridge)
 	if err := netlink.LinkSetUp(uplink); err != nil {
 		t.Fatal(err)
@@ -255,7 +324,11 @@ func TestOwnedDHCPv4UpstreamChangeBehindBridgeReplacesLease(t *testing.T) {
 	setRuntimeNamespace(t, reconnect.gateway)
 	reconnect.requireVerification(t, changedAt)
 	if count := guestUpdates.Load(); count != 0 {
-		t.Fatalf("The upstream change behind the bridge produced %d link updates for the guest interface; expected 0. Daemon log: %s", count, runtimeLogTail(t, reconnect.daemon, 30))
+		t.Fatalf(
+			"The upstream change behind the bridge produced %d link updates for the guest interface; expected 0. Daemon log: %s",
+			count,
+			runtimeLogTail(t, reconnect.daemon, 30),
+		)
 	}
 	reconnect.requireReplacement(t, dhcpReconnectVerifyWait)
 }

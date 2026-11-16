@@ -58,7 +58,11 @@ func TestSessionInstallsAcceptedRoutesInKernel(t *testing.T) {
 		sessionLogger(),
 	)
 	internalFIB.ArmSweep()
-	internalOnly := bgp.PathEvent{Peer: "internal", Prefix: internalPrefix, NextHop: internalNextHop}
+	internalOnly := bgp.PathEvent{
+		Peer:    "internal",
+		Prefix:  internalPrefix,
+		NextHop: internalNextHop,
+	}
 	internalShared := bgp.PathEvent{Peer: "internal", Prefix: allowed, NextHop: internalNextHop}
 	applyFIB(t, internalFIB, internalOnly)
 	applyFIB(t, internalFIB, internalShared)
@@ -67,7 +71,11 @@ func TestSessionInstallsAcceptedRoutesInKernel(t *testing.T) {
 		bgp.FIBConfig{Tables: []int{sessionRouteTable}, InternalIface: sessionLink.Attrs().Name},
 		sessionLogger(),
 	)
-	applyFIB(t, previousFIB, bgp.PathEvent{Peer: "previous", Prefix: leftover, NextHop: peerNextHop})
+	applyFIB(
+		t,
+		previousFIB,
+		bgp.PathEvent{Peer: "previous", Prefix: leftover, NextHop: peerNextHop},
+	)
 
 	peer := startTestPeer(t, externalPeerASN, "192.0.2.2", transport, transport, sessionASN)
 	cfg := baseSessionConfig("kernel", externalPeerASN, peer)
@@ -87,10 +95,14 @@ func TestSessionInstallsAcceptedRoutesInKernel(t *testing.T) {
 	peer.announce(t, allowed, peerNextHop)
 	peer.announce(t, undeclared, peerNextHop)
 	peer.announce(t, exported, peerNextHop)
-	eventually(t, "the session to accept two prefixes and reject two", func() bool {
-		state := session.State()
-		return len(state.Accepted) == 2 && len(state.Rejected) == 2
-	})
+	eventually(
+		t,
+		"the session to accept two prefixes and reject two",
+		func() bool {
+			state := session.State()
+			return len(state.Accepted) == 2 && len(state.Rejected) == 2
+		},
+	)
 	assertNoKernelRoute(t, exported, sessionLink)
 	peer.withdraw(t, exported)
 	assertKernelRoute(t, defaultRoute, sessionLink, peerNextHop, sessionRouteMetric)
@@ -118,16 +130,24 @@ func TestSessionInstallsAcceptedRoutesInKernel(t *testing.T) {
 	applyFIB(t, internalFIB, internalShared)
 
 	peer.withdraw(t, defaultRoute)
-	eventually(t, "the default route to disappear after the peer withdrawal", func() bool {
-		return !hasKernelRoute(t, defaultRoute, sessionLink)
-	})
+	eventually(
+		t,
+		"the default route to disappear after the peer withdrawal",
+		func() bool {
+			return !hasKernelRoute(t, defaultRoute, sessionLink)
+		},
+	)
 	assertKernelRoute(t, allowed, sessionLink, peerNextHop, sessionRouteMetric)
 
 	// The kernel rejects a gateway that is an address of the host.
 	peer.announceWithMED(t, allowed, transport, 1)
-	eventually(t, "the session to reject the path with the unusable next hop", func() bool {
-		return len(session.State().Accepted) == 0
-	})
+	eventually(
+		t,
+		"the session to reject the path with the unusable next hop",
+		func() bool {
+			return len(session.State().Accepted) == 0
+		},
+	)
 	var installReason string
 	for _, rejection := range session.State().Rejected {
 		if rejection.Prefix == allowed {
@@ -135,29 +155,48 @@ func TestSessionInstallsAcceptedRoutesInKernel(t *testing.T) {
 		}
 	}
 	if !strings.Contains(installReason, "kernel route installation failed") {
-		t.Errorf("failed installation reason = %q, want a kernel installation failure", installReason)
+		t.Errorf(
+			"failed installation reason = %q, want a kernel installation failure",
+			installReason,
+		)
 	}
 	assertNoKernelRoute(t, allowed, sessionLink)
 	assertKernelRoute(t, allowed, internalLink, internalNextHop, kernelDefaultIPv6Metric)
 
 	peer.announce(t, allowed, peerNextHop)
-	eventually(t, "the kernel route to return after a usable announcement", func() bool {
-		return hasKernelRoute(t, allowed, sessionLink)
-	})
+	eventually(
+		t,
+		"the kernel route to return after a usable announcement",
+		func() bool {
+			return hasKernelRoute(t, allowed, sessionLink)
+		},
+	)
 	peer.withdraw(t, allowed)
-	eventually(t, "the kernel route to disappear after the peer withdrawal", func() bool {
-		return !hasKernelRoute(t, allowed, sessionLink)
-	})
+	eventually(
+		t,
+		"the kernel route to disappear after the peer withdrawal",
+		func() bool {
+			return !hasKernelRoute(t, allowed, sessionLink)
+		},
+	)
 	assertKernelRoute(t, allowed, internalLink, internalNextHop, kernelDefaultIPv6Metric)
 
 	peer.announce(t, allowed, peerNextHop)
-	eventually(t, "the kernel route to return after the new announcement", func() bool {
-		return hasKernelRoute(t, allowed, sessionLink)
-	})
+	eventually(
+		t,
+		"the kernel route to return after the new announcement",
+		func() bool {
+			return hasKernelRoute(t, allowed, sessionLink)
+		},
+	)
 	peer.server.Stop()
-	eventually(t, "the kernel route to disappear after peer loss", func() bool {
-		return !hasKernelRoute(t, allowed, sessionLink)
-	})
+	eventually(
+		t,
+		"the kernel route to disappear after peer loss",
+		func() bool {
+			return !hasKernelRoute(t, allowed, sessionLink)
+		},
+	)
 	assertKernelRoute(t, allowed, internalLink, internalNextHop, kernelDefaultIPv6Metric)
 	assertKernelRoute(t, internalPrefix, internalLink, internalNextHop, kernelDefaultIPv6Metric)
 }

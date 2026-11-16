@@ -50,7 +50,10 @@ func startSweepPeer(t *testing.T) (netlink.Link, *server.BgpServer) {
 	if err := netns.Set(original); err != nil {
 		t.Fatal(err)
 	}
-	veth := &netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: sweepDevice}, PeerName: sweepPeerDevice}
+	veth := &netlink.Veth{
+		LinkAttrs: netlink.LinkAttrs{Name: sweepDevice},
+		PeerName:  sweepPeerDevice,
+	}
 	if err := netlink.LinkAdd(veth); err != nil {
 		t.Fatal(err)
 	}
@@ -88,20 +91,40 @@ func startSweepPeer(t *testing.T) (netlink.Link, *server.BgpServer) {
 	if err := <-entered; err != nil {
 		t.Fatalf("enter the peer namespace: %v", err)
 	}
-	global := &apipb.Global{Asn: sweepPeerASN, RouterId: "192.0.2.2", ListenPort: 179, ListenAddresses: []string{sweepGateway}}
+	global := &apipb.Global{
+		Asn:             sweepPeerASN,
+		RouterId:        "192.0.2.2",
+		ListenPort:      179,
+		ListenAddresses: []string{sweepGateway},
+	}
 	if err := bgpServer.StartBgp(t.Context(), &apipb.StartBgpRequest{Global: global}); err != nil {
 		t.Fatalf("start the peer: %v", err)
 	}
 	t.Cleanup(bgpServer.Stop)
 	peer := &apipb.Peer{
-		Conf:            &apipb.PeerConf{NeighborAddress: sweepLocalAddress, PeerAsn: sweepLocalASN},
-		Transport:       &apipb.Transport{PassiveMode: true},
-		Timers:          &apipb.Timers{Config: &apipb.TimersConfig{KeepaliveInterval: 1, HoldTime: 3}},
+		Conf: &apipb.PeerConf{
+			NeighborAddress: sweepLocalAddress,
+			PeerAsn:         sweepLocalASN,
+		},
+		Transport: &apipb.Transport{PassiveMode: true},
+		Timers: &apipb.Timers{
+			Config: &apipb.TimersConfig{KeepaliveInterval: 1, HoldTime: 3},
+		},
 		GracefulRestart: &apipb.GracefulRestart{Enabled: true, RestartTime: sweepRestartTime},
-		AfiSafis: []*apipb.AfiSafi{{
-			Config:            &apipb.AfiSafiConfig{Family: &apipb.Family{Afi: apipb.Family_AFI_IP6, Safi: apipb.Family_SAFI_UNICAST}, Enabled: true},
-			MpGracefulRestart: &apipb.MpGracefulRestart{Config: &apipb.MpGracefulRestartConfig{Enabled: true}},
-		}},
+		AfiSafis: []*apipb.AfiSafi{
+			{
+				Config: &apipb.AfiSafiConfig{
+					Family: &apipb.Family{
+						Afi:  apipb.Family_AFI_IP6,
+						Safi: apipb.Family_SAFI_UNICAST,
+					},
+					Enabled: true,
+				},
+				MpGracefulRestart: &apipb.MpGracefulRestart{
+					Config: &apipb.MpGracefulRestartConfig{Enabled: true},
+				},
+			},
+		},
 	}
 	if err := bgpServer.AddPeer(t.Context(), &apipb.AddPeerRequest{Peer: peer}); err != nil {
 		t.Fatalf("add the gateway as a peer neighbor: %v", err)
@@ -118,9 +141,13 @@ func waitSweepPeerEstablished(t *testing.T, peer *server.BgpServer) {
 	deadline := time.Now().Add(sweepWait)
 	for time.Now().Before(deadline) {
 		established := false
-		err := peer.ListPeer(t.Context(), &apipb.ListPeerRequest{Address: sweepLocalAddress}, func(listed *apipb.Peer) {
-			established = listed.GetState().GetSessionState() == apipb.PeerState_SESSION_STATE_ESTABLISHED
-		})
+		err := peer.ListPeer(
+			t.Context(),
+			&apipb.ListPeerRequest{Address: sweepLocalAddress},
+			func(listed *apipb.Peer) {
+				established = listed.GetState().GetSessionState() == apipb.PeerState_SESSION_STATE_ESTABLISHED
+			},
+		)
 		if err != nil {
 			t.Fatalf("list the peer neighbors: %v", err)
 		}

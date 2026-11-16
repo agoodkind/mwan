@@ -22,7 +22,9 @@ const (
 
 func addDummyLink(t *testing.T, name string, addresses ...string) netlink.Link {
 	t.Helper()
-	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: name}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{Name: name},
+	}); err != nil {
 		t.Fatalf("add link %s: %v", name, err)
 	}
 	link, err := netlink.LinkByName(name)
@@ -81,7 +83,13 @@ func hasKernelRoute(t *testing.T, prefix netip.Prefix, link netlink.Link) bool {
 	return found
 }
 
-func assertKernelRoute(t *testing.T, prefix netip.Prefix, link netlink.Link, gateway netip.Addr, metric int) {
+func assertKernelRoute(
+	t *testing.T,
+	prefix netip.Prefix,
+	link netlink.Link,
+	gateway netip.Addr,
+	metric int,
+) {
 	t.Helper()
 	route, found := kernelRoute(t, prefix, link)
 	if !found {

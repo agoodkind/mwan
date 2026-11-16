@@ -19,9 +19,15 @@ func testCtx(t *testing.T) context.Context {
 
 func testLog(t *testing.T) *slog.Logger {
 	t.Helper()
-	return slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	}))
+
+	return slog.New(
+		slog.NewTextHandler(
+			io.Discard,
+			&slog.HandlerOptions{
+				Level: slog.LevelDebug,
+			},
+		),
+	)
 }
 
 // TestNew_DefaultsApplied confirms New's registry-default path (cfg ==
@@ -36,10 +42,12 @@ func TestNew_DefaultsApplied(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New(nil): %v", err)
 	}
+
 	m := mod.(*Module)
 	if !m.cfg.ManageSLAACRule {
 		t.Errorf("ManageSLAACRule default: got false, want true")
 	}
+
 	if m.cfg.SLAACRulePriority != 7 {
 		t.Errorf("SLAACRulePriority default: got %d, want 7", m.cfg.SLAACRulePriority)
 	}
@@ -60,6 +68,7 @@ func TestNew_ExplicitDisable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
+
 	m := mod.(*Module)
 	if m.cfg.ManageSLAACRule {
 		t.Errorf("ManageSLAACRule: got true, want false")
@@ -79,6 +88,7 @@ func TestNew_CustomPriority(t *testing.T) {
 		if err != nil {
 			t.Fatalf("New(%d): %v", priority, err)
 		}
+
 		m := mod.(*Module)
 		if m.cfg.SLAACRulePriority != 42 {
 			t.Errorf("SLAACRulePriority(%d): got %d, want 42", priority, m.cfg.SLAACRulePriority)
@@ -121,9 +131,9 @@ func TestReconcileSLAACSrcRule_Disabled(t *testing.T) {
 	if err := m.reconcileSLAACSrcRule(testCtx(t), testLog(t)); err != nil {
 		t.Fatalf("disabled path returned error: %v", err)
 	}
+
 	if m.installedSLAACAddr != "previous-value" {
-		t.Errorf("installedSLAACAddr changed despite disabled: %q",
-			m.installedSLAACAddr)
+		t.Errorf("installedSLAACAddr changed despite disabled: %q", m.installedSLAACAddr)
 	}
 }
 
@@ -133,38 +143,56 @@ func TestSnapshotReplayDoesNotReportSLAACRenumber(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	m := &Module{
 		cfg:   Config{Iface: "mbrains", OOBAddr: "3d06:bad:b01:ff::1/128"},
 		clock: internalclock.Real{},
 	}
 	m.Env = &ifmgr.Env{Alerts: ifmgr.WrapNotifier(notifier)}
 	ctx := testCtx(t)
-	oldAddress := netif.Event{Kind: netif.EvAddrAdded, Iface: "mbrains", Family: "inet6", CIDR: "2607:f598:d3e8:4500::1/128"}
-	if err := m.OnKernelEvent(ctx, log, oldAddress); err != nil {
-		t.Fatal(err)
-	}
-	for _, cidr := range []string{"2607:f598:d3e8:4500::1/128", "2607:f598:d3e8:4501::1/128"} {
-		if err := m.OnKernelEvent(ctx, log, netif.Event{
-			Kind:           netif.EvAddrAdded,
-			Iface:          "mbrains",
-			Family:         "inet6",
-			CIDR:           cidr,
-			SnapshotReplay: true,
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if m.Env.Alerts.Active("slaac-renumber", "mbrains") {
-		t.Fatal("existing snapshot addresses reported a renumber")
-	}
-	if err := m.OnKernelEvent(ctx, log, netif.Event{
+	oldAddress := netif.Event{
 		Kind:   netif.EvAddrAdded,
 		Iface:  "mbrains",
 		Family: "inet6",
-		CIDR:   "2607:f598:d3e8:4502::1/128",
-	}); err != nil {
+		CIDR:   "2607:f598:d3e8:4500::1/128",
+	}
+	if err := m.OnKernelEvent(ctx, log, oldAddress); err != nil {
 		t.Fatal(err)
 	}
+
+	for _, cidr := range []string{"2607:f598:d3e8:4500::1/128", "2607:f598:d3e8:4501::1/128"} {
+		if err := m.OnKernelEvent(
+			ctx,
+			log,
+			netif.Event{
+				Kind:           netif.EvAddrAdded,
+				Iface:          "mbrains",
+				Family:         "inet6",
+				CIDR:           cidr,
+				SnapshotReplay: true,
+			},
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if m.Env.Alerts.Active("slaac-renumber", "mbrains") {
+		t.Fatal("existing snapshot addresses reported a renumber")
+	}
+
+	if err := m.OnKernelEvent(
+		ctx,
+		log,
+		netif.Event{
+			Kind:   netif.EvAddrAdded,
+			Iface:  "mbrains",
+			Family: "inet6",
+			CIDR:   "2607:f598:d3e8:4502::1/128",
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+
 	if !m.Env.Alerts.Active("slaac-renumber", "mbrains") {
 		t.Fatal("new address did not report a renumber")
 	}

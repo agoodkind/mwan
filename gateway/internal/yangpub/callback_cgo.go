@@ -48,8 +48,14 @@ var notifCallback = yangpubNotifCB
 // and rejects blank identifiers; the callback reads none of them.
 //
 //export yangpubChangeCB
-func yangpubChangeCB(session *C.sr_session_ctx_t, subID C.uint32_t, moduleName *C.char,
-	xpath *C.char, event C.sr_event_t, requestID C.uint32_t, privateData unsafe.Pointer,
+func yangpubChangeCB(
+	session *C.sr_session_ctx_t,
+	subID C.uint32_t,
+	moduleName *C.char,
+	xpath *C.char,
+	event C.sr_event_t,
+	requestID C.uint32_t,
+	privateData unsafe.Pointer,
 ) C.int {
 	return C.SR_ERR_OK
 }
@@ -61,8 +67,13 @@ func yangpubChangeCB(session *C.sr_session_ctx_t, subID C.uint32_t, moduleName *
 func callNotification(registration *notifReg, xpath string, payload string) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			registration.log.Error("notification callback panicked",
-				"xpath", xpath, "err", fmt.Sprint(recovered))
+			registration.log.Error(
+				"notification callback panicked",
+				"xpath",
+				xpath,
+				"err",
+				fmt.Sprint(recovered),
+			)
 		}
 	}()
 	registration.fn(xpath, payload)
@@ -76,8 +87,13 @@ func callNotification(registration *notifReg, xpath string, payload string) {
 // data and are dropped.
 //
 //export yangpubNotifCB
-func yangpubNotifCB(session *C.sr_session_ctx_t, subID C.uint32_t, notifType C.sr_ev_notif_type_t,
-	notif *C.struct_lyd_node, timestamp *C.struct_timespec, privateData unsafe.Pointer,
+func yangpubNotifCB(
+	session *C.sr_session_ctx_t,
+	subID C.uint32_t,
+	notifType C.sr_ev_notif_type_t,
+	notif *C.struct_lyd_node,
+	timestamp *C.struct_timespec,
+	privateData unsafe.Pointer,
 ) {
 	if notifType != C.SR_EV_NOTIF_REALTIME && notifType != C.SR_EV_NOTIF_REPLAY {
 		return
@@ -90,16 +106,24 @@ func yangpubNotifCB(session *C.sr_session_ctx_t, subID C.uint32_t, notifType C.s
 
 	cPath := C.lyd_path(notif, C.LYD_PATH_STD, nil, 0)
 	if cPath == nil {
-		registration.log.Error("notification path render failed",
-			"err", "lyd_path returned no path")
+		registration.log.Error(
+			"notification path render failed",
+			"err",
+			"lyd_path returned no path",
+		)
 		return
 	}
 	defer C.free(unsafe.Pointer(cPath))
 
 	var printed *C.char
 	if lyErr := C.lyd_print_mem(&printed, notif, C.LYD_JSON, 0); lyFailed(lyErr) {
-		registration.log.Error("notification print failed",
-			"xpath", C.GoString(cPath), "err", fmt.Sprintf("libyang code %d", int(lyErr)))
+		registration.log.Error(
+			"notification print failed",
+			"xpath",
+			C.GoString(cPath),
+			"err",
+			fmt.Sprintf("libyang code %d", int(lyErr)),
+		)
 		return
 	}
 	defer C.free(unsafe.Pointer(printed))
@@ -131,9 +155,15 @@ func callProvider(registration *providerReg, xpath string) (items []Item, err er
 // and every other registration keep running.
 //
 //export yangpubOperCB
-func yangpubOperCB(session *C.sr_session_ctx_t, subID C.uint32_t, moduleName *C.char,
-	path *C.char, requestXPath *C.char, operationID C.uint32_t,
-	parent **C.struct_lyd_node, privateData unsafe.Pointer,
+func yangpubOperCB(
+	session *C.sr_session_ctx_t,
+	subID C.uint32_t,
+	moduleName *C.char,
+	path *C.char,
+	requestXPath *C.char,
+	operationID C.uint32_t,
+	parent **C.struct_lyd_node,
+	privateData unsafe.Pointer,
 ) C.int {
 	handle := cgo.Handle(*(*C.uintptr_t)(privateData))
 	registration, ok := handle.Value().(*providerReg)
@@ -147,8 +177,7 @@ func yangpubOperCB(session *C.sr_session_ctx_t, subID C.uint32_t, moduleName *C.
 	}
 	items, err := callProvider(registration, requested)
 	if err != nil {
-		registration.log.Error("provider callback failed",
-			"xpath", requested, "err", err)
+		registration.log.Error("provider callback failed", "xpath", requested, "err", err)
 		return C.SR_ERR_CALLBACK_FAILED
 	}
 
@@ -168,9 +197,12 @@ func yangpubOperCB(session *C.sr_session_ctx_t, subID C.uint32_t, moduleName *C.
 		C.free(unsafe.Pointer(cPath))
 		C.free(unsafe.Pointer(cValue))
 		if lyFailed(lyErr) {
-			buildErr := fmt.Errorf("yangpub: lyd_new_path %s: libyang code %d", item.Path, int(lyErr))
-			registration.log.Error("provider tree build failed",
-				"path", item.Path, "err", buildErr)
+			buildErr := fmt.Errorf(
+				"yangpub: lyd_new_path %s: libyang code %d",
+				item.Path,
+				int(lyErr),
+			)
+			registration.log.Error("provider tree build failed", "path", item.Path, "err", buildErr)
 			return C.SR_ERR_CALLBACK_FAILED
 		}
 	}

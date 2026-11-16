@@ -22,14 +22,22 @@ func LoadEmbedded() (*Schema, error) {
 	if err != nil {
 		return nil, embeddedFailed("create the temporary schema directory", os.TempDir(), err)
 	}
+
 	loaded, err := loadEmbeddedFrom(tempDir)
 	if err != nil {
 		if removeErr := os.RemoveAll(tempDir); removeErr != nil {
-			slog.Warn("yangschema: remove the temporary schema directory failed",
-				"dir", tempDir, "err", removeErr)
+			slog.Warn(
+				"yangschema: remove the temporary schema directory failed",
+				"dir",
+				tempDir,
+				"err",
+				removeErr,
+			)
 		}
+
 		return nil, err
 	}
+
 	return loaded, nil
 }
 
@@ -39,16 +47,19 @@ func loadEmbeddedFrom(tempDir string) (*Schema, error) {
 		if err != nil {
 			return nil, embeddedFailed("read the embedded module", module.File, err)
 		}
+
 		path := filepath.Join(tempDir, module.File)
 		if err := os.WriteFile(path, content, tempFileMode); err != nil {
 			return nil, embeddedFailed("write the temporary schema module", path, err)
 		}
 	}
+
 	ctx, err := newContext(tempDir)
 	if err != nil {
 		slog.Error("yangschema: load the embedded schema failed", "dir", tempDir, "err", err)
 		return nil, fmt.Errorf("yangschema: load the embedded schema from %s: %w", tempDir, err)
 	}
+
 	return &Schema{ctx: ctx, tempDir: tempDir}, nil
 }
 

@@ -23,6 +23,7 @@ func TestBuildVersion_DirtyFlag(t *testing.T) {
 	// for it and for the older spelling a hand build might use.
 	orig := gklogversion.Dirty
 	defer func() { gklogversion.Dirty = orig }()
+
 	for _, stamp := range []string{"true", "dirty"} {
 		gklogversion.Dirty = stamp
 		v := BuildVersion()
@@ -35,10 +36,15 @@ func TestBuildVersion_DirtyFlag(t *testing.T) {
 func TestGitDirty_MapsGklogStamps(t *testing.T) {
 	orig := gklogversion.Dirty
 	defer func() { gklogversion.Dirty = orig }()
+
 	cases := map[string]string{
-		"true": "dirty", "dirty": "dirty",
-		"false": "clean", "clean": "clean",
-		"": "unknown", "unknown": "unknown", "maybe": "unknown",
+		"true":    "dirty",
+		"dirty":   "dirty",
+		"false":   "clean",
+		"clean":   "clean",
+		"":        "unknown",
+		"unknown": "unknown",
+		"maybe":   "unknown",
 	}
 	for stamp, want := range cases {
 		gklogversion.Dirty = stamp
@@ -55,6 +61,7 @@ func TestGitCommit_ReadsGklogStamp(t *testing.T) {
 	if got := GitCommit(); got != "03cf29ac" {
 		t.Fatalf("GitCommit() = %q, want the gklog stamp", got)
 	}
+
 	gklogversion.Commit = ""
 	if got := GitCommit(); got != "unknown" {
 		t.Fatalf("GitCommit() with empty stamp = %q, want unknown", got)
@@ -67,9 +74,11 @@ func TestBinaryHash_Form(t *testing.T) {
 	if h == "unknown" {
 		return
 	}
+
 	if len(h) != 12 {
 		t.Fatalf("BinaryHash len=%d want 12 or unknown", len(h))
 	}
+
 	for _, r := range h {
 		if !unicode.Is(unicode.Hex_Digit, r) {
 			t.Fatalf("non-hex in BinaryHash: %q", h)
@@ -84,6 +93,7 @@ func TestBinaryHashFrom_KnownFile(t *testing.T) {
 	if err := os.WriteFile(p, []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+
 	h := binaryHashFrom(p)
 	if len(h) != 12 {
 		t.Fatalf("got %q want 12-char hex", h)
@@ -112,6 +122,7 @@ func TestBuildVersionString_ContainsMarkers(t *testing.T) {
 	if !strings.Contains(s, "commit=") {
 		t.Fatalf("missing commit=: %q", s)
 	}
+
 	if !strings.Contains(s, "binhash=") {
 		t.Fatalf("missing binhash=: %q", s)
 	}

@@ -40,9 +40,12 @@ func TestFirewallReconcileAcceptsPackets(t *testing.T) {
 		{name: "gateway links", management: "mgmt0", lan: "lan0", wan: "wan0"},
 		{name: "renamed logical links", management: "veth-mgmt", lan: "br-lan", wan: "tun-wan"},
 	} {
-		t.Run(layout.name, func(t *testing.T) {
-			testFirewallPackets(t, layout.management, layout.lan, layout.wan)
-		})
+		t.Run(
+			layout.name,
+			func(t *testing.T) {
+				testFirewallPackets(t, layout.management, layout.lan, layout.wan)
+			},
+		)
 	}
 }
 
@@ -71,13 +74,38 @@ func testFirewallPackets(t *testing.T, managementName, lanName, wanName string) 
 	if err := os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", []byte("1"), 0o644); err != nil {
+	if err := os.WriteFile(
+		"/proc/sys/net/ipv6/conf/all/forwarding",
+		[]byte("1"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
-	management := newPacketPeer(t, gateway, managementName, "mgmt-host", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24", "203.0.113.3/24"})
-	lan := newPacketPeer(t, gateway, lanName, "lan-host", []string{"192.0.2.1/24", "2001:db8:1::1/64"}, []string{"192.0.2.2/24", "192.0.2.3/24", "2001:db8:1::2/64"})
-	wan := newPacketPeer(t, gateway, wanName, "wan-host", []string{"198.51.100.1/24", "198.51.100.10/32", "2001:db8:2::1/64"}, []string{"198.51.100.2/24", "198.51.100.3/24", "2001:db8:2::2/64"})
+	management := newPacketPeer(
+		t,
+		gateway,
+		managementName,
+		"mgmt-host",
+		[]string{"203.0.113.1/24"},
+		[]string{"203.0.113.2/24", "203.0.113.3/24"},
+	)
+	lan := newPacketPeer(
+		t,
+		gateway,
+		lanName,
+		"lan-host",
+		[]string{"192.0.2.1/24", "2001:db8:1::1/64"},
+		[]string{"192.0.2.2/24", "192.0.2.3/24", "2001:db8:1::2/64"},
+	)
+	wan := newPacketPeer(
+		t,
+		gateway,
+		wanName,
+		"wan-host",
+		[]string{"198.51.100.1/24", "198.51.100.10/32", "2001:db8:2::1/64"},
+		[]string{"198.51.100.2/24", "198.51.100.3/24", "2001:db8:2::2/64"},
+	)
 	addPacketRoute(t, lan.namespace, gateway, "198.51.100.0/24", "192.0.2.1")
 	addPacketRoute(t, lan.namespace, gateway, "2001:db8:2::/64", "2001:db8:1::1")
 	addPacketRoute(t, wan.namespace, gateway, "192.0.2.0/24", "198.51.100.1")
@@ -88,14 +116,52 @@ func testFirewallPackets(t *testing.T, managementName, lanName, wanName string) 
 		InternalInterface:   lan.gateway,
 		InternalNetworkIPv4: netip.MustParsePrefix("192.0.2.0/24"),
 		ManagementInterface: management.gateway,
-		ManagementServices:  []firewall.Service{{Protocol: "tcp", Port: 2222, Sources: []netip.Prefix{netip.MustParsePrefix("203.0.113.2/32")}}},
-		KnownInterfaces:     []string{management.gateway, lan.gateway, wan.gateway},
-		LocalPermits: []firewall.TransportPermit{
-			{InputInterface: wan.gateway, Family: firewall.IPv4, Source: netip.MustParsePrefix("198.51.100.2/32"), Destination: netip.MustParsePrefix("198.51.100.1/32"), Protocol: "tcp", DestinationPort: 179},
-			{InputInterface: wan.gateway, Family: firewall.IPv4, Source: netip.MustParsePrefix("198.51.100.2/32"), Destination: netip.MustParsePrefix("198.51.100.1/32"), Protocol: "gre"},
+		ManagementServices: []firewall.Service{
+			{
+				Protocol: "tcp",
+				Port:     2222,
+				Sources:  []netip.Prefix{netip.MustParsePrefix("203.0.113.2/32")},
+			},
 		},
-		Paths:     []firewall.ForwardingPath{{InternalInterface: lan.gateway, ExternalInterface: wan.gateway, IPv4: true, IPv6: true}},
-		Providers: []firewall.Provider{{Interface: wan.gateway, Mark: 101, MasqueradeIPv4: true, StaticMappings: []firewall.Mapping{{External: netip.MustParseAddr("198.51.100.10"), Internal: netip.MustParseAddr("192.0.2.2")}}}},
+		KnownInterfaces: []string{management.gateway, lan.gateway, wan.gateway},
+		LocalPermits: []firewall.TransportPermit{
+			{
+				InputInterface:  wan.gateway,
+				Family:          firewall.IPv4,
+				Source:          netip.MustParsePrefix("198.51.100.2/32"),
+				Destination:     netip.MustParsePrefix("198.51.100.1/32"),
+				Protocol:        "tcp",
+				DestinationPort: 179,
+			},
+			{
+				InputInterface: wan.gateway,
+				Family:         firewall.IPv4,
+				Source:         netip.MustParsePrefix("198.51.100.2/32"),
+				Destination:    netip.MustParsePrefix("198.51.100.1/32"),
+				Protocol:       "gre",
+			},
+		},
+		Paths: []firewall.ForwardingPath{
+			{
+				InternalInterface: lan.gateway,
+				ExternalInterface: wan.gateway,
+				IPv4:              true,
+				IPv6:              true,
+			},
+		},
+		Providers: []firewall.Provider{
+			{
+				Interface:      wan.gateway,
+				Mark:           101,
+				MasqueradeIPv4: true,
+				StaticMappings: []firewall.Mapping{
+					{
+						External: netip.MustParseAddr("198.51.100.10"),
+						Internal: netip.MustParseAddr("192.0.2.2"),
+					},
+				},
+			},
+		},
 	}
 	selected, err := New(policy)
 	if err != nil {
@@ -107,7 +173,11 @@ func testFirewallPackets(t *testing.T, managementName, lanName, wanName string) 
 	if err := selected.Init(ctx, &ifmgr.Env{Log: logger}); err != nil {
 		t.Fatal(err)
 	}
-	if err := selected.Reconcile(ctx, logger); err != nil && !strings.Contains(err.Error(), "request destination refresh: start "+destinationRefreshService) {
+	if err := selected.Reconcile(ctx, logger); err != nil &&
+		!strings.Contains(
+			err.Error(),
+			"request destination refresh: start "+destinationRefreshService,
+		) {
 		t.Fatalf("reconcile firewall policy: %v", err)
 	}
 	desired, err := firewall.Compile(policy)
@@ -119,26 +189,115 @@ func testFirewallPackets(t *testing.T, managementName, lanName, wanName string) 
 	}
 	observePacketMark(t, wan.gateway)
 
-	assertPacketTCP(t, gateway, management.namespace, "tcp4", "203.0.113.1:2222", "203.0.113.2:0", true, "203.0.113.2")
-	assertPacketTCP(t, gateway, management.namespace, "tcp4", "203.0.113.1:2222", "203.0.113.3:0", false, "")
+	assertPacketTCP(
+		t,
+		gateway,
+		management.namespace,
+		"tcp4",
+		"203.0.113.1:2222",
+		"203.0.113.2:0",
+		true,
+		"203.0.113.2",
+	)
+	assertPacketTCP(
+		t,
+		gateway,
+		management.namespace,
+		"tcp4",
+		"203.0.113.1:2222",
+		"203.0.113.3:0",
+		false,
+		"",
+	)
 	assertPacketTCP(t, gateway, lan.namespace, "tcp4", "192.0.2.1:2222", "192.0.2.2:0", false, "")
-	assertPacketTCP(t, gateway, wan.namespace, "tcp4", "198.51.100.1:179", "198.51.100.2:0", true, "198.51.100.2")
-	assertPacketTCP(t, gateway, wan.namespace, "tcp4", "198.51.100.1:179", "198.51.100.3:0", false, "")
+	assertPacketTCP(
+		t,
+		gateway,
+		wan.namespace,
+		"tcp4",
+		"198.51.100.1:179",
+		"198.51.100.2:0",
+		true,
+		"198.51.100.2",
+	)
+	assertPacketTCP(
+		t,
+		gateway,
+		wan.namespace,
+		"tcp4",
+		"198.51.100.1:179",
+		"198.51.100.3:0",
+		false,
+		"",
+	)
 	assertPacketTCP(t, gateway, lan.namespace, "tcp4", "192.0.2.1:179", "192.0.2.2:0", false, "")
-	assertPacketTCP(t, wan.namespace, lan.namespace, "tcp4", "198.51.100.2:3001", "192.0.2.3:0", true, "198.51.100.1")
-	assertPacketTCP(t, lan.namespace, wan.namespace, "tcp4", "192.0.2.2:3002", "198.51.100.2:0", true, "198.51.100.2")
-	assertPacketTCP(t, wan.namespace, lan.namespace, "tcp4", "198.51.100.2:3003", "192.0.2.2:0", true, "198.51.100.10")
-	assertPacketTCPTo(t, lan.namespace, wan.namespace, "tcp4", "192.0.2.2:3005", "198.51.100.10:3005", "198.51.100.2:0", true, "198.51.100.2")
+	assertPacketTCP(
+		t,
+		wan.namespace,
+		lan.namespace,
+		"tcp4",
+		"198.51.100.2:3001",
+		"192.0.2.3:0",
+		true,
+		"198.51.100.1",
+	)
+	assertPacketTCP(
+		t,
+		lan.namespace,
+		wan.namespace,
+		"tcp4",
+		"192.0.2.2:3002",
+		"198.51.100.2:0",
+		true,
+		"198.51.100.2",
+	)
+	assertPacketTCP(
+		t,
+		wan.namespace,
+		lan.namespace,
+		"tcp4",
+		"198.51.100.2:3003",
+		"192.0.2.2:0",
+		true,
+		"198.51.100.10",
+	)
+	assertPacketTCPTo(
+		t,
+		lan.namespace,
+		wan.namespace,
+		"tcp4",
+		"192.0.2.2:3005",
+		"198.51.100.10:3005",
+		"198.51.100.2:0",
+		true,
+		"198.51.100.2",
+	)
 	setPacketNamespace(t, gateway)
 	assertObservedPacketMark(t)
-	assertPacketTCP(t, wan.namespace, lan.namespace, "tcp6", "[2001:db8:2::2]:3004", "[2001:db8:1::2]:0", true, "2001:db8:1::2")
+	assertPacketTCP(
+		t,
+		wan.namespace,
+		lan.namespace,
+		"tcp6",
+		"[2001:db8:2::2]:3004",
+		"[2001:db8:1::2]:0",
+		true,
+		"2001:db8:1::2",
+	)
 
 	assertPacketGRE(t, gateway, wan.namespace, "198.51.100.2", true)
 	assertPacketGRE(t, gateway, wan.namespace, "198.51.100.3", false)
 	assertPacketGRE(t, gateway, lan.namespace, "192.0.2.2", false)
 }
 
-func newPacketPeer(t *testing.T, gateway netns.NsHandle, gatewayName, peerName string, gatewayAddresses, peerAddresses []string) packetPeer {
+func newPacketPeer(
+	t *testing.T,
+	gateway netns.NsHandle,
+	gatewayName string,
+	peerName string,
+	gatewayAddresses []string,
+	peerAddresses []string,
+) packetPeer {
 	t.Helper()
 	peerNamespace, err := netns.New()
 	if err != nil {
@@ -236,18 +395,50 @@ func addPacketRoute(t *testing.T, namespace, gateway netns.NsHandle, destination
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.RouteAdd(&netlink.Route{Dst: network, Gw: net.ParseIP(nextHop)}); err != nil {
+	if err := netlink.RouteAdd(&netlink.Route{
+		Dst: network,
+		Gw:  net.ParseIP(nextHop),
+	}); err != nil {
 		t.Fatal(err)
 	}
 	setPacketNamespace(t, gateway)
 }
 
-func assertPacketTCP(t *testing.T, destinationNamespace, sourceNamespace netns.NsHandle, network, destination, source string, accepted bool, expectedSource string) {
+func assertPacketTCP(
+	t *testing.T,
+	destinationNamespace netns.NsHandle,
+	sourceNamespace netns.NsHandle,
+	network string,
+	destination string,
+	source string,
+	accepted bool,
+	expectedSource string,
+) {
 	t.Helper()
-	assertPacketTCPTo(t, destinationNamespace, sourceNamespace, network, destination, destination, source, accepted, expectedSource)
+	assertPacketTCPTo(
+		t,
+		destinationNamespace,
+		sourceNamespace,
+		network,
+		destination,
+		destination,
+		source,
+		accepted,
+		expectedSource,
+	)
 }
 
-func assertPacketTCPTo(t *testing.T, destinationNamespace, sourceNamespace netns.NsHandle, network, listenAddress, dialAddress, source string, accepted bool, expectedSource string) {
+func assertPacketTCPTo(
+	t *testing.T,
+	destinationNamespace netns.NsHandle,
+	sourceNamespace netns.NsHandle,
+	network string,
+	listenAddress string,
+	dialAddress string,
+	source string,
+	accepted bool,
+	expectedSource string,
+) {
 	t.Helper()
 	setPacketNamespace(t, destinationNamespace)
 	listener, err := net.Listen(network, listenAddress)
@@ -284,7 +475,13 @@ func assertPacketTCPTo(t *testing.T, destinationNamespace, sourceNamespace netns
 		select {
 		case observed := <-acceptedAddress:
 			if observed != expectedSource {
-				t.Fatalf("%s from %s arrived with source %s, want %s", dialAddress, source, observed, expectedSource)
+				t.Fatalf(
+					"%s from %s arrived with source %s, want %s",
+					dialAddress,
+					source,
+					observed,
+					expectedSource,
+				)
 			}
 		case <-time.After(time.Second):
 			t.Fatalf("%s from %s was connected but not accepted", dialAddress, source)
@@ -292,7 +489,13 @@ func assertPacketTCPTo(t *testing.T, destinationNamespace, sourceNamespace netns
 	}
 }
 
-func assertPacketGRE(t *testing.T, gateway, sourceNamespace netns.NsHandle, source string, accepted bool) {
+func assertPacketGRE(
+	t *testing.T,
+	gateway netns.NsHandle,
+	sourceNamespace netns.NsHandle,
+	source string,
+	accepted bool,
+) {
 	t.Helper()
 	setPacketNamespace(t, gateway)
 	listener, err := net.ListenPacket("ip4:47", "198.51.100.1")
@@ -313,7 +516,9 @@ func assertPacketGRE(t *testing.T, gateway, sourceNamespace netns.NsHandle, sour
 	if err := connection.SetWriteDeadline(time.Now().Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := connection.Write([]byte("packet-" + strconv.FormatInt(time.Now().UnixNano(), 10))); err != nil {
+	if _, err := connection.Write(
+		[]byte("packet-" + strconv.FormatInt(time.Now().UnixNano(), 10)),
+	); err != nil {
 		t.Fatal(err)
 	}
 	connection.Close()
@@ -334,8 +539,29 @@ func assertPacketGRE(t *testing.T, gateway, sourceNamespace netns.NsHandle, sour
 func observePacketMark(t *testing.T, providerInterface string) {
 	t.Helper()
 	runPacketNFT(t, "add", "table", "inet", "packet_observe")
-	runPacketNFT(t, "add", "chain", "inet", "packet_observe", "prerouting", "{ type filter hook prerouting priority -149; policy accept; }")
-	runPacketNFT(t, "add", "rule", "inet", "packet_observe", "prerouting", "iifname", providerInterface, "meta", "mark", "101", "counter")
+	runPacketNFT(
+		t,
+		"add",
+		"chain",
+		"inet",
+		"packet_observe",
+		"prerouting",
+		"{ type filter hook prerouting priority -149; policy accept; }",
+	)
+	runPacketNFT(
+		t,
+		"add",
+		"rule",
+		"inet",
+		"packet_observe",
+		"prerouting",
+		"iifname",
+		providerInterface,
+		"meta",
+		"mark",
+		"101",
+		"counter",
+	)
 }
 
 func assertObservedPacketMark(t *testing.T) {

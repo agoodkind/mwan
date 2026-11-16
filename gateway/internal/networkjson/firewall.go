@@ -31,6 +31,7 @@ func pinnedConnectionID(wire *firewallWire) string {
 	if wire == nil {
 		return ""
 	}
+
 	return wire.PinnedConnectionID
 }
 
@@ -81,33 +82,49 @@ func LoadBaseline(path string) (*firewall.BaselineConfig, error) {
 		slog.Error("networkjson: read firewall baseline failed", "path", path, "err", err)
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
+
 	var doc baselineDocument
 	if err := json.Unmarshal(data, &doc); err != nil {
 		slog.Error("networkjson: decode firewall baseline failed", "path", path, "err", err)
 		return nil, fmt.Errorf("decode %s: %w", path, err)
 	}
+
 	group := doc.Interfaces.SteeringGroup
 	if group.Firewall == nil {
 		return nil, nil
 	}
+
 	var providers []baselineProvider
 	var declared []string
+
 	for _, entry := range doc.Interfaces.Interface {
 		declared = append(declared, entry.Name)
 		if presentMember(entry.WAN) {
-			providers = append(providers, baselineProvider{name: entry.Name, tunnel: presentMember(entry.Link.Tunnel)})
+			providers = append(
+				providers,
+				baselineProvider{name: entry.Name, tunnel: presentMember(entry.Link.Tunnel)},
+			)
 		}
 	}
+
 	guestType, err := resolveGuestType(doc.Interfaces.GuestType)
 	if err != nil {
 		slog.Error("networkjson: firewall baseline guest type rejected", "path", path, "err", err)
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	baseline, err := buildBaseline(group.Firewall, guestType, group.Routes.InternalIface, declared, providers)
+
+	baseline, err := buildBaseline(
+		group.Firewall,
+		guestType,
+		group.Routes.InternalIface,
+		declared,
+		providers,
+	)
 	if err != nil {
 		slog.Error("networkjson: firewall baseline rejected", "path", path, "err", err)
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+
 	return &baseline, nil
 }
 
@@ -126,17 +143,26 @@ func managementPolicy(guestType config.GuestType) firewall.ManagementPolicy {
 	if guestType == config.GuestTypeLXC {
 		return firewall.ManagementOptional
 	}
+
 	return firewall.ManagementRequired
 }
 
-func buildBaseline(wire *baselineFirewallWire, guestType config.GuestType, internalInterface string, declared []string, providers []baselineProvider) (firewall.BaselineConfig, error) {
+func buildBaseline(
+	wire *baselineFirewallWire,
+	guestType config.GuestType,
+	internalInterface string,
+	declared []string,
+	providers []baselineProvider,
+) (firewall.BaselineConfig, error) {
 	if wire == nil {
 		return firewall.BaselineConfig{}, fmt.Errorf("steering-group/firewall is absent")
 	}
+
 	services, err := buildManagementServices(wire.ManagementServices)
 	if err != nil {
 		return firewall.BaselineConfig{}, err
 	}
+
 	baseline := firewall.BaselineConfig{
 		ManagementPolicy:    managementPolicy(guestType),
 		ManagementInterface: wire.ManagementInterface,
@@ -146,74 +172,117 @@ func buildBaseline(wire *baselineFirewallWire, guestType config.GuestType, inter
 		LocalPermits:        nil,
 	}
 	seen := make(map[string]bool)
+
 	for _, provider := range providers {
 		name := provider.name
 		if seen[name] {
-			return firewall.BaselineConfig{}, fmt.Errorf("provider interface %q appears twice", name)
+			return firewall.BaselineConfig{}, fmt.Errorf(
+				"provider interface %q appears twice",
+				name,
+			)
 		}
+
 		seen[name] = true
 		baseline.ProviderInterfaces = append(baseline.ProviderInterfaces, name)
 		if provider.tunnel {
 			continue
 		}
-		baseline.LocalPermits = append(baseline.LocalPermits,
+
+		baseline.LocalPermits = append(
+			baseline.LocalPermits,
 			newPermit(name, firewall.IPv4, "udp", 67, 68),
 			newPermit(name, firewall.IPv6, "udp", 547, 546),
 		)
 	}
+
 	for _, family := range []firewall.Family{firewall.IPv4, firewall.IPv6} {
-		baseline.LocalPermits = append(baseline.LocalPermits,
+		baseline.LocalPermits = append(
+			baseline.LocalPermits,
 			newPermit(baseline.InternalInterface, family, "tcp", 0, 179),
 			newPermit(baseline.InternalInterface, family, "udp", 0, 3784),
 			newPermit(baseline.InternalInterface, family, "udp", 0, 3785),
 		)
 	}
+
 	if err := baseline.Validate(); err != nil {
 		slog.Warn("networkjson: firewall baseline invalid", "err", err)
 		return firewall.BaselineConfig{}, fmt.Errorf("steering-group/firewall baseline: %w", err)
 	}
+
 	known := make(map[string]bool, len(declared))
 	for _, name := range declared {
 		if known[name] {
 			return firewall.BaselineConfig{}, fmt.Errorf("interface %q appears twice", name)
 		}
+
 		known[name] = true
 	}
+
 	managementAbsent := baseline.ManagementPolicy.Absent(baseline.ManagementInterface)
 	managementUndeclared := !managementAbsent && !known[baseline.ManagementInterface]
 	if managementUndeclared || !known[baseline.InternalInterface] {
-		return firewall.BaselineConfig{}, fmt.Errorf("firewall management or internal interface is not declared")
+		return firewall.BaselineConfig{}, fmt.Errorf(
+			"firewall management or internal interface is not declared",
+		)
 	}
+
 	return baseline, nil
 }
 
 func buildManagementServices(entries []managementServiceWire) ([]firewall.Service, error) {
 	services := make([]firewall.Service, 0, len(entries))
 	seen := make(map[string]bool)
+
 	for _, entry := range entries {
 		if entry.Port == nil {
 			return nil, fmt.Errorf("firewall management-service %s has no port", entry.Protocol)
 		}
+
 		key := fmt.Sprintf("%s/%d", entry.Protocol, *entry.Port)
 		if seen[key] {
 			return nil, fmt.Errorf("firewall management-service %s is duplicated", key)
 		}
+
 		seen[key] = true
+
 		service := firewall.Service{Protocol: entry.Protocol, Port: *entry.Port, Sources: nil}
 		for _, raw := range entry.AllowedSource {
 			prefix, err := netip.ParsePrefix(raw)
 			if err != nil {
-				slog.Warn("networkjson: management source invalid", "service", key, "source", raw, "err", err)
-				return nil, fmt.Errorf("firewall management-service %s allowed-source %q: %w", key, raw, err)
+				slog.Warn(
+					"networkjson: management source invalid",
+					"service",
+					key,
+					"source",
+					raw,
+					"err",
+					err,
+				)
+
+				return nil, fmt.Errorf(
+					"firewall management-service %s allowed-source %q: %w",
+					key,
+					raw,
+					err,
+				)
 			}
+
 			service.Sources = append(service.Sources, prefix)
 		}
+
 		services = append(services, service)
 	}
+
 	return services, nil
 }
 
-func newPermit(iface string, family firewall.Family, protocol string, sourcePort uint16, destinationPort uint16) firewall.TransportPermit {
+func newPermit(
+	iface string,
+	family firewall.Family,
+	protocol string,
+	sourcePort uint16,
+	destinationPort uint16,
+) firewall.TransportPermit {
 	return firewall.TransportPermit{
 		InputInterface:  iface,
 		Family:          family,
@@ -231,28 +300,49 @@ func buildFirewall(doc *document, loaded *Config) (firewall.Config, error) {
 	if group.Firewall == nil {
 		return none, nil
 	}
+
 	var providerInterfaces []baselineProvider
 	var declared []string
+
 	for _, entry := range doc.Interfaces.Interface {
 		declared = append(declared, entry.Name)
 		if entry.WAN != nil {
 			tunnel := entry.Link != nil && entry.Link.Tunnel != nil
-			providerInterfaces = append(providerInterfaces, baselineProvider{name: entry.Name, tunnel: tunnel})
+			providerInterfaces = append(
+				providerInterfaces,
+				baselineProvider{name: entry.Name, tunnel: tunnel},
+			)
 		}
 	}
+
 	baselineWire := &baselineFirewallWire{
 		ManagementInterface: group.Firewall.ManagementInterface,
 		ManagementServices:  group.Firewall.ManagementServices,
 	}
-	baseline, err := buildBaseline(baselineWire, loaded.GuestType, group.Routes.InternalIface, declared, providerInterfaces)
+	baseline, err := buildBaseline(
+		baselineWire,
+		loaded.GuestType,
+		group.Routes.InternalIface,
+		declared,
+		providerInterfaces,
+	)
 	if err != nil {
 		return none, err
 	}
+
 	network, err := netip.ParsePrefix(group.Routes.InternalNetV4)
 	if err != nil {
-		slog.Warn("networkjson: firewall internal network invalid", "value", group.Routes.InternalNetV4, "err", err)
+		slog.Warn(
+			"networkjson: firewall internal network invalid",
+			"value",
+			group.Routes.InternalNetV4,
+			"err",
+			err,
+		)
+
 		return none, fmt.Errorf("firewall internal-net-v4: %w", err)
 	}
+
 	var cfg firewall.Config
 	cfg.Enabled = true
 	cfg.ManagementPolicy = baseline.ManagementPolicy
@@ -263,49 +353,78 @@ func buildFirewall(doc *document, loaded *Config) (firewall.Config, error) {
 	cfg.LocalPermits = baseline.LocalPermits
 	cfg.PinnedSetV4Name = group.Firewall.PinnedSetV4Name
 	cfg.PinnedSetV6Name = group.Firewall.PinnedSetV6Name
+
 	for _, entry := range doc.Interfaces.Interface {
 		cfg.KnownInterfaces = append(cfg.KnownInterfaces, entry.Name)
 	}
+
 	if err := populateFirewallProviders(&cfg, doc, loaded, group.Firewall); err != nil {
 		return none, err
 	}
-	if err := populateFirewallPins(&cfg, group.Firewall, group.Translation.OpnsenseEdgeV6); err != nil {
+
+	if err := populateFirewallPins(
+		&cfg,
+		group.Firewall,
+		group.Translation.OpnsenseEdgeV6,
+	); err != nil {
 		return none, err
 	}
+
 	if err := cfg.Validate(); err != nil {
 		slog.Warn("networkjson: firewall configuration invalid", "err", err)
 		return none, fmt.Errorf("steering-group/firewall: %w", err)
 	}
+
 	return cfg, nil
 }
 
-func populateFirewallProviders(cfg *firewall.Config, doc *document, loaded *Config, wire *firewallWire) error {
+func populateFirewallProviders(
+	cfg *firewall.Config,
+	doc *document,
+	loaded *Config,
+	wire *firewallWire,
+) error {
 	if wire.PinnedProvider != "" && wire.PinnedConnectionID != "" {
 		return fmt.Errorf("firewall must select one of pinned-provider or pinned-connection-id")
 	}
+
 	tunnels := tunnelLinks(loaded.Connections)
 	matches := 0
+
 	for _, entry := range doc.Interfaces.Interface {
 		if entry.WAN == nil {
 			continue
 		}
+
 		id := loaded.ConnectionIDs[entry.Name].String()
 		wan, accepted := loaded.WAN[id]
 		if !accepted {
 			continue
 		}
+
 		tunnel := tunnels[entry.Name]
 		if wan.FwMark < 0 || uint64(wan.FwMark) > math.MaxUint32 {
-			return fmt.Errorf("firewall provider %s has invalid mark %d", entry.WAN.Name, wan.FwMark)
+			return fmt.Errorf(
+				"firewall provider %s has invalid mark %d",
+				entry.WAN.Name,
+				wan.FwMark,
+			)
 		}
+
 		if wan.ForcedDSCP < 0 || wan.ForcedDSCP > 63 {
-			return fmt.Errorf("firewall provider %s has invalid DSCP %d", entry.WAN.Name, wan.ForcedDSCP)
+			return fmt.Errorf(
+				"firewall provider %s has invalid DSCP %d",
+				entry.WAN.Name,
+				wan.ForcedDSCP,
+			)
 		}
+
 		pinned := (wire.PinnedConnectionID != "" && id == wire.PinnedConnectionID) ||
 			(wire.PinnedProvider != "" && entry.WAN.Name == wire.PinnedProvider)
 		if pinned && tunnel != nil {
 			return fmt.Errorf("firewall pin target %s has no ipv4 family", entry.WAN.Name)
 		}
+
 		var provider firewall.Provider
 		provider.Interface = wan.Iface
 		provider.Mark = uint32(wan.FwMark)
@@ -313,28 +432,42 @@ func populateFirewallProviders(cfg *firewall.Config, doc *document, loaded *Conf
 		provider.ReducedMTU = tunnel != nil
 		if policy := wan.TranslationV4; policy != nil && policy.Mode == config.TranslationNAPT44 {
 			provider.MasqueradeIPv4 = true
+
 			for _, mapping := range policy.StaticMappings {
-				provider.StaticMappings = append(provider.StaticMappings, firewall.Mapping{External: mapping.External, Internal: mapping.Internal})
+				provider.StaticMappings = append(
+					provider.StaticMappings,
+					firewall.Mapping{External: mapping.External, Internal: mapping.Internal},
+				)
 			}
 		}
+
 		cfg.Providers = append(cfg.Providers, provider)
-		cfg.Paths = append(cfg.Paths, firewall.ForwardingPath{
-			InternalInterface: cfg.InternalInterface,
-			ExternalInterface: wan.Iface,
-			IPv4:              tunnel == nil,
-			IPv6:              true,
-		})
+		cfg.Paths = append(
+			cfg.Paths,
+			firewall.ForwardingPath{
+				InternalInterface: cfg.InternalInterface,
+				ExternalInterface: wan.Iface,
+				IPv4:              tunnel == nil,
+				IPv6:              true,
+			},
+		)
 		if tunnel != nil {
 			cfg.LocalPermits = append(cfg.LocalPermits, tunnelPermit(tunnel))
 		}
+
 		if pinned {
 			cfg.PinnedProvider = wan.Iface
 			matches++
 		}
 	}
+
 	if matches > 1 {
-		return fmt.Errorf("firewall pinned-provider %q matches multiple connections; use pinned-connection-id", wire.PinnedProvider)
+		return fmt.Errorf(
+			"firewall pinned-provider %q matches multiple connections; use pinned-connection-id",
+			wire.PinnedProvider,
+		)
 	}
+
 	return nil
 }
 
@@ -345,12 +478,14 @@ func tunnelLinks(connections []interfaceintent.Connection) map[string]*interface
 			tunnels[connection.Name] = connection.Link.Tunnel
 		}
 	}
+
 	return tunnels
 }
 
 func tunnelPermit(tunnel *interfaceintent.Tunnel) firewall.TransportPermit {
 	permit := newPermit(tunnel.Underlay, firewall.IPv4, firewall.ProtocolIPv6InIPv4, 0, 0)
 	permit.Source = netip.PrefixFrom(tunnel.Remote, tunnel.Remote.BitLen())
+
 	return permit
 }
 
@@ -359,39 +494,62 @@ func populateFirewallPins(cfg *firewall.Config, wire *firewallWire, opnsenseEdge
 		if cfg.PinnedProvider == "" {
 			return fmt.Errorf("firewall pin target is not an accepted connection")
 		}
+
 		sourceV4, err := netip.ParseAddr(wire.PinnedSourceV4)
 		if err != nil {
-			slog.Warn("networkjson: firewall pinned IPv4 source invalid", "value", wire.PinnedSourceV4, "err", err)
+			slog.Warn(
+				"networkjson: firewall pinned IPv4 source invalid",
+				"value",
+				wire.PinnedSourceV4,
+				"err",
+				err,
+			)
+
 			return fmt.Errorf("firewall pinned-source-v4: %w", err)
 		}
+
 		cfg.PinnedSourceIPv4 = sourceV4
 		sourceV6, err := netip.ParseAddr(opnsenseEdgeV6)
 		if err != nil {
-			slog.Warn("networkjson: firewall pinned IPv6 source invalid", "value", opnsenseEdgeV6, "err", err)
+			slog.Warn(
+				"networkjson: firewall pinned IPv6 source invalid",
+				"value",
+				opnsenseEdgeV6,
+				"err",
+				err,
+			)
+
 			return fmt.Errorf("firewall opnsense-edge-v6: %w", err)
 		}
+
 		cfg.PinnedSourceIPv6 = sourceV6
 		if wire.PinnedSourcePort == nil || wire.PinnedDestinationPort == nil {
 			return fmt.Errorf("firewall pinned UDP ports are required")
 		}
+
 		cfg.PinnedSourcePort = *wire.PinnedSourcePort
 		cfg.PinnedDestinationPort = *wire.PinnedDestinationPort
 	}
+
 	for _, raw := range wire.PinnedV4 {
 		prefix, err := netip.ParsePrefix(raw)
 		if err != nil {
 			slog.Warn("networkjson: firewall pinned IPv4 network invalid", "value", raw, "err", err)
 			return fmt.Errorf("firewall pinned-v4 %q: %w", raw, err)
 		}
+
 		cfg.PinnedIPv4 = append(cfg.PinnedIPv4, prefix)
 	}
+
 	for _, raw := range wire.PinnedV6 {
 		prefix, err := netip.ParsePrefix(raw)
 		if err != nil {
 			slog.Warn("networkjson: firewall pinned IPv6 network invalid", "value", raw, "err", err)
 			return fmt.Errorf("firewall pinned-v6 %q: %w", raw, err)
 		}
+
 		cfg.PinnedIPv6 = append(cfg.PinnedIPv6, prefix)
 	}
+
 	return nil
 }

@@ -41,35 +41,42 @@ func (a *recordingAgent) record(method string) {
 func (a *recordingAgent) received(method string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+
 	for _, call := range a.calls {
 		if call == method {
 			return true
 		}
 	}
+
 	return false
 }
 
 func (a *recordingAgent) GetBGPStatus(
-	_ context.Context, _ *mwanv1.GetBGPStatusRequest,
+	_ context.Context,
+	_ *mwanv1.GetBGPStatusRequest,
 ) (*mwanv1.GetBGPStatusResponse, error) {
 	a.record("GetBGPStatus")
 	a.mu.Lock()
 	defer a.mu.Unlock()
+
 	return &mwanv1.GetBGPStatusResponse{Announcing: a.announcing, AllEstablished: true}, nil
 }
 
 func (a *recordingAgent) AnnounceRoutes(
-	_ context.Context, _ *mwanv1.AnnounceRoutesRequest,
+	_ context.Context,
+	_ *mwanv1.AnnounceRoutesRequest,
 ) (*mwanv1.AnnounceRoutesResponse, error) {
 	a.record("AnnounceRoutes")
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.announcing = true
+
 	return &mwanv1.AnnounceRoutesResponse{Success: true}, nil
 }
 
 func (a *recordingAgent) WithdrawRoutes(
-	_ context.Context, _ *mwanv1.WithdrawRoutesRequest,
+	_ context.Context,
+	_ *mwanv1.WithdrawRoutesRequest,
 ) (*mwanv1.WithdrawRoutesResponse, error) {
 	a.record("WithdrawRoutes")
 	return &mwanv1.WithdrawRoutesResponse{Success: true}, nil
@@ -80,11 +87,14 @@ func (a *recordingAgent) WithdrawRoutes(
 func startAgent(t *testing.T) (*recordingAgent, string) {
 	t.Helper()
 	listener, err := (&net.ListenConfig{}).Listen(
-		context.Background(), "tcp", loopbackAddr,
+		context.Background(),
+		"tcp",
+		loopbackAddr,
 	)
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
+
 	agent := &recordingAgent{}
 	server := grpc.NewServer()
 	mwanv1.RegisterMWANAgentServer(server, agent)
@@ -92,6 +102,7 @@ func startAgent(t *testing.T) (*recordingAgent, string) {
 		_ = server.Serve(listener)
 	}()
 	t.Cleanup(server.Stop)
+
 	return agent, listener.Addr().String()
 }
 
@@ -105,6 +116,7 @@ func failoverConfig(t *testing.T, primaryAddr, failoverAddr string) *watchdogcon
 	cfg.Watchdog.JSONLogFile = filepath.Join(logDir, "watchdog.json")
 	cfg.Failover.LXCID = failoverLXCID
 	cfg.Failover.AgentTCPAddr = failoverAddr
+
 	return cfg
 }
 
@@ -120,15 +132,19 @@ func TestFailoverRunWithdrawsOnPrimaryAndAnnouncesOnFailoverAgent(t *testing.T) 
 	if !primary.received("WithdrawRoutes") {
 		t.Error("primary agent did not receive WithdrawRoutes")
 	}
+
 	if primary.received("AnnounceRoutes") {
 		t.Error("primary agent received AnnounceRoutes")
 	}
+
 	if !failover.received("GetBGPStatus") {
 		t.Error("failover agent did not receive GetBGPStatus")
 	}
+
 	if !failover.received("AnnounceRoutes") {
 		t.Error("failover agent did not receive AnnounceRoutes")
 	}
+
 	if failover.received("WithdrawRoutes") {
 		t.Error("failover agent received WithdrawRoutes")
 	}
@@ -142,6 +158,7 @@ func TestFailoverRunRejectsMissingFailoverAgentAddress(t *testing.T) {
 	if err == nil {
 		t.Fatal("FailoverRun succeeded without [failover] agent_tcp_addr")
 	}
+
 	if !strings.Contains(err.Error(), "agent_tcp_addr") {
 		t.Fatalf("error %q does not mention agent_tcp_addr", err)
 	}
@@ -157,12 +174,15 @@ func TestFailoverRunRejectsEqualGuestIdentifiers(t *testing.T) {
 	if err == nil {
 		t.Fatal("FailoverRun succeeded with [failover] lxc_id equal to mwan_vmid")
 	}
+
 	if !strings.Contains(err.Error(), "must differ") {
 		t.Fatalf("error %q does not mention must differ", err)
 	}
+
 	if primary.received("AnnounceRoutes") {
 		t.Error("primary agent received AnnounceRoutes")
 	}
+
 	if failover.received("AnnounceRoutes") {
 		t.Error("failover agent received AnnounceRoutes")
 	}

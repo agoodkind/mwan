@@ -15,5 +15,6 @@ func StripPrefix(cidr string) string {
 			return cidr[:i]
 		}
 	}
+
 	return cidr
 }

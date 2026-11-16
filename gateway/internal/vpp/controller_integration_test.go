@@ -43,9 +43,12 @@ var integrationFiles embed.FS
 func TestControllerRealVPP(t *testing.T) {
 	if !slices.Contains(os.Args, "mwan-vpp-integration-child") {
 		for _, idleWaitUsec := range []uint32{0, 10} {
-			t.Run(fmt.Sprintf("idle wait %d microseconds", idleWaitUsec), func(t *testing.T) {
-				runVPPIntegrationChild(t, idleWaitUsec)
-			})
+			t.Run(
+				fmt.Sprintf("idle wait %d microseconds", idleWaitUsec),
+				func(t *testing.T) {
+					runVPPIntegrationChild(t, idleWaitUsec)
+				},
+			)
 		}
 		return
 	}
@@ -67,7 +70,12 @@ func TestControllerRealVPP(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(directory) })
-	settings := vppclient.Endpoints{APISocket: filepath.Join(directory, "api.sock"), StatsSocket: filepath.Join(directory, "stats.sock"), ExpectedVersion: vppclient.BindingVersion, Timeout: 10 * time.Second}
+	settings := vppclient.Endpoints{
+		APISocket:       filepath.Join(directory, "api.sock"),
+		StatsSocket:     filepath.Join(directory, "stats.sock"),
+		ExpectedVersion: vppclient.BindingVersion,
+		Timeout:         10 * time.Second,
+	}
 	startup, err := template.ParseFS(integrationFiles, "testdata/startup.conf")
 	if err != nil {
 		t.Fatal(err)
@@ -77,10 +85,19 @@ func TestControllerRealVPP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := startup.Execute(configuration, struct {
-		Directory, APISocket, StatsSocket, Prefix string
-		IdleWaitUsec                              uint32
-	}{directory, settings.APISocket, settings.StatsSocket, filepath.Base(directory), idleWaitUsec}); err != nil {
+	if err := startup.Execute(
+		configuration,
+		struct {
+			Directory, APISocket, StatsSocket, Prefix string
+			IdleWaitUsec                              uint32
+		}{
+			directory,
+			settings.APISocket,
+			settings.StatsSocket,
+			filepath.Base(directory),
+			idleWaitUsec,
+		},
+	); err != nil {
 		_ = configuration.Close()
 		t.Fatal(err)
 	}
@@ -121,7 +138,12 @@ func TestControllerRealVPP(t *testing.T) {
 		select {
 		case <-processDone:
 			data, readError := os.ReadFile(output.Name())
-			t.Fatalf("VPP exited during startup: %v\n%s\nread process output: %v", processError, data, readError)
+			t.Fatalf(
+				"VPP exited during startup: %v\n%s\nread process output: %v",
+				processError,
+				data,
+				readError,
+			)
 		default:
 		}
 		_, apiError := os.Stat(settings.APISocket)
@@ -130,16 +152,66 @@ func TestControllerRealVPP(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("VPP did not create its configured sockets: API %v, statistics %v", apiError, statsError)
+			t.Fatalf(
+				"VPP did not create its configured sockets: API %v, statistics %v",
+				apiError,
+				statsError,
+			)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	inside := interfaceintent.Connection{ID: "vpp-test-inside", Name: "tap901", Owner: interfaceintent.OwnerExternal, IPv6: &interfaceintent.IPv6{Family: interfaceintent.Family{Addresses: []interfaceintent.Address{{Prefix: netip.MustParsePrefix("fd06:fab:9901::2/64")}}}}}
-	outside := interfaceintent.Connection{ID: "vpp-test-outside", Name: "tap902", Owner: interfaceintent.OwnerExternal, IPv4: &interfaceintent.IPv4{Family: interfaceintent.Family{Addresses: []interfaceintent.Address{{Prefix: netip.MustParsePrefix("192.0.2.2/30")}}, Routes: []interfaceintent.RouteIntent{{Destination: netip.MustParsePrefix("0.0.0.0/0"), Gateway: netip.MustParseAddr("192.0.2.1"), TableID: 0}}}}}
-	hostInside := interfaceintent.Connection{ID: "host-inside", Name: "gvpp-in", Owner: interfaceintent.OwnerExternal}
-	hostOutside := interfaceintent.Connection{ID: "host-outside", Name: "gvpp-out", Owner: interfaceintent.OwnerExternal}
-	policy := vppclient.Policy{Connections: []interfaceintent.Connection{inside, outside, hostInside, hostOutside}, NAT64: &vppclient.NAT64Policy{Inside: inside.Name, Outside: outside.Name, Prefix: netip.MustParsePrefix("64:ff9b::/96"), Pool: []netip.Addr{netip.MustParseAddr("198.51.100.10")}, VRF: 0}}
+	inside := interfaceintent.Connection{
+		ID:    "vpp-test-inside",
+		Name:  "tap901",
+		Owner: interfaceintent.OwnerExternal,
+		IPv6: &interfaceintent.IPv6{
+			Family: interfaceintent.Family{
+				Addresses: []interfaceintent.Address{
+					{Prefix: netip.MustParsePrefix("fd06:fab:9901::2/64")},
+				},
+			},
+		},
+	}
+	outside := interfaceintent.Connection{
+		ID:    "vpp-test-outside",
+		Name:  "tap902",
+		Owner: interfaceintent.OwnerExternal,
+		IPv4: &interfaceintent.IPv4{
+			Family: interfaceintent.Family{
+				Addresses: []interfaceintent.Address{
+					{Prefix: netip.MustParsePrefix("192.0.2.2/30")},
+				},
+				Routes: []interfaceintent.RouteIntent{
+					{
+						Destination: netip.MustParsePrefix("0.0.0.0/0"),
+						Gateway:     netip.MustParseAddr("192.0.2.1"),
+						TableID:     0,
+					},
+				},
+			},
+		},
+	}
+	hostInside := interfaceintent.Connection{
+		ID:    "host-inside",
+		Name:  "gvpp-in",
+		Owner: interfaceintent.OwnerExternal,
+	}
+	hostOutside := interfaceintent.Connection{
+		ID:    "host-outside",
+		Name:  "gvpp-out",
+		Owner: interfaceintent.OwnerExternal,
+	}
+	policy := vppclient.Policy{
+		Connections: []interfaceintent.Connection{inside, outside, hostInside, hostOutside},
+		NAT64: &vppclient.NAT64Policy{
+			Inside:  inside.Name,
+			Outside: outside.Name,
+			Prefix:  netip.MustParsePrefix("64:ff9b::/96"),
+			Pool:    []netip.Addr{netip.MustParseAddr("198.51.100.10")},
+			VRF:     0,
+		},
+	}
 	insideHost, err := ip_types.ParseIP6Prefix("fd06:fab:9901::1/64")
 	if err != nil {
 		t.Fatal(err)
@@ -148,10 +220,50 @@ func TestControllerRealVPP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resources := vppclient.Settings{Endpoints: settings, StateFile: filepath.Join(directory, "owned.json"), NAT64: &nat64.Nat64PluginEnableDisable{BibBuckets: 128, BibMemorySize: 8 << 20, StBuckets: 128, StMemorySize: 8 << 20}, TAPs: []vppclient.TAP{
-		{ConnectionID: inside.ID.String(), Create: tapv2.TapCreateV3{ID: 901, UseRandomMac: true, NumRxQueues: 1, NumTxQueues: 1, RxRingSz: 256, TxRingSz: 256, HostIfNameSet: true, HostIfName: "gvpp-in", HostIP6PrefixSet: true, HostIP6Prefix: ip_types.IP6AddressWithPrefix(insideHost)}, RXMode: interface_types.RX_MODE_API_ADAPTIVE},
-		{ConnectionID: outside.ID.String(), Create: tapv2.TapCreateV3{ID: 902, UseRandomMac: true, NumRxQueues: 1, NumTxQueues: 1, RxRingSz: 256, TxRingSz: 256, HostIfNameSet: true, HostIfName: "gvpp-out", HostIP4PrefixSet: true, HostIP4Prefix: ip_types.IP4AddressWithPrefix(outsideHost)}, RXMode: interface_types.RX_MODE_API_ADAPTIVE},
-	}}
+	resources := vppclient.Settings{
+		Endpoints: settings,
+		StateFile: filepath.Join(directory, "owned.json"),
+		NAT64: &nat64.Nat64PluginEnableDisable{
+			BibBuckets:    128,
+			BibMemorySize: 8 << 20,
+			StBuckets:     128,
+			StMemorySize:  8 << 20,
+		},
+		TAPs: []vppclient.TAP{
+			{
+				ConnectionID: inside.ID.String(),
+				Create: tapv2.TapCreateV3{
+					ID:               901,
+					UseRandomMac:     true,
+					NumRxQueues:      1,
+					NumTxQueues:      1,
+					RxRingSz:         256,
+					TxRingSz:         256,
+					HostIfNameSet:    true,
+					HostIfName:       "gvpp-in",
+					HostIP6PrefixSet: true,
+					HostIP6Prefix:    ip_types.IP6AddressWithPrefix(insideHost),
+				},
+				RXMode: interface_types.RX_MODE_API_ADAPTIVE,
+			},
+			{
+				ConnectionID: outside.ID.String(),
+				Create: tapv2.TapCreateV3{
+					ID:               902,
+					UseRandomMac:     true,
+					NumRxQueues:      1,
+					NumTxQueues:      1,
+					RxRingSz:         256,
+					TxRingSz:         256,
+					HostIfNameSet:    true,
+					HostIfName:       "gvpp-out",
+					HostIP4PrefixSet: true,
+					HostIP4Prefix:    ip_types.IP4AddressWithPrefix(outsideHost),
+				},
+				RXMode: interface_types.RX_MODE_API_ADAPTIVE,
+			},
+		},
+	}
 	controller, err := vppclient.NewController(resources)
 	if err != nil {
 		t.Fatal(err)
@@ -170,13 +282,38 @@ func TestControllerRealVPP(t *testing.T) {
 	if err := unix.IoctlIfreq(foreignHost, unix.TUNSETIFF, request); err != nil {
 		t.Fatal(err)
 	}
-	conflictSettings := vppclient.Settings{Endpoints: settings, StateFile: filepath.Join(directory, "foreign-host.json"), TAPs: []vppclient.TAP{{ConnectionID: "conflict-vpp", Create: tapv2.TapCreateV3{ID: 900, UseRandomMac: true, NumRxQueues: 1, NumTxQueues: 1, RxRingSz: 256, TxRingSz: 256, HostIfNameSet: true, HostIfName: "gvpp-reserved"}, RXMode: interface_types.RX_MODE_API_ADAPTIVE}}}
+	conflictSettings := vppclient.Settings{
+		Endpoints: settings,
+		StateFile: filepath.Join(directory, "foreign-host.json"),
+		TAPs: []vppclient.TAP{
+			{
+				ConnectionID: "conflict-vpp",
+				Create: tapv2.TapCreateV3{
+					ID:            900,
+					UseRandomMac:  true,
+					NumRxQueues:   1,
+					NumTxQueues:   1,
+					RxRingSz:      256,
+					TxRingSz:      256,
+					HostIfNameSet: true,
+					HostIfName:    "gvpp-reserved",
+				},
+				RXMode: interface_types.RX_MODE_API_ADAPTIVE,
+			},
+		},
+	}
 	conflictController, err := vppclient.NewController(conflictSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
-	conflictPolicy := vppclient.Policy{Connections: []interfaceintent.Connection{{ID: "conflict-vpp", Name: "tap900", Owner: interfaceintent.OwnerExternal}, {ID: "conflict-host", Name: "gvpp-reserved", Owner: interfaceintent.OwnerExternal}}}
-	if err := conflictController.Reconcile(t.Context(), logger, conflictPolicy); err == nil || !strings.Contains(err.Error(), "already exists") {
+	conflictPolicy := vppclient.Policy{
+		Connections: []interfaceintent.Connection{
+			{ID: "conflict-vpp", Name: "tap900", Owner: interfaceintent.OwnerExternal},
+			{ID: "conflict-host", Name: "gvpp-reserved", Owner: interfaceintent.OwnerExternal},
+		},
+	}
+	if err := conflictController.Reconcile(t.Context(), logger, conflictPolicy); err == nil ||
+		!strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("VPP must reject a foreign Linux TAP before changing it: %v", err)
 	}
 	verifyNAT64Recovery(t, logger, resources, policy)
@@ -187,7 +324,10 @@ func TestControllerRealVPP(t *testing.T) {
 	if err := controller.Reconcile(t.Context(), logger, policy); err != nil {
 		t.Fatalf("repeat VPP reconciliation: %v", err)
 	}
-	for _, route := range []struct{ destination, gateway, link string }{{"64:ff9b::/96", "fd06:fab:9901::2", "gvpp-in"}, {"198.51.100.10/32", "192.0.2.2", "gvpp-out"}} {
+	for _, route := range []struct{ destination, gateway, link string }{
+		{"64:ff9b::/96", "fd06:fab:9901::2", "gvpp-in"},
+		{"198.51.100.10/32", "192.0.2.2", "gvpp-out"},
+	} {
 		link, err := netlink.LinkByName(route.link)
 		if err != nil {
 			t.Fatal(err)
@@ -196,7 +336,11 @@ func TestControllerRealVPP(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := netlink.RouteAdd(&netlink.Route{Dst: destination, Gw: net.ParseIP(route.gateway), LinkIndex: link.Attrs().Index}); err != nil {
+		if err := netlink.RouteAdd(&netlink.Route{
+			Dst:       destination,
+			Gw:        net.ParseIP(route.gateway),
+			LinkIndex: link.Attrs().Index,
+		}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -218,8 +362,15 @@ func TestControllerRealVPP(t *testing.T) {
 		serverResult <- err
 	}()
 	port := listener.Addr().(*net.TCPAddr).Port
-	dialer := net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP("fd06:fab:9901::1")}, Timeout: 10 * time.Second}
-	connection, err := dialer.DialContext(t.Context(), "tcp6", fmt.Sprintf("[64:ff9b::c000:201]:%d", port))
+	dialer := net.Dialer{
+		LocalAddr: &net.TCPAddr{IP: net.ParseIP("fd06:fab:9901::1")},
+		Timeout:   10 * time.Second,
+	}
+	connection, err := dialer.DialContext(
+		t.Context(),
+		"tcp6",
+		fmt.Sprintf("[64:ff9b::c000:201]:%d", port),
+	)
 	if err != nil {
 		t.Fatalf("complete IPv6 to IPv4 TCP connection through API configured NAT64: %v", err)
 	}
@@ -244,7 +395,9 @@ func TestControllerRealVPP(t *testing.T) {
 	}
 	for _, name := range []string{inside.Name, outside.Name} {
 		counter, present := stats[name]
-		if !present || !counter.RXAvailable || !counter.TXAvailable || counter.Counters.Rx.Bytes == 0 || counter.Counters.Tx.Bytes == 0 {
+		if !present || !counter.RXAvailable || !counter.TXAvailable ||
+			counter.Counters.Rx.Bytes == 0 ||
+			counter.Counters.Tx.Bytes == 0 {
 			t.Fatalf("VPP shared memory did not report real TCP traffic for %s: %+v", name, counter)
 		}
 	}
@@ -253,14 +406,36 @@ func TestControllerRealVPP(t *testing.T) {
 	reportSettings.RRDToolPath = filepath.Join(directory, "rrdtool")
 	reportSettings.SampleInterval = "1s"
 	reportSettings.MinProbeSeconds = 1
-	collector, err := reporting.NewCollector(reportSettings, &networkjson.Config{VPP: &policy}, logger)
+	collector, err := reporting.NewCollector(
+		reportSettings,
+		&networkjson.Config{VPP: &policy},
+		logger,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer collector.Close()
-	reportVPP := &config.VPPSection{APISocket: settings.APISocket, StatsSocket: settings.StatsSocket, ExpectedVersion: settings.ExpectedVersion, RequestTimeout: settings.Timeout.String(), StateFile: resources.StateFile}
+	reportVPP := &config.VPPSection{
+		APISocket:       settings.APISocket,
+		StatsSocket:     settings.StatsSocket,
+		ExpectedVersion: settings.ExpectedVersion,
+		RequestTimeout:  settings.Timeout.String(),
+		StateFile:       resources.StateFile,
+	}
 	for _, resource := range resources.TAPs {
-		reportVPP.Interface = append(reportVPP.Interface, config.VPPTAPSection{ConnectionID: resource.ConnectionID, HostConnectionID: "host-" + resource.ConnectionID, ID: resource.Create.ID, RXRingSize: resource.Create.RxRingSz, TXRingSize: resource.Create.TxRingSz, RXQueues: resource.Create.NumRxQueues, TXQueues: resource.Create.NumTxQueues, RXMode: "adaptive"})
+		reportVPP.Interface = append(
+			reportVPP.Interface,
+			config.VPPTAPSection{
+				ConnectionID:     resource.ConnectionID,
+				HostConnectionID: "host-" + resource.ConnectionID,
+				ID:               resource.Create.ID,
+				RXRingSize:       resource.Create.RxRingSz,
+				TXRingSize:       resource.Create.TxRingSz,
+				RXQueues:         resource.Create.NumRxQueues,
+				TXQueues:         resource.Create.NumTxQueues,
+				RXMode:           "adaptive",
+			},
+		)
 	}
 	if err := collector.ConfigureVPP(reportVPP); err != nil {
 		t.Fatal(err)
@@ -275,41 +450,91 @@ func TestControllerRealVPP(t *testing.T) {
 			t.Fatalf("readable VPP interface counters must preserve availability: %+v", traffic)
 		}
 	}
-	t.Run("native VPP profile", func(t *testing.T) {
-		profile, err := vppclient.Profile(t.Context(), settings, executable, 250*time.Millisecond)
-		if err != nil && (errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.EOPNOTSUPP) || errors.Is(err, unix.ENOSYS)) {
-			t.Skipf("the host kernel does not permit native VPP profiling: %v", err)
-		}
-		if err != nil || !profile.Available || len(profile.Threads) == 0 || profile.Counts.Total == 0 {
-			t.Fatalf("profile VPP Linux threads selected by the binary API: %v, %+v", err, profile)
-		}
-		if profile.EmptyPollingAvailable {
-			t.Fatal("native instruction samples must not claim exact empty polling attribution")
-		}
-	})
-	t.Run("optional receive queue accounting", func(t *testing.T) {
-		verifyQueuePolling(t, settings, stats)
-	})
-	t.Run("optional queue profiling CPU cost", func(t *testing.T) {
-		verifyQueueProfileCost(t, settings, executable, idleWaitUsec)
-	})
+	t.Run(
+		"native VPP profile",
+		func(t *testing.T) {
+			profile, err := vppclient.Profile(
+				t.Context(),
+				settings,
+				executable,
+				250*time.Millisecond,
+			)
+			if err != nil &&
+				(errors.Is(err, unix.EPERM) || errors.Is(
+					err,
+					unix.EACCES,
+				) || errors.Is(err, unix.EOPNOTSUPP) || errors.Is(err, unix.ENOSYS)) {
+				t.Skipf("the host kernel does not permit native VPP profiling: %v", err)
+			}
+			if err != nil || !profile.Available || len(profile.Threads) == 0 ||
+				profile.Counts.Total == 0 {
+				t.Fatalf(
+					"profile VPP Linux threads selected by the binary API: %v, %+v",
+					err,
+					profile,
+				)
+			}
+			if profile.EmptyPollingAvailable {
+				t.Fatal("native instruction samples must not claim exact empty polling attribution")
+			}
+		},
+	)
+	t.Run(
+		"optional receive queue accounting",
+		func(t *testing.T) {
+			verifyQueuePolling(t, settings, stats)
+		},
+	)
+	t.Run(
+		"optional queue profiling CPU cost",
+		func(t *testing.T) {
+			verifyQueueProfileCost(t, settings, executable, idleWaitUsec)
+		},
+	)
 	foreign, err := govpp.Connect(settings.APISocket)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer foreign.Disconnect()
 	oldIndex := interface_types.InterfaceIndex(stats[inside.Name].Counters.InterfaceIndex)
-	if _, err := tapv2.NewServiceClient(foreign).TapDeleteV2(t.Context(), &tapv2.TapDeleteV2{SwIfIndex: oldIndex}); err != nil {
+	if _, err := tapv2.NewServiceClient(foreign).TapDeleteV2(
+		t.Context(),
+		&tapv2.TapDeleteV2{SwIfIndex: oldIndex},
+	); err != nil {
 		t.Fatal(err)
 	}
-	foreignTAP, err := tapv2.NewServiceClient(foreign).TapCreateV3(t.Context(), &tapv2.TapCreateV3{ID: 903, UseRandomMac: true, NumRxQueues: 1, NumTxQueues: 1, RxRingSz: 256, TxRingSz: 256, HostIfNameSet: true, HostIfName: "gvpp-foreign", Tag: "foreign"})
+	foreignTAP, err := tapv2.NewServiceClient(foreign).TapCreateV3(
+		t.Context(),
+		&tapv2.TapCreateV3{
+			ID:            903,
+			UseRandomMac:  true,
+			NumRxQueues:   1,
+			NumTxQueues:   1,
+			RxRingSz:      256,
+			TxRingSz:      256,
+			HostIfNameSet: true,
+			HostIfName:    "gvpp-foreign",
+			Tag:           "foreign",
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if foreignTAP.SwIfIndex != oldIndex {
-		t.Fatalf("VPP did not reuse the removed TAP index: got %d, expected %d", foreignTAP.SwIfIndex, oldIndex)
+		t.Fatalf(
+			"VPP did not reuse the removed TAP index: got %d, expected %d",
+			foreignTAP.SwIfIndex,
+			oldIndex,
+		)
 	}
-	if _, err := nat64.NewServiceClient(foreign).Nat64AddDelInterface(t.Context(), &nat64.Nat64AddDelInterface{SwIfIndex: oldIndex, Flags: nat_types.NAT_IS_INSIDE, IsAdd: true}); err != nil {
+	if _, err := nat64.NewServiceClient(foreign).Nat64AddDelInterface(
+		t.Context(),
+		&nat64.Nat64AddDelInterface{
+			SwIfIndex: oldIndex,
+			Flags:     nat_types.NAT_IS_INSIDE,
+			IsAdd:     true,
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := controller.Reconcile(t.Context(), logger, policy); err != nil {
@@ -332,10 +557,14 @@ func TestControllerRealVPP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if remaining[inside.Name] != nil || remaining[outside.Name] != nil || remaining["tap903"] == nil {
+	if remaining[inside.Name] != nil || remaining[outside.Name] != nil ||
+		remaining["tap903"] == nil {
 		t.Fatalf("cleanup did not preserve only the foreign TAP: %v", remaining)
 	}
-	stream, err := nat64.NewServiceClient(foreign).Nat64InterfaceDump(t.Context(), &nat64.Nat64InterfaceDump{})
+	stream, err := nat64.NewServiceClient(foreign).Nat64InterfaceDump(
+		t.Context(),
+		&nat64.Nat64InterfaceDump{},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +583,9 @@ func TestControllerRealVPP(t *testing.T) {
 		}
 	}
 	if !foreignPreserved {
-		t.Fatal("immediate cleanup deleted the NAT64 feature at an unrelated interface's reused index")
+		t.Fatal(
+			"immediate cleanup deleted the NAT64 feature at an unrelated interface's reused index",
+		)
 	}
 	verifyForeignNAT64Resources(t, foreign)
 	started = time.Now()
@@ -364,18 +595,34 @@ func TestControllerRealVPP(t *testing.T) {
 	}
 	for _, traffic := range measurement.VPPTraffic {
 		if traffic.Available {
-			t.Fatalf("removed VPP interface must not produce an available zero measurement: %+v", traffic)
+			t.Fatalf(
+				"removed VPP interface must not produce an available zero measurement: %+v",
+				traffic,
+			)
 		}
 	}
 }
 
 func runVPPIntegrationChild(t *testing.T, idleWaitUsec uint32) {
 	t.Helper()
-	command := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestControllerRealVPP$", "-test.v", "--", "mwan-vpp-integration-child", fmt.Sprint(idleWaitUsec))
+	command := exec.CommandContext(
+		t.Context(),
+		os.Args[0],
+		"-test.run=^TestControllerRealVPP$",
+		"-test.v",
+		"--",
+		"mwan-vpp-integration-child",
+		fmt.Sprint(idleWaitUsec),
+	)
 	command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
 	output, err := command.CombinedOutput()
 	if err != nil {
-		t.Fatalf("run VPP integration with %d microsecond idle waiting in a private network namespace: %v\n%s", idleWaitUsec, err, output)
+		t.Fatalf(
+			"run VPP integration with %d microsecond idle waiting in a private network namespace: %v\n%s",
+			idleWaitUsec,
+			err,
+			output,
+		)
 	}
 	t.Log(string(output))
 }
@@ -393,12 +640,17 @@ func waitHostIPv6(t *testing.T, name string, address netip.Addr) {
 			t.Fatal(err)
 		}
 		for _, candidate := range addresses {
-			if candidate.IP.Equal(net.IP(address.AsSlice())) && candidate.Flags&unix.IFA_F_TENTATIVE == 0 {
+			if candidate.IP.Equal(net.IP(address.AsSlice())) &&
+				candidate.Flags&unix.IFA_F_TENTATIVE == 0 {
 				return
 			}
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("host IPv6 address %s on %s did not complete duplicate address detection", address, name)
+			t.Fatalf(
+				"host IPv6 address %s on %s did not complete duplicate address detection",
+				address,
+				name,
+			)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

@@ -46,9 +46,12 @@ const (
 func TestSteeringMapRoutesBothMarks(t *testing.T) {
 	for _, mode := range []hashMode{hashModeRandom, hashModeSource, hashModeSourceDestination} {
 		for _, family := range []int{unix.AF_INET, unix.AF_INET6} {
-			t.Run(string(mode)+"/"+strconv.Itoa(family), func(t *testing.T) {
-				testSteeringMapRoutes(t, mode, family)
-			})
+			t.Run(
+				string(mode)+"/"+strconv.Itoa(family),
+				func(t *testing.T) {
+					testSteeringMapRoutes(t, mode, family)
+				},
+			)
 		}
 	}
 }
@@ -79,8 +82,10 @@ func testSteeringMapRoutes(t *testing.T, mode hashMode, family int) {
 	ctx, cancel := context.WithDeadline(t.Context(), deadline)
 	defer cancel()
 	for path, value := range map[string]string{
-		"/proc/sys/net/ipv4/conf/all/rp_filter": "0", "/proc/sys/net/ipv4/conf/default/rp_filter": "0",
-		"/proc/sys/net/ipv4/ip_forward": "1", "/proc/sys/net/ipv6/conf/all/forwarding": "1",
+		"/proc/sys/net/ipv4/conf/all/rp_filter":     "0",
+		"/proc/sys/net/ipv4/conf/default/rp_filter": "0",
+		"/proc/sys/net/ipv4/ip_forward":             "1",
+		"/proc/sys/net/ipv6/conf/all/forwarding":    "1",
 	} {
 		if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
 			t.Fatal(err)
@@ -93,19 +98,31 @@ func testSteeringMapRoutes(t *testing.T, mode hashMode, family int) {
 	if family == unix.AF_INET6 {
 		destination = netip.MustParseAddr("2001:db8:2::8")
 	}
-	markProofRoutes(t, family, destination, []netlink.Link{first, second}, []netlink.Link{firstPeer, secondPeer})
+	markProofRoutes(
+		t,
+		family,
+		destination,
+		[]netlink.Link{first, second},
+		[]netlink.Link{firstPeer, secondPeer},
+	)
 	markProofSaveMark(t)
 	policy := markProofPolicy(t, mode, input, first, second)
 	store := wanstate.New()
-	store.SetRouting(0, map[string]wanstate.MemberRouting{
-		"wan0": {Carrying: true, SelectionEnabled: true, V4Ready: true, V6Ready: true},
-		"wan1": {Carrying: true, SelectionEnabled: true, V4Ready: true, V6Ready: true},
-	})
+	store.SetRouting(
+		0,
+		map[string]wanstate.MemberRouting{
+			"wan0": {Carrying: true, SelectionEnabled: true, V4Ready: true, V6Ready: true},
+			"wan1": {Carrying: true, SelectionEnabled: true, V4Ready: true, V6Ready: true},
+		},
+	)
 	translation := wanstate.MemberTranslation{
 		V4: wanstate.FamilyTranslation{Mode: "native", Ready: true},
 		V6: wanstate.FamilyTranslation{Mode: "native", Ready: true},
 	}
-	store.SetTranslation(map[string]wanstate.MemberTranslation{"wan0": translation, "wan1": translation})
+	store.SetTranslation(map[string]wanstate.MemberTranslation{
+		"wan0": translation,
+		"wan1": translation,
+	})
 	writer, err := New(policy)
 	if err != nil {
 		t.Fatal(err)
@@ -130,37 +147,82 @@ func markProofPolicy(t *testing.T, mode hashMode, input, first, second netlink.L
 		t.Fatal(err)
 	}
 	return Config{
-		InternalIface: input.Attrs().Name, InternalNetV4: "10.0.0.0/16",
-		InternalPrefix: "fd00::/64", OpnsenseEdgeV6: "fd00::1", HashMode: string(mode), HealthStateFile: healthPath,
+		InternalIface:   input.Attrs().Name,
+		InternalNetV4:   "10.0.0.0/16",
+		InternalPrefix:  "fd00::/64",
+		OpnsenseEdgeV6:  "fd00::1",
+		HashMode:        string(mode),
+		HealthStateFile: healthPath,
 		Members: []Member{
-			{WANRef: ifmgr.WANRef{Name: "wan0", Iface: first.Attrs().Name}, Mark: markProofFirstMark, Weight: 1},
-			{WANRef: ifmgr.WANRef{Name: "wan1", Iface: second.Attrs().Name}, Mark: markProofSecondMark, Weight: 1},
+			{
+				WANRef: ifmgr.WANRef{Name: "wan0", Iface: first.Attrs().Name},
+				Mark:   markProofFirstMark,
+				Weight: 1,
+			},
+			{
+				WANRef: ifmgr.WANRef{Name: "wan1", Iface: second.Attrs().Name},
+				Mark:   markProofSecondMark,
+				Weight: 1,
+			},
 		},
 	}
 }
 
-func markProofRoutes(t *testing.T, family int, destination netip.Addr, providers, peers []netlink.Link) {
+func markProofRoutes(
+	t *testing.T,
+	family int,
+	destination netip.Addr,
+	providers []netlink.Link,
+	peers []netlink.Link,
+) {
 	t.Helper()
 	defaultRoute := netip.PrefixFrom(destination, 0).Masked()
 	for index, provider := range providers {
 		route := netlink.Route{
-			Family: family, Table: markProofTable + index, LinkIndex: provider.Attrs().Index,
-			Dst: &net.IPNet{IP: defaultRoute.Addr().AsSlice(), Mask: net.CIDRMask(0, destination.BitLen())},
+			Family:    family,
+			Table:     markProofTable + index,
+			LinkIndex: provider.Attrs().Index,
+			Dst: &net.IPNet{
+				IP:   defaultRoute.Addr().AsSlice(),
+				Mask: net.CIDRMask(0, destination.BitLen()),
+			},
 		}
 		if err := netlink.RouteAdd(&route); err != nil {
-			t.Fatalf("install packet proof route family=%d table=%d interface=%s destination=%s: %v", family, route.Table, provider.Attrs().Name, route.Dst, err)
+			t.Fatalf(
+				"install packet proof route family=%d table=%d interface=%s destination=%s: %v",
+				family,
+				route.Table,
+				provider.Attrs().Name,
+				route.Dst,
+				err,
+			)
 		}
 		rule := netlink.NewRule()
 		rule.Family, rule.Priority, rule.Table = family, markProofPriority+index, route.Table
 		rule.Mark = []uint32{markProofFirstMark, markProofSecondMark}[index]
 		if err := netlink.RuleAdd(rule); err != nil {
-			t.Fatalf("install packet proof rule family=%d table=%d mark=%d: %v", family, rule.Table, rule.Mark, err)
+			t.Fatalf(
+				"install packet proof rule family=%d table=%d mark=%d: %v",
+				family,
+				rule.Table,
+				rule.Mark,
+				err,
+			)
 		}
 		if err := netlink.NeighSet(&netlink.Neigh{
-			LinkIndex: provider.Attrs().Index, Family: family, IP: destination.AsSlice(),
-			HardwareAddr: peers[index].Attrs().HardwareAddr, State: unix.NUD_PERMANENT,
+			LinkIndex:    provider.Attrs().Index,
+			Family:       family,
+			IP:           destination.AsSlice(),
+			HardwareAddr: peers[index].Attrs().HardwareAddr,
+			State:        unix.NUD_PERMANENT,
 		}); err != nil {
-			t.Fatalf("install packet proof neighbor family=%d interface=%s destination=%s: %v", family, provider.Attrs().Name, destination, err)
+			t.Fatalf(
+				"install packet proof neighbor family=%d interface=%s destination=%s: %v",
+				family,
+				provider.Attrs().Name,
+				destination,
+				err,
+			)
 		}
 	}
 }
@@ -171,22 +233,40 @@ func markProofSaveMark(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	table := connection.AddTable(&nftables.Table{Name: "mark-proof", Family: nftables.TableFamilyINet})
+	table := connection.AddTable(&nftables.Table{
+		Name:   "mark-proof",
+		Family: nftables.TableFamilyINet,
+	})
 	priority, policy := nftables.ChainPriorityMangle, nftables.ChainPolicyAccept
 	chain := connection.AddChain(&nftables.Chain{
-		Name: "postrouting", Table: table, Type: nftables.ChainTypeFilter,
-		Hooknum: nftables.ChainHookPostrouting, Priority: priority, Policy: &policy,
+		Name:     "postrouting",
+		Table:    table,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookPostrouting,
+		Priority: priority,
+		Policy:   &policy,
 	})
-	connection.AddRule(&nftables.Rule{Table: table, Chain: chain, Exprs: []expr.Any{
-		&expr.Meta{Key: expr.MetaKeyMARK, Register: 1},
-		&expr.Ct{Key: expr.CtKeyMARK, Register: 1, SourceRegister: true},
-	}})
+	connection.AddRule(&nftables.Rule{
+		Table: table,
+		Chain: chain,
+		Exprs: []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyMARK, Register: 1},
+			&expr.Ct{Key: expr.CtKeyMARK, Register: 1, SourceRegister: true},
+		},
+	})
 	if err := connection.Flush(); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func markProofPackets(t *testing.T, ctx context.Context, input, sender netlink.Link, peers []netlink.Link, destination netip.Addr) {
+func markProofPackets(
+	t *testing.T,
+	ctx context.Context,
+	input netlink.Link,
+	sender netlink.Link,
+	peers []netlink.Link,
+	destination netip.Addr,
+) {
 	t.Helper()
 	protocol := uint16(unix.ETH_P_IP)
 	if destination.Is6() {
@@ -194,7 +274,11 @@ func markProofPackets(t *testing.T, ctx context.Context, input, sender netlink.L
 	}
 	poll := make([]unix.PollFd, len(peers))
 	for index, peer := range peers {
-		socket, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW|unix.SOCK_NONBLOCK|unix.SOCK_CLOEXEC, int(hairpinNetworkShort(protocol)))
+		socket, err := unix.Socket(
+			unix.AF_PACKET,
+			unix.SOCK_RAW|unix.SOCK_NONBLOCK|unix.SOCK_CLOEXEC,
+			int(hairpinNetworkShort(protocol)),
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -203,7 +287,13 @@ func markProofPackets(t *testing.T, ctx context.Context, input, sender netlink.L
 			t.Fatal("packet socket descriptor exceeds poll width")
 		}
 		t.Cleanup(func() { unix.Close(socket) })
-		if err := unix.Bind(socket, &unix.SockaddrLinklayer{Ifindex: peer.Attrs().Index, Protocol: hairpinNetworkShort(protocol)}); err != nil {
+		if err := unix.Bind(
+			socket,
+			&unix.SockaddrLinklayer{
+				Ifindex:  peer.Attrs().Index,
+				Protocol: hairpinNetworkShort(protocol),
+			},
+		); err != nil {
 			t.Fatal(err)
 		}
 		poll[index] = unix.PollFd{Fd: int32(socket), Events: unix.POLLIN}
@@ -226,15 +316,39 @@ func markProofPackets(t *testing.T, ctx context.Context, input, sender netlink.L
 			source = netip.AddrFrom4(bytes)
 		}
 		frame := markProofFrame(t, input, sender, source, destination)
-		if err := unix.Sendto(senderSocket, frame, 0, &unix.SockaddrLinklayer{Ifindex: sender.Attrs().Index, Protocol: hairpinNetworkShort(protocol)}); err != nil {
+		if err := unix.Sendto(
+			senderSocket,
+			frame,
+			0,
+			&unix.SockaddrLinklayer{
+				Ifindex:  sender.Attrs().Index,
+				Protocol: hairpinNetworkShort(protocol),
+			},
+		); err != nil {
 			t.Fatal(err)
 		}
 		provider := markProofReceive(t, ctx, poll, source, destination)
-		flow := conntrack.NewFlow(unix.IPPROTO_UDP, 0, source, destination, markProofSourcePort, markProofDestPort, markProofFlowExpiry, 0)
+		flow := conntrack.NewFlow(
+			unix.IPPROTO_UDP,
+			0,
+			source,
+			destination,
+			markProofSourcePort,
+			markProofDestPort,
+			markProofFlowExpiry,
+			0,
+		)
 		current, err := offload.LookupConntrackFlow(ctx, flow.TupleOrig, 0)
 		expectedMark := []uint32{markProofFirstMark, markProofSecondMark}[provider]
 		if err != nil || current.Mark != expectedMark {
-			t.Fatalf("packet source=%s provider=%d conntrack mark=%d expected=%d error=%v", source, provider, current.Mark, expectedMark, err)
+			t.Fatalf(
+				"packet source=%s provider=%d conntrack mark=%d expected=%d error=%v",
+				source,
+				provider,
+				current.Mark,
+				expectedMark,
+				err,
+			)
 		}
 		seen[provider] = true
 		t.Logf("source=%s provider=%d mark=%d", source, provider, current.Mark)
@@ -244,17 +358,40 @@ func markProofPackets(t *testing.T, ctx context.Context, input, sender netlink.L
 	}
 }
 
-func markProofFrame(t *testing.T, input, sender netlink.Link, source, destination netip.Addr) []byte {
+func markProofFrame(
+	t *testing.T,
+	input netlink.Link,
+	sender netlink.Link,
+	source netip.Addr,
+	destination netip.Addr,
+) []byte {
 	t.Helper()
-	ethernet := &layers.Ethernet{SrcMAC: sender.Attrs().HardwareAddr, DstMAC: input.Attrs().HardwareAddr, EthernetType: layers.EthernetTypeIPv4}
+	ethernet := &layers.Ethernet{
+		SrcMAC:       sender.Attrs().HardwareAddr,
+		DstMAC:       input.Attrs().HardwareAddr,
+		EthernetType: layers.EthernetTypeIPv4,
+	}
 	var network gopacket.NetworkLayer
 	var serialized gopacket.SerializableLayer
 	if source.Is4() {
-		ipv4 := &layers.IPv4{Version: 4, IHL: 5, TTL: 64, SrcIP: source.AsSlice(), DstIP: destination.AsSlice(), Protocol: layers.IPProtocolUDP}
+		ipv4 := &layers.IPv4{
+			Version:  4,
+			IHL:      5,
+			TTL:      64,
+			SrcIP:    source.AsSlice(),
+			DstIP:    destination.AsSlice(),
+			Protocol: layers.IPProtocolUDP,
+		}
 		network, serialized = ipv4, ipv4
 	} else {
 		ethernet.EthernetType = layers.EthernetTypeIPv6
-		ipv6 := &layers.IPv6{Version: 6, HopLimit: 64, SrcIP: source.AsSlice(), DstIP: destination.AsSlice(), NextHeader: layers.IPProtocolUDP}
+		ipv6 := &layers.IPv6{
+			Version:    6,
+			HopLimit:   64,
+			SrcIP:      source.AsSlice(),
+			DstIP:      destination.AsSlice(),
+			NextHeader: layers.IPProtocolUDP,
+		}
 		network, serialized = ipv6, ipv6
 	}
 	udp := &layers.UDP{SrcPort: markProofSourcePort, DstPort: markProofDestPort}
@@ -262,13 +399,26 @@ func markProofFrame(t *testing.T, input, sender netlink.Link, source, destinatio
 		t.Fatal(err)
 	}
 	buffer := gopacket.NewSerializeBuffer()
-	if err := gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}, ethernet, serialized, udp, gopacket.Payload("steering marks")); err != nil {
+	if err := gopacket.SerializeLayers(
+		buffer,
+		gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true},
+		ethernet,
+		serialized,
+		udp,
+		gopacket.Payload("steering marks"),
+	); err != nil {
 		t.Fatal(err)
 	}
 	return buffer.Bytes()
 }
 
-func markProofReceive(t *testing.T, ctx context.Context, poll []unix.PollFd, source, destination netip.Addr) int {
+func markProofReceive(
+	t *testing.T,
+	ctx context.Context,
+	poll []unix.PollFd,
+	source netip.Addr,
+	destination netip.Addr,
+) int {
 	t.Helper()
 	deadline, _ := ctx.Deadline()
 	for ctx.Err() == nil {
@@ -299,7 +449,12 @@ func markProofReceive(t *testing.T, ctx context.Context, poll []unix.PollFd, sou
 			}
 		}
 	}
-	t.Fatalf("steering did not forward source=%s destination=%s before the test deadline: %v", source, destination, ctx.Err())
+	t.Fatalf(
+		"steering did not forward source=%s destination=%s before the test deadline: %v",
+		source,
+		destination,
+		ctx.Err(),
+	)
 	return 0
 }
 
@@ -310,9 +465,11 @@ func markProofForwarded(packet gopacket.Packet, source, destination netip.Addr) 
 	}
 	switch network := packet.NetworkLayer().(type) {
 	case *layers.IPv4:
-		return network.TTL == 63 && network.SrcIP.Equal(source.AsSlice()) && network.DstIP.Equal(destination.AsSlice())
+		return network.TTL == 63 && network.SrcIP.Equal(source.AsSlice()) &&
+			network.DstIP.Equal(destination.AsSlice())
 	case *layers.IPv6:
-		return network.HopLimit == 63 && network.SrcIP.Equal(source.AsSlice()) && network.DstIP.Equal(destination.AsSlice())
+		return network.HopLimit == 63 && network.SrcIP.Equal(source.AsSlice()) &&
+			network.DstIP.Equal(destination.AsSlice())
 	default:
 		return false
 	}

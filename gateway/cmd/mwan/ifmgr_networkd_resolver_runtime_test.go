@@ -49,7 +49,11 @@ func TestNetworkdResolverDaemonRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for destination, source := range map[string]string{"/etc/mwan": networkDir, "/etc/systemd/network": unitDir, "/usr/local/share/wanconfig/yang": schemaDir} {
+	for destination, source := range map[string]string{
+		"/etc/mwan":                       networkDir,
+		"/etc/systemd/network":            unitDir,
+		"/usr/local/share/wanconfig/yang": schemaDir,
+	} {
 		bindStartupDirectory(t, source, destination)
 		t.Cleanup(func() {
 			if err := unix.Unmount(destination, 0); err != nil {
@@ -58,14 +62,46 @@ func TestNetworkdResolverDaemonRuntime(t *testing.T) {
 		})
 	}
 	networkdResolverCommand(t, "systemctl", "restart", "systemd-networkd")
-	networkdResolverCommand(t, "systemctl", "is-active", "systemd-udevd", "systemd-networkd", "systemd-resolved", "dbus")
+	networkdResolverCommand(
+		t,
+		"systemctl",
+		"is-active",
+		"systemd-udevd",
+		"systemd-networkd",
+		"systemd-resolved",
+		"dbus",
+	)
 	t.Cleanup(func() { networkdResolverCommand(t, "systemctl", "stop", "systemd-networkd") })
 	setRuntimeLoopback(t)
-	management := newRuntimePeer(t, gateway, "enmgmt0", "dns-mgmt", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
+	management := newRuntimePeer(
+		t,
+		gateway,
+		"enmgmt0",
+		"dns-mgmt",
+		[]string{"203.0.113.1/24"},
+		[]string{"203.0.113.2/24"},
+		"",
+	)
 	defer management.namespace.Close()
-	lan := newRuntimePeer(t, gateway, "enmwanbr0", "dns-lan", []string{"192.0.2.1/29"}, []string{"192.0.2.2/29"}, "")
+	lan := newRuntimePeer(
+		t,
+		gateway,
+		"enmwanbr0",
+		"dns-lan",
+		[]string{"192.0.2.1/29"},
+		[]string{"192.0.2.2/29"},
+		"",
+	)
 	defer lan.namespace.Close()
-	provider := newRuntimePeer(t, gateway, "enwebpass0", "dns-server", nil, []string{"10.52.1.2/24", "fd52:1::2/64"}, "02:00:5e:52:10:01")
+	provider := newRuntimePeer(
+		t,
+		gateway,
+		"enwebpass0",
+		"dns-server",
+		nil,
+		[]string{"10.52.1.2/24", "fd52:1::2/64"},
+		"02:00:5e:52:10:01",
+	)
 	defer provider.namespace.Close()
 	setRuntimeNamespace(t, provider.namespace)
 	queries := startNetworkdResolverAuthority(t)
@@ -79,7 +115,8 @@ func TestNetworkdResolverDaemonRuntime(t *testing.T) {
 		}
 		found := false
 		for _, rejection := range loaded.Rejected {
-			if rejection.Interface == "enwebpass0" && strings.Contains(rejection.Err.Error(), "section Network key "+key+" is set by") {
+			if rejection.Interface == "enwebpass0" &&
+				strings.Contains(rejection.Err.Error(), "section Network key "+key+" is set by") {
 				found = true
 			}
 		}
@@ -90,7 +127,12 @@ func TestNetworkdResolverDaemonRuntime(t *testing.T) {
 	writeNetworkdResolverFixture(t, networkDir, "")
 	binary := protocolTestBinary(t)
 	configPath := filepath.Join(root, "config.toml")
-	configuration := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = false\n", filepath.Join(root, "links.json"), filepath.Join(root, "addresses.json"), filepath.Join(root, "kernel-policy.json"))
+	configuration := fmt.Sprintf(
+		"[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = false\n",
+		filepath.Join(root, "links.json"),
+		filepath.Join(root, "addresses.json"),
+		filepath.Join(root, "kernel-policy.json"),
+	)
 	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -104,11 +146,26 @@ func TestNetworkdResolverDaemonRuntime(t *testing.T) {
 			t.Fatalf("MWAN-owned link %s produced a networkd unit: %v", name, err)
 		}
 	}
-	output := networkdResolverCommand(t, "resolvectl", "query", "--cache=no", "--interface=enwebpass0", "sensor")
+	output := networkdResolverCommand(
+		t,
+		"resolvectl",
+		"query",
+		"--cache=no",
+		"--interface=enwebpass0",
+		"sensor",
+	)
 	if !strings.Contains(output, "10.52.1.99") || queries.Load() == 0 {
-		t.Fatalf("single-label resolution failed: %s; authoritative queries=%d", output, queries.Load())
+		t.Fatalf(
+			"single-label resolution failed: %s; authoritative queries=%d",
+			output,
+			queries.Load(),
+		)
 	}
-	t.Logf("single-label resolution: %s; authoritative queries=%d", strings.TrimSpace(output), queries.Load())
+	t.Logf(
+		"single-label resolution: %s; authoritative queries=%d",
+		strings.TrimSpace(output),
+		queries.Load(),
+	)
 }
 
 func networkdResolverCommand(t *testing.T, name string, arguments ...string) string {
@@ -126,15 +183,36 @@ func waitNetworkdResolverValues(t *testing.T, daemon *runtimeDaemon) {
 	for time.Now().Before(deadline) {
 		servers, serversErr := exec.Command("resolvectl", "dns", "enwebpass0").CombinedOutput()
 		domains, domainsErr := exec.Command("resolvectl", "domain", "enwebpass0").CombinedOutput()
-		if serversErr == nil && domainsErr == nil && strings.HasSuffix(strings.TrimSpace(string(servers)), "10.52.1.2 fd52:1::2") && strings.HasSuffix(strings.TrimSpace(string(domains)), "networkd.test other.test") {
+		if serversErr == nil && domainsErr == nil &&
+			strings.HasSuffix(strings.TrimSpace(string(servers)), "10.52.1.2 fd52:1::2") &&
+			strings.HasSuffix(strings.TrimSpace(string(domains)), "networkd.test other.test") {
 			return
 		}
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	status, statusErr := exec.Command("networkctl", "status", "enwebpass0", "--no-pager").CombinedOutput()
-	journal, journalErr := exec.Command("journalctl", "-u", "systemd-networkd", "--no-pager", "-n", "25").CombinedOutput()
-	t.Fatalf("networkd resolver values were not installed: status=%s (%v); journal=%s (%v); daemon=%s", status, statusErr, journal, journalErr, runtimeDaemonLog(t, daemon))
+	status, statusErr := exec.Command(
+		"networkctl",
+		"status",
+		"enwebpass0",
+		"--no-pager",
+	).CombinedOutput()
+	journal, journalErr := exec.Command(
+		"journalctl",
+		"-u",
+		"systemd-networkd",
+		"--no-pager",
+		"-n",
+		"25",
+	).CombinedOutput()
+	t.Fatalf(
+		"networkd resolver values were not installed: status=%s (%v); journal=%s (%v); daemon=%s",
+		status,
+		statusErr,
+		journal,
+		journalErr,
+		runtimeDaemonLog(t, daemon),
+	)
 }
 
 func writeNetworkdResolverFixture(t *testing.T, directory, collision string) {
@@ -166,9 +244,15 @@ func writeNetworkdResolverFixture(t *testing.T, directory, collision string) {
 		}
 		entry["goodkind-mwan-steering:link-files"] = json.RawMessage(`"rendered"`)
 		entry["goodkind-mwan-steering:owner"] = json.RawMessage(`"networkd"`)
-		entry["goodkind-mwan-steering:link"] = json.RawMessage(`{"match":{"hardware-address":"02:00:5e:52:10:01"}}`)
-		entry["ietf-ip:ipv4"] = json.RawMessage(`{"goodkind-mwan-steering:dhcp":false,"address":[{"ip":"10.52.1.1","prefix-length":24}],"goodkind-mwan-steering:resolver":{"dns":["10.52.1.2"],"search":["networkd.test"]},"goodkind-mwan-steering:translation":{"mode":"native"}}`)
-		entry["ietf-ip:ipv6"] = json.RawMessage(`{"goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:accept-ra":false,"address":[{"ip":"fd52:1::1","prefix-length":64}],"goodkind-mwan-steering:resolver":{"dns":["fd52:1::2"],"search":["networkd.test","other.test"]},"goodkind-mwan-steering:translation":{"mode":"native"}}`)
+		entry["goodkind-mwan-steering:link"] = json.RawMessage(
+			`{"match":{"hardware-address":"02:00:5e:52:10:01"}}`,
+		)
+		entry["ietf-ip:ipv4"] = json.RawMessage(
+			`{"goodkind-mwan-steering:dhcp":false,"address":[{"ip":"10.52.1.1","prefix-length":24}],"goodkind-mwan-steering:resolver":{"dns":["10.52.1.2"],"search":["networkd.test"]},"goodkind-mwan-steering:translation":{"mode":"native"}}`,
+		)
+		entry["ietf-ip:ipv6"] = json.RawMessage(
+			`{"goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:accept-ra":false,"address":[{"ip":"fd52:1::1","prefix-length":64}],"goodkind-mwan-steering:resolver":{"dns":["fd52:1::2"],"search":["networkd.test","other.test"]},"goodkind-mwan-steering:translation":{"mode":"native"}}`,
+		)
 		value := "no"
 		key := "LLMNR"
 		if collision != "" {
@@ -178,7 +262,13 @@ func writeNetworkdResolverFixture(t *testing.T, directory, collision string) {
 				value = "collision.test"
 			}
 		}
-		entry["goodkind-mwan-steering:networkd"] = json.RawMessage(fmt.Sprintf(`{"file":[{"kind":"network","section":[{"index":0,"name":"Network","entry":[{"index":0,"key":%q,"value":%q}]}]}]}`, key, value))
+		entry["goodkind-mwan-steering:networkd"] = json.RawMessage(
+			fmt.Sprintf(
+				`{"file":[{"kind":"network","section":[{"index":0,"name":"Network","entry":[{"index":0,"key":%q,"value":%q}]}]}]}`,
+				key,
+				value,
+			),
+		)
 	}
 	interfaces["interface"], err = json.Marshal(entries)
 	if err != nil {
@@ -222,9 +312,22 @@ func startNetworkdResolverAuthority(t *testing.T) *atomic.Int64 {
 			message.Header.Response = true
 			message.Header.Authoritative = true
 			for _, question := range message.Questions {
-				if question.Name.String() == "sensor.networkd.test." && question.Type == dnsmessage.TypeA {
+				if question.Name.String() == "sensor.networkd.test." &&
+					question.Type == dnsmessage.TypeA {
 					queries.Add(1)
-					message.Answers = append(message.Answers, dnsmessage.Resource{Header: dnsmessage.ResourceHeader{Name: question.Name, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET, TTL: 1, Length: 0}, Body: &dnsmessage.AResource{A: [4]byte{10, 52, 1, 99}}})
+					message.Answers = append(
+						message.Answers,
+						dnsmessage.Resource{
+							Header: dnsmessage.ResourceHeader{
+								Name:   question.Name,
+								Type:   dnsmessage.TypeA,
+								Class:  dnsmessage.ClassINET,
+								TTL:    1,
+								Length: 0,
+							},
+							Body: &dnsmessage.AResource{A: [4]byte{10, 52, 1, 99}},
+						},
+					)
 				}
 			}
 			response, err := message.Pack()

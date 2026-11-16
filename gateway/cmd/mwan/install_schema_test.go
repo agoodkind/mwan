@@ -45,9 +45,11 @@ func TestMain(m *testing.M) {
 		main()
 		os.Exit(0)
 	}
+
 	if step := os.Getenv(childSysrepoEnv); step != "" {
 		os.Exit(runSysrepoStep(step, os.Args[1:]))
 	}
+
 	os.Exit(m.Run())
 }
 
@@ -60,35 +62,51 @@ func runSysrepoStep(step string, args []string) int {
 		fmt.Fprintf(os.Stderr, "connect: %v\n", err)
 		return 1
 	}
+
 	defer func() { _ = datastore.Close() }()
 	switch step {
 	case "seed":
 		models := make([]yangpub.Model, 0, len(args)-1)
 		for _, path := range args[1:] {
-			models = append(models, yangpub.Model{Path: path, Features: seedFeatures(path), Update: false})
+			models = append(
+				models,
+				yangpub.Model{Path: path, Features: seedFeatures(path), Update: false},
+			)
 		}
+
 		if _, err := datastore.InstallModules(context.Background(), models, args[0]); err != nil {
 			fmt.Fprintf(os.Stderr, "seed: %v\n", err)
 			return 1
 		}
+
 		return 0
 	case "library":
 		tree, found, err := datastore.ExportJSON(
-			context.Background(), yangpub.DatastoreOperational, "/ietf-yang-library:yang-library",
+			context.Background(),
+			yangpub.DatastoreOperational,
+			"/ietf-yang-library:yang-library",
 		)
 		if err != nil || !found {
 			fmt.Fprintf(os.Stderr, "read the yang library: found=%v err=%v\n", found, err)
 			return 1
 		}
+
 		fmt.Fprint(os.Stdout, tree)
+
 		return 0
 	case "export":
-		tree, _, err := datastore.ExportJSON(context.Background(), yangpub.Datastore(args[0]), args[1])
+		tree, _, err := datastore.ExportJSON(
+			context.Background(),
+			yangpub.Datastore(args[0]),
+			args[1],
+		)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "export %s from %s: %v\n", args[1], args[0], err)
 			return 1
 		}
+
 		fmt.Fprint(os.Stdout, tree)
+
 		return 0
 	case "import":
 		document, err := os.ReadFile(args[2])
@@ -96,15 +114,22 @@ func runSysrepoStep(step string, args []string) int {
 			fmt.Fprintf(os.Stderr, "read %s: %v\n", args[2], err)
 			return 1
 		}
+
 		if err := datastore.ImportConfig(
-			context.Background(), yangpub.Datastore(args[0]), args[1], document,
+			context.Background(),
+			yangpub.Datastore(args[0]),
+			args[1],
+			document,
 		); err != nil {
 			fmt.Fprintf(os.Stderr, "import %s into %s: %v\n", args[2], args[0], err)
 			return 1
 		}
+
 		return 0
 	}
+
 	fmt.Fprintf(os.Stderr, "unknown step %q\n", step)
+
 	return 1
 }
 
@@ -112,11 +137,13 @@ func runSysrepoStep(step string, args []string) int {
 // for it, so the seeded repository is the one a deploy would have left.
 func seedFeatures(path string) []string {
 	name, _ := moduleFileNameRevision(filepath.Base(path))
+
 	for _, module := range schema.Modules() {
 		if moduleName, _ := moduleFileNameRevision(module.File); moduleName == name {
 			return module.Features
 		}
 	}
+
 	return nil
 }
 
@@ -129,8 +156,15 @@ func runChild(t *testing.T, env []string, args ...string) string {
 	command.Stdout = &stdout
 	command.Stderr = &stderr
 	if err := command.Run(); err != nil {
-		t.Fatalf("child %v: %v\nstdout:\n%s\nstderr:\n%s", args, err, stdout.String(), stderr.String())
+		t.Fatalf(
+			"child %v: %v\nstdout:\n%s\nstderr:\n%s",
+			args,
+			err,
+			stdout.String(),
+			stderr.String(),
+		)
 	}
+
 	return stdout.String()
 }
 
@@ -142,6 +176,7 @@ func seedStackModules(t *testing.T, root string) {
 	if _, err := os.Stat(dir); err == nil {
 		return
 	}
+
 	if err := os.CopyFS(dir, os.DirFS(stackFixtureDir)); err != nil {
 		t.Fatalf("copy %s to %s: %v", stackFixtureDir, dir, err)
 	}
@@ -151,6 +186,7 @@ func runInstallChild(t *testing.T, root string) string {
 	t.Helper()
 	seedStackModules(t, root)
 	env := []string{childMainEnv + "=1"}
+
 	return runChild(t, env, "install", "--apply", "--role", "wan", "--root", root)
 }
 
@@ -158,7 +194,19 @@ func runInstallChildOn(t *testing.T, root string, guest config.GuestType) string
 	t.Helper()
 	seedStackModules(t, root)
 	env := []string{childMainEnv + "=1"}
-	return runChild(t, env, "install", "--apply", "--role", "wan", "--guest-type", string(guest), "--root", root)
+
+	return runChild(
+		t,
+		env,
+		"install",
+		"--apply",
+		"--role",
+		"wan",
+		"--guest-type",
+		string(guest),
+		"--root",
+		root,
+	)
 }
 
 // sysrepoChildRuns numbers the sysrepo child steps, so parallel tests never
@@ -172,8 +220,14 @@ var sysrepoChildRuns atomic.Uint64
 // no other call's segments.
 func sysrepoChildEnv(t *testing.T, root string, step string, prefix string) []string {
 	t.Helper()
-	shmPrefix := fmt.Sprintf("mwaninstalltest%d_%d_%s", os.Getpid(), sysrepoChildRuns.Add(1), prefix)
+	shmPrefix := fmt.Sprintf(
+		"mwaninstalltest%d_%d_%s",
+		os.Getpid(),
+		sysrepoChildRuns.Add(1),
+		prefix,
+	)
 	t.Cleanup(func() { removeSelftestSHM(slog.New(slog.DiscardHandler), shmPrefix) })
+
 	return []string{
 		childSysrepoEnv + "=" + step,
 		"SYSREPO_REPOSITORY_PATH=" + filepath.Join(root, "/etc/sysrepo"),
@@ -208,12 +262,18 @@ func implementedModules(t *testing.T, root string, prefix string) map[string]imp
 	if err := json.Unmarshal([]byte(tree), &library); err != nil {
 		t.Fatalf("decode the yang library: %v\n%s", err, tree)
 	}
+
 	modules := make(map[string]implementedModule)
+
 	for _, set := range library.Library.ModuleSets {
 		for _, module := range set.Modules {
-			modules[module.Name] = implementedModule{revision: module.Revision, features: module.Features}
+			modules[module.Name] = implementedModule{
+				revision: module.Revision,
+				features: module.Features,
+			}
 		}
 	}
+
 	return modules
 }
 
@@ -222,7 +282,12 @@ func implementedModules(t *testing.T, root string, prefix string) map[string]imp
 // interface-type registry. The two base type modules are left out, because
 // libyang and sysrepo load their own revisions of those.
 var gatewayModules = []string{
-	"iana-if-type", "ietf-interfaces", "ietf-ip", "ietf-routing", "ietf-nat", "goodkind-mwan-steering",
+	"iana-if-type",
+	"ietf-interfaces",
+	"ietf-ip",
+	"ietf-routing",
+	"ietf-nat",
+	"goodkind-mwan-steering",
 }
 
 // olderSteeringFixture is the steering model one revision before the one the
@@ -240,6 +305,7 @@ func TestInstallApplyInstallsTheSchemaIntoSysrepo(t *testing.T) {
 	if _, err := yangpub.WriteSchema(embeddedDir); err != nil {
 		t.Fatalf("write the embedded schema: %v", err)
 	}
+
 	modules := schema.Modules()
 	for _, module := range modules {
 		onDisk, err := os.ReadFile(filepath.Join(root, networkjson.DefaultSchemaDir, module.File))
@@ -247,32 +313,43 @@ func TestInstallApplyInstallsTheSchemaIntoSysrepo(t *testing.T) {
 			t.Errorf("read the installed %s: %v", module.File, err)
 			continue
 		}
+
 		embedded, err := os.ReadFile(filepath.Join(embeddedDir, module.File))
 		if err != nil {
 			t.Fatalf("read the embedded %s: %v", module.File, err)
 		}
+
 		if !bytes.Equal(onDisk, embedded) {
 			t.Errorf("the installed %s differs from the embedded copy", module.File)
 		}
 	}
 
 	implemented := implementedModules(t, root, "a")
+
 	for _, module := range modules {
 		name, revision := moduleFileNameRevision(module.File)
 		if !slices.Contains(gatewayModules, name) {
 			continue
 		}
+
 		got, found := implemented[name]
 		if !found {
 			t.Errorf("%s is not implemented in the repository", name)
 			continue
 		}
+
 		if got.revision != revision {
 			t.Errorf("%s revision = %q, want %q", name, got.revision, revision)
 		}
+
 		for _, feature := range module.Features {
 			if !slices.Contains(got.features, feature) {
-				t.Errorf("%s does not have feature %s enabled; enabled: %v", name, feature, got.features)
+				t.Errorf(
+					"%s does not have feature %s enabled; enabled: %v",
+					name,
+					feature,
+					got.features,
+				)
 			}
 		}
 	}
@@ -293,9 +370,11 @@ func TestInstallApplyInstallsTheSchemaIntoSysrepo(t *testing.T) {
 			t.Errorf("%s is not implemented in the repository", module.Name)
 			continue
 		}
+
 		if got.revision != module.Revision {
 			t.Errorf("%s revision = %q, want %q", module.Name, got.revision, module.Revision)
 		}
+
 		wantLine := "installed module " + module.Name + "@" + module.Revision
 		if !strings.Contains(first, wantLine) {
 			t.Errorf("run output:\n%s\nwant a line %q", first, wantLine)
@@ -320,7 +399,11 @@ func TestInstallApplyUpdatesAnOlderSteeringRevision(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	seedSteeringRevision(t, root, olderSteeringFixture)
-	if got := implementedModules(t, root, "before")["goodkind-mwan-steering"].revision; got != "2026-09-13" {
+	if got := implementedModules(
+		t,
+		root,
+		"before",
+	)["goodkind-mwan-steering"].revision; got != "2026-09-13" {
 		t.Fatalf("seeded steering revision = %q, want 2026-09-13", got)
 	}
 
@@ -331,6 +414,7 @@ func TestInstallApplyUpdatesAnOlderSteeringRevision(t *testing.T) {
 	if got.revision != wantRevision {
 		t.Fatalf("steering revision after the run = %q, want %q", got.revision, wantRevision)
 	}
+
 	wantLine := "updated module goodkind-mwan-steering from 2026-09-13 to " + wantRevision
 	if !strings.Contains(output, wantLine) {
 		t.Fatalf("run output:\n%s\nwant a line %q", output, wantLine)
@@ -341,16 +425,31 @@ func TestInstallApplyUpdatesSteeringForMasquerade(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	seedSteeringRevision(t, root, "testdata/goodkind-mwan-steering@2026-10-16.yang")
-	runChild(t, sysrepoChildEnv(t, root, "import", "import"), string(yangpub.DatastoreStartup), "ietf-interfaces", storedSessionFixture)
+	runChild(
+		t,
+		sysrepoChildEnv(t, root, "import", "import"),
+		string(yangpub.DatastoreStartup),
+		"ietf-interfaces",
+		storedSessionFixture,
+	)
 	before := exportStoredSession(t, root, "before")
 	output := runInstallChild(t, root)
 	_, wantRevision := moduleFileNameRevision(schema.SteeringFile)
-	if got := implementedModules(t, root, "after")["goodkind-mwan-steering"].revision; got != wantRevision {
+	if got := implementedModules(
+		t,
+		root,
+		"after",
+	)["goodkind-mwan-steering"].revision; got != wantRevision {
 		t.Fatalf("steering revision = %q, want %q", got, wantRevision)
 	}
-	if !strings.Contains(output, "updated module goodkind-mwan-steering from 2026-10-16 to "+wantRevision) {
+
+	if !strings.Contains(
+		output,
+		"updated module goodkind-mwan-steering from 2026-10-16 to "+wantRevision,
+	) {
 		t.Fatalf("steering update missing: %s", output)
 	}
+
 	if after := exportStoredSession(t, root, "after"); after != before {
 		t.Fatalf("stored session changed: before=%s after=%s", before, after)
 	}
@@ -369,8 +468,13 @@ func TestInstallApplyUpdatesSteeringRevisionWithStoredBGPSession(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	seedSteeringRevision(t, root, releasedSteeringFixture)
-	runChild(t, sysrepoChildEnv(t, root, "import", "import"),
-		string(yangpub.DatastoreStartup), "ietf-interfaces", storedSessionFixture)
+	runChild(
+		t,
+		sysrepoChildEnv(t, root, "import", "import"),
+		string(yangpub.DatastoreStartup),
+		"ietf-interfaces",
+		storedSessionFixture,
+	)
 	before := exportStoredSession(t, root, "before")
 	if !strings.Contains(before, `"router-id": "192.0.2.130"`) {
 		t.Fatalf("stored session before the run:\n%s\nwant router-id 192.0.2.130", before)
@@ -383,16 +487,25 @@ func TestInstallApplyUpdatesSteeringRevisionWithStoredBGPSession(t *testing.T) {
 	if !strings.Contains(output, wantLine) {
 		t.Fatalf("run output:\n%s\nwant a line %q", output, wantLine)
 	}
+
 	if after := exportStoredSession(t, root, "after"); after != before {
-		t.Fatalf("stored session after the run:\n%s\nwant the session before the run:\n%s", after, before)
+		t.Fatalf(
+			"stored session after the run:\n%s\nwant the session before the run:\n%s",
+			after,
+			before,
+		)
 	}
 }
 
 func exportStoredSession(t *testing.T, root string, prefix string) string {
 	t.Helper()
-	return runChild(t, sysrepoChildEnv(t, root, "export", prefix),
+
+	return runChild(
+		t,
+		sysrepoChildEnv(t, root, "export", prefix),
 		string(yangpub.DatastoreStartup),
-		"/ietf-interfaces:interfaces/interface[name='tun6in4']/goodkind-mwan-steering:wan/bgp-session[name='vps']")
+		"/ietf-interfaces:interfaces/interface[name='tun6in4']/goodkind-mwan-steering:wan/bgp-session[name='vps']",
+	)
 }
 
 // The upgrade test needs the earlier steering revision alongside the embedded
@@ -405,27 +518,34 @@ func seedSteeringRevision(t *testing.T, root string, fixture string) {
 	if err != nil {
 		t.Fatalf("write the embedded schema: %v", err)
 	}
+
 	older, err := os.ReadFile(fixture)
 	if err != nil {
 		t.Fatalf("read the older steering model: %v", err)
 	}
+
 	olderPath := filepath.Join(olderDir, filepath.Base(fixture))
 	if err := os.WriteFile(olderPath, older, 0o644); err != nil {
 		t.Fatalf("write the older steering model: %v", err)
 	}
+
 	// The older revision replaces the embedded one, both as the model to
 	// seed and in the directory imports resolve from.
 	seedArgs := []string{olderDir}
+
 	for _, model := range models {
 		if strings.HasPrefix(filepath.Base(model.Path), "goodkind-mwan-steering@") {
 			if err := os.Remove(model.Path); err != nil {
 				t.Fatalf("remove the embedded steering model: %v", err)
 			}
+
 			seedArgs = append(seedArgs, olderPath)
 			continue
 		}
+
 		seedArgs = append(seedArgs, model.Path)
 	}
+
 	runChild(t, sysrepoChildEnv(t, root, "seed", "seed"), seedArgs...)
 }
 

@@ -38,7 +38,9 @@ func TestDHCPSourceRuleLifecycle(t *testing.T) {
 	const iface = "wan-source"
 	const priority = 7
 	const table = 500
-	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: iface}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{Name: iface},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	link, err := netlink.LinkByName(iface)
@@ -63,22 +65,44 @@ func TestDHCPSourceRuleLifecycle(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	client := netif.StartDHCPClient(ctx, slog.Default(), netif.DHCPConfig{Iface: iface, DiscoverTimeout: time.Minute})
+	client := netif.StartDHCPClient(
+		ctx,
+		slog.Default(),
+		netif.DHCPConfig{Iface: iface, DiscoverTimeout: time.Minute},
+	)
 	stateFile := filepath.Join(t.TempDir(), "state.json")
-	settings := Config{Iface: iface, OOBTableID: table, SourceRulePriority: priority, StateFile: stateFile}
+	settings := Config{
+		Iface:              iface,
+		OOBTableID:         table,
+		SourceRulePriority: priority,
+		StateFile:          stateFile,
+	}
 	created, err := New(settings)
 	if err != nil {
 		t.Fatal(err)
 	}
 	module := created.(*Module)
-	if err := module.Init(ctx, &ifmgr.Env{Iface: iface, Log: slog.Default(), DHCP: client}); err != nil {
+	if err := module.Init(
+		ctx,
+		&ifmgr.Env{Iface: iface, Log: slog.Default(), DHCP: client},
+	); err != nil {
 		t.Fatal(err)
 	}
 	lease := netif.LeaseInfo{
-		State: netif.LeaseBound, LinkIndex: link.Attrs().Index, LinkHardwareAddr: link.Attrs().HardwareAddr,
-		IP: net.IPv4(192, 0, 2, 8), PrefixLen: 24, Routes: []netif.LeaseRoute{{
-			Destination: &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)}, Gateway: net.IPv4(192, 0, 2, 1),
-		}},
+		State:            netif.LeaseBound,
+		LinkIndex:        link.Attrs().Index,
+		LinkHardwareAddr: link.Attrs().HardwareAddr,
+		IP:               net.IPv4(192, 0, 2, 8),
+		PrefixLen:        24,
+		Routes: []netif.LeaseRoute{
+			{
+				Destination: &net.IPNet{
+					IP:   net.IPv4zero,
+					Mask: net.CIDRMask(0, 32),
+				},
+				Gateway: net.IPv4(192, 0, 2, 1),
+			},
+		},
 	}
 	for index, source := range []string{"192.0.2.8", "192.0.2.9"} {
 		if index == 1 {
@@ -87,7 +111,15 @@ func TestDHCPSourceRuleLifecycle(t *testing.T) {
 				t.Fatal(err)
 			}
 			module = created.(*Module)
-			if err := module.Init(ctx, &ifmgr.Env{Iface: iface, Log: slog.Default(), DHCP: client, DHCPRecoveryPending: true}); err != nil {
+			if err := module.Init(
+				ctx,
+				&ifmgr.Env{
+					Iface:               iface,
+					Log:                 slog.Default(),
+					DHCP:                client,
+					DHCPRecoveryPending: true,
+				},
+			); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -118,13 +150,24 @@ func assertSourceRules(t *testing.T, priority, table int, source string) {
 		if rule.UIDRange != nil && rule.UIDRange.Start == 1000 && rule.UIDRange.End == 1000 {
 			uid++
 		}
-		if rule.Src != nil && rule.Src.String() == "192.0.2.8/32" && rule.Protocol == foreignRuleProtocol {
+		if rule.Src != nil && rule.Src.String() == "192.0.2.8/32" &&
+			rule.Protocol == foreignRuleProtocol {
 			foreign++
 		}
 		if rule.Protocol == sourceRuleProtocol && rule.Src != nil {
 			owned++
 			if rule.Src.String() != source+"/32" {
-				t.Fatalf("source rule = %s, want %s/32; type=%d goto=%d flow=%d suppress=%d/%d mask=%v", rule.Src, source, rule.Type, rule.Goto, rule.Flow, rule.SuppressIfgroup, rule.SuppressPrefixlen, rule.Mask)
+				t.Fatalf(
+					"source rule = %s, want %s/32; type=%d goto=%d flow=%d suppress=%d/%d mask=%v",
+					rule.Src,
+					source,
+					rule.Type,
+					rule.Goto,
+					rule.Flow,
+					rule.SuppressIfgroup,
+					rule.SuppressPrefixlen,
+					rule.Mask,
+				)
 			}
 		}
 	}
@@ -133,6 +176,12 @@ func assertSourceRules(t *testing.T, priority, table int, source string) {
 		want = 1
 	}
 	if owned != want || uid != 1 || foreign != 1 {
-		t.Fatalf("source rules=%d, UID rules=%d, foreign rules=%d; want %d, 1, 1", owned, uid, foreign, want)
+		t.Fatalf(
+			"source rules=%d, UID rules=%d, foreign rules=%d; want %d, 1, 1",
+			owned,
+			uid,
+			foreign,
+			want,
+		)
 	}
 }

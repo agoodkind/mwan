@@ -68,7 +68,11 @@ func (worker *NativeRuntime) run(config C.struct_mwan_native_config, ready chan<
 	}
 }
 
-func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativeRequest, active *bool) (nativeReply, bool) {
+func (worker *NativeRuntime) execute(
+	owner **C.struct_mwan_native,
+	request nativeRequest,
+	active *bool,
+) (nativeReply, bool) {
 	var result nativeReply
 	if worker.shuttingDown && request.operation != nativeShutdown {
 		result.err = worker.closedError()
@@ -90,9 +94,11 @@ func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativ
 		var retirement C.struct_mwan_native_retirement_stats
 		rc = C.mwan_native_retirement_query(*owner, &retirement, &detail)
 		result.retirement = NativeRetirementStats{
-			ActivePairCapacity: uint32(retirement.active_pair_capacity), RetainedPairCapacity: uint32(retirement.retained_pair_capacity),
-			RetainedPairs: uint32(retirement.retained_pairs), DrainingPairs: uint32(retirement.draining_pairs),
-			RetainedDirections: uint64(retirement.retained_directions),
+			ActivePairCapacity:   uint32(retirement.active_pair_capacity),
+			RetainedPairCapacity: uint32(retirement.retained_pair_capacity),
+			RetainedPairs:        uint32(retirement.retained_pairs),
+			DrainingPairs:        uint32(retirement.draining_pairs),
+			RetainedDirections:   uint64(retirement.retained_directions),
 		}
 	case nativeQuery:
 		rc = C.mwan_native_pair_query(*owner, request.handle, &stats, &detail)
@@ -124,13 +130,23 @@ func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativ
 		result.err = worker.shutdownError()
 	}
 	// Admission logs rejected counter evidence with its connection identity.
-	if result.err != nil && request.operation != nativeQuery && (!request.observed || !nativeAdmissionFallback(result.err)) {
-		worker.log.Warn("native operation failed", "operation", request.operation, "err", result.err)
+	if result.err != nil && request.operation != nativeQuery &&
+		(!request.observed || !nativeAdmissionFallback(result.err)) {
+		worker.log.Warn(
+			"native operation failed",
+			"operation",
+			request.operation,
+			"err",
+			result.err,
+		)
 	}
 	return result, request.operation == nativeShutdown && rc == 0
 }
 
-func (worker *NativeRuntime) installOnOwner(owner *C.struct_mwan_native, request nativeRequest) nativeReply {
+func (worker *NativeRuntime) installOnOwner(
+	owner *C.struct_mwan_native,
+	request nativeRequest,
+) nativeReply {
 	var result nativeReply
 	if !request.deadline.IsZero() && worker.clock.Now().After(request.deadline) {
 		result.err = context.DeadlineExceeded
@@ -145,11 +161,31 @@ func (worker *NativeRuntime) installOnOwner(owner *C.struct_mwan_native, request
 	var rc C.int
 	switch {
 	case request.operation == nativeReobserve:
-		rc = C.mwan_native_pair_reobserve(owner, request.handle, &request.pair, &request.guards[0], &pair, &detail)
+		rc = C.mwan_native_pair_reobserve(
+			owner,
+			request.handle,
+			&request.pair,
+			&request.guards[0],
+			&pair,
+			&detail,
+		)
 	case request.operation == nativeResume:
-		rc = C.mwan_native_pair_resume_observed(owner, request.handle, &request.pair, &request.guards[0], &pair, &detail)
+		rc = C.mwan_native_pair_resume_observed(
+			owner,
+			request.handle,
+			&request.pair,
+			&request.guards[0],
+			&pair,
+			&detail,
+		)
 	case request.observed:
-		rc = C.mwan_native_pair_install_observed(owner, &request.pair, &request.guards[0], &pair, &detail)
+		rc = C.mwan_native_pair_install_observed(
+			owner,
+			&request.pair,
+			&request.guards[0],
+			&pair,
+			&detail,
+		)
 	default:
 		rc = C.mwan_native_pair_install(owner, &request.pair, &pair, &detail)
 	}
@@ -159,7 +195,11 @@ func (worker *NativeRuntime) installOnOwner(owner *C.struct_mwan_native, request
 	return result
 }
 
-func (worker *NativeRuntime) revalidateInstalledEvidence(owner *C.struct_mwan_native, evidence *NativeEvidenceGuard, result *nativeReply) {
+func (worker *NativeRuntime) revalidateInstalledEvidence(
+	owner *C.struct_mwan_native,
+	evidence *NativeEvidenceGuard,
+	result *nativeReply,
+) {
 	if result.pair.InstalledDirections == 0 || evidence == nil {
 		return
 	}
@@ -199,5 +239,7 @@ func (worker *NativeRuntime) completeEvidence(operation nativeOperation, result 
 }
 
 func nativeAdmissionFallback(err error) bool {
-	return errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.ENOTSUP) || errors.Is(err, syscall.EEXIST) || errors.Is(err, syscall.EINVAL)
+	return errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.ENOTSUP) ||
+		errors.Is(err, syscall.EEXIST) ||
+		errors.Is(err, syscall.EINVAL)
 }

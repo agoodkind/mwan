@@ -34,7 +34,9 @@ func TestOwnedLinkAliasOnCreate(t *testing.T) {
 		}
 		return
 	}
-	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "alias-parent"}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{Name: "alias-parent"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	parent, err := netlink.LinkByName("alias-parent")
@@ -42,8 +44,18 @@ func TestOwnedLinkAliasOnCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 	links := []netlink.Link{
-		&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "alias-vlan", Alias: "mwan-link:alias-vlan", ParentIndex: parent.Attrs().Index}, VlanId: 397, VlanProtocol: netlink.VLAN_PROTOCOL_8021Q},
-		&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "alias-bridge", Alias: "mwan-link:alias-bridge"}},
+		&netlink.Vlan{
+			LinkAttrs: netlink.LinkAttrs{
+				Name:        "alias-vlan",
+				Alias:       "mwan-link:alias-vlan",
+				ParentIndex: parent.Attrs().Index,
+			},
+			VlanId:       397,
+			VlanProtocol: netlink.VLAN_PROTOCOL_8021Q,
+		},
+		&netlink.Bridge{
+			LinkAttrs: netlink.LinkAttrs{Name: "alias-bridge", Alias: "mwan-link:alias-bridge"},
+		},
 	}
 	for _, requested := range links {
 		if err := netlink.LinkAdd(requested); err != nil {
@@ -57,7 +69,10 @@ func TestOwnedLinkAliasOnCreate(t *testing.T) {
 			if observed.Attrs().Alias != "" {
 				t.Errorf("%s: unexpected alias %q", requested.Attrs().Name, observed.Attrs().Alias)
 			}
-			t.Logf("%s: LinkAdd ignored requested alias; staged creation is required", requested.Attrs().Name)
+			t.Logf(
+				"%s: LinkAdd ignored requested alias; staged creation is required",
+				requested.Attrs().Name,
+			)
 		}
 	}
 }
@@ -77,8 +92,10 @@ func TestOwnedLinkReservationFromOlderBoot(t *testing.T) {
 		return
 	}
 	connection := interfaceintent.Connection{
-		ID: "older-boot-bridge", Name: "older-boot-br",
-		Owner: interfaceintent.OwnerMWAN, Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+		ID:    "older-boot-bridge",
+		Name:  "older-boot-br",
+		Owner: interfaceintent.OwnerMWAN,
+		Link:  &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 	}
 	statePath := filepath.Join(t.TempDir(), "links.json")
 	// The journal file has the incomplete record that an interrupted creation
@@ -94,9 +111,18 @@ func TestOwnedLinkReservationFromOlderBoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err := rebooted.Reconcile(context.Background(), log, []interfaceintent.Connection{connection}, nil)
+	results, err := rebooted.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{connection},
+		nil,
+	)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
-		t.Fatalf("reservation from an older boot blocked link creation: results=%+v err=%v", results, err)
+		t.Fatalf(
+			"reservation from an older boot blocked link creation: results=%+v err=%v",
+			results,
+			err,
+		)
 	}
 	bridge, err := netlink.LinkByName(connection.Name)
 	if err != nil {
@@ -107,11 +133,20 @@ func TestOwnedLinkReservationFromOlderBoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err = restarted.Reconcile(context.Background(), log, []interfaceintent.Connection{connection}, nil)
+	results, err = restarted.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{connection},
+		nil,
+	)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady ||
 		results[0].IfIndex != bridge.Attrs().Index {
-		t.Fatalf("restart after the older boot recovery replaced the bridge: results=%+v err=%v index=%d",
-			results, err, bridge.Attrs().Index)
+		t.Fatalf(
+			"restart after the older boot recovery replaced the bridge: results=%+v err=%v index=%d",
+			results,
+			err,
+			bridge.Attrs().Index,
+		)
 	}
 }
 
@@ -133,7 +168,10 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: "owned-parent", HardwareAddr: parentMAC}, PeerName: "owned-peer"}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Veth{
+		LinkAttrs: netlink.LinkAttrs{Name: "owned-parent", HardwareAddr: parentMAC},
+		PeerName:  "owned-peer",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	parent, err := netlink.LinkByName("owned-parent")
@@ -143,23 +181,35 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err := netlink.LinkSetUp(parent); err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "foreign-br"}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Bridge{
+		LinkAttrs: netlink.LinkAttrs{Name: "foreign-br"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	parentConnection := interfaceintent.Connection{
-		ID: "owned-parent", Name: "configured-parent", Owner: interfaceintent.OwnerExternal,
+		ID:    "owned-parent",
+		Name:  "configured-parent",
+		Owner: interfaceintent.OwnerExternal,
 		Link: &interfaceintent.Link{
 			Kind:  interfaceintent.KindPhysical,
 			Match: interfaceintent.Match{HardwareAddress: parentMAC.String()},
 		},
 	}
 	vlanConnection := interfaceintent.Connection{
-		ID: "owned-vlan", Name: "owned-vlan", Owner: interfaceintent.OwnerMWAN,
-		Link: &interfaceintent.Link{Kind: interfaceintent.KindVLAN, VLAN: &interfaceintent.VLAN{Parent: parentConnection.Name, ID: 397}, BridgeMaster: "owned-bridge"},
+		ID:    "owned-vlan",
+		Name:  "owned-vlan",
+		Owner: interfaceintent.OwnerMWAN,
+		Link: &interfaceintent.Link{
+			Kind:         interfaceintent.KindVLAN,
+			VLAN:         &interfaceintent.VLAN{Parent: parentConnection.Name, ID: 397},
+			BridgeMaster: "owned-bridge",
+		},
 	}
 	bridgeConnection := interfaceintent.Connection{
-		ID: "owned-bridge", Name: "owned-bridge", Owner: interfaceintent.OwnerMWAN,
-		Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+		ID:    "owned-bridge",
+		Name:  "owned-bridge",
+		Owner: interfaceintent.OwnerMWAN,
+		Link:  &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 	}
 	connections := []interfaceintent.Connection{vlanConnection, parentConnection, bridgeConnection}
 	statePath := filepath.Join(t.TempDir(), "links.json")
@@ -173,7 +223,8 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, result := range results {
-		if result.Err != nil || result.Status != OwnedLinkReady && result.Status != OwnedLinkPendingRename {
+		if result.Err != nil ||
+			result.Status != OwnedLinkReady && result.Status != OwnedLinkPendingRename {
 			t.Fatalf("initial result = %+v", result)
 		}
 	}
@@ -185,7 +236,8 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if vlan.Attrs().ParentIndex != parent.Attrs().Index || vlan.Attrs().MasterIndex != bridge.Attrs().Index ||
+	if vlan.Attrs().ParentIndex != parent.Attrs().Index ||
+		vlan.Attrs().MasterIndex != bridge.Attrs().Index ||
 		vlan.Attrs().Alias != reconciler.state.Virtuals[vlanConnection.ID.String()].Alias ||
 		bridge.Attrs().Alias != reconciler.state.Virtuals[bridgeConnection.ID.String()].Alias {
 		t.Fatalf("created links: vlan=%+v bridge=%+v", vlan, bridge)
@@ -231,7 +283,12 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil || len(staleResults) != 2 || staleResults[1].Status != OwnedLinkFailed {
 		t.Fatalf("replaced bridge index adopted: results=%+v err=%v", staleResults, err)
 	}
-	staleResults, err = stale.Reconcile(context.Background(), log, []interfaceintent.Connection{vlanConnection, parentConnection}, nil)
+	staleResults, err = stale.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{vlanConnection, parentConnection},
+		nil,
+	)
 	if err != nil || len(staleResults) != 1 {
 		t.Fatalf("stale journal pruned bridge: results=%+v err=%v", staleResults, err)
 	}
@@ -266,8 +323,12 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	renamedLink := *vlanConnection.Link
 	renamedLink.BridgeMaster = renamedBridge.Name
 	renamedVLAN.Link = &renamedLink
-	results, err = restarted.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{renamedVLAN, parentConnection, renamedBridge}, nil)
+	results, err = restarted.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{renamedVLAN, parentConnection, renamedBridge},
+		nil,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +344,12 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err := netlink.LinkSetName(bridge, "external-br"); err != nil {
 		t.Fatal(err)
 	}
-	results, err = restarted.Reconcile(context.Background(), log, []interfaceintent.Connection{parentConnection}, nil)
+	results, err = restarted.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{parentConnection},
+		nil,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,25 +375,37 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatalf("external parent removed: %v", err)
 	}
 	recovery := interfaceintent.Connection{
-		ID: "recovered-bridge", Name: "recover-br",
-		Owner: interfaceintent.OwnerMWAN, Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+		ID:    "recovered-bridge",
+		Name:  "recover-br",
+		Owner: interfaceintent.OwnerMWAN,
+		Link:  &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 	}
 	restarted.state.Virtuals[recovery.ID.String()] = virtualRecord{
-		BootID: restarted.bootID, ConnectionID: recovery.ID.String(), Alias: aliasFor(recovery.ID.String()) + ":recovery-token",
-		TempName: "mw-recovery", Name: recovery.Name,
-		Kind: string(interfaceintent.KindBridge),
+		BootID:       restarted.bootID,
+		ConnectionID: recovery.ID.String(),
+		Alias:        aliasFor(recovery.ID.String()) + ":recovery-token",
+		TempName:     "mw-recovery",
+		Name:         recovery.Name,
+		Kind:         string(interfaceintent.KindBridge),
 	}
 	if err := restarted.save(); err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "mw-recovery"}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Bridge{
+		LinkAttrs: netlink.LinkAttrs{Name: "mw-recovery"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	recovered, err := NewOwnedLinkReconciler(statePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err = recovered.Reconcile(context.Background(), log, []interfaceintent.Connection{recovery}, nil)
+	results, err = recovered.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{recovery},
+		nil,
+	)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("recover reserved bridge: results=%+v err=%v", results, err)
 	}
@@ -339,54 +417,78 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatalf("recovered bridge: link=%+v err=%v", bridge, err)
 	}
 	interrupted := interfaceintent.Connection{
-		ID: "renamed-before-save", Name: "before-save",
-		Owner: interfaceintent.OwnerMWAN, Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+		ID:    "renamed-before-save",
+		Name:  "before-save",
+		Owner: interfaceintent.OwnerMWAN,
+		Link:  &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 	}
 	recovered.state.Virtuals[interrupted.ID.String()] = virtualRecord{
-		BootID: recovered.bootID, ConnectionID: interrupted.ID.String(), Alias: aliasFor(interrupted.ID.String()) + ":before-save-token",
-		TempName: "mw-before-save", Name: interrupted.Name, Kind: string(interfaceintent.KindBridge),
+		BootID:       recovered.bootID,
+		ConnectionID: interrupted.ID.String(),
+		Alias:        aliasFor(interrupted.ID.String()) + ":before-save-token",
+		TempName:     "mw-before-save",
+		Name:         interrupted.Name,
+		Kind:         string(interfaceintent.KindBridge),
 	}
 	if err := recovered.save(); err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: interrupted.Name}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Bridge{
+		LinkAttrs: netlink.LinkAttrs{Name: interrupted.Name},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	interruptedLink, err := netlink.LinkByName(interrupted.Name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkSetAlias(interruptedLink, recovered.state.Virtuals[interrupted.ID.String()].Alias); err != nil {
+	if err := netlink.LinkSetAlias(
+		interruptedLink,
+		recovered.state.Virtuals[interrupted.ID.String()].Alias,
+	); err != nil {
 		t.Fatal(err)
 	}
 	crashRestart, err := NewOwnedLinkReconciler(statePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err = crashRestart.Reconcile(context.Background(), log, []interfaceintent.Connection{recovery, interrupted}, nil)
+	results, err = crashRestart.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{recovery, interrupted},
+		nil,
+	)
 	if err != nil || len(results) != 2 || results[1].Status != OwnedLinkReady {
 		t.Fatalf("renamed before journal completion: results=%+v err=%v", results, err)
 	}
-	if record := crashRestart.state.Virtuals[interrupted.ID.String()]; !record.Complete || record.LinkIndex != interruptedLink.Attrs().Index {
+	if record := crashRestart.state.Virtuals[interrupted.ID.String()]; !record.Complete ||
+		record.LinkIndex != interruptedLink.Attrs().Index {
 		t.Fatalf("interrupted rename journal = %+v", record)
 	}
 	collision := interfaceintent.Connection{
-		ID: "alias-collision", Name: "alias-collision",
-		Owner: interfaceintent.OwnerMWAN, Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+		ID:    "alias-collision",
+		Name:  "alias-collision",
+		Owner: interfaceintent.OwnerMWAN,
+		Link:  &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 	}
 	collisionState, err := NewOwnedLinkReconciler(filepath.Join(t.TempDir(), "collision.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	collisionState.state.Virtuals[collision.ID.String()] = virtualRecord{
-		BootID: collisionState.bootID, ConnectionID: collision.ID.String(),
-		Alias:    aliasFor(collision.ID.String()) + ":reserved-token",
-		TempName: "mw-collision", Name: collision.Name, Kind: string(interfaceintent.KindBridge),
+		BootID:       collisionState.bootID,
+		ConnectionID: collision.ID.String(),
+		Alias:        aliasFor(collision.ID.String()) + ":reserved-token",
+		TempName:     "mw-collision",
+		Name:         collision.Name,
+		Kind:         string(interfaceintent.KindBridge),
 	}
 	if err := collisionState.save(); err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: collision.Name}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Bridge{
+		LinkAttrs: netlink.LinkAttrs{Name: collision.Name},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	foreignCollision, err := netlink.LinkByName(collision.Name)
@@ -400,7 +502,12 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err = collisionRestart.Reconcile(context.Background(), log, []interfaceintent.Connection{collision}, nil)
+	results, err = collisionRestart.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{collision},
+		nil,
+	)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
 		t.Fatalf("predictable alias was adopted: results=%+v err=%v", results, err)
 	}
@@ -409,10 +516,14 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatalf("foreign alias collision changed: link=%+v err=%v", foreignCollision, err)
 	}
 	untagged := interfaceintent.Connection{
-		ID: "untagged-name", Name: "untagged-name",
-		Owner: interfaceintent.OwnerMWAN, Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+		ID:    "untagged-name",
+		Name:  "untagged-name",
+		Owner: interfaceintent.OwnerMWAN,
+		Link:  &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 	}
-	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: untagged.Name}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Bridge{
+		LinkAttrs: netlink.LinkAttrs{Name: untagged.Name},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	foreignUntagged, err := netlink.LinkByName(untagged.Name)
@@ -423,7 +534,12 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err = untaggedState.Reconcile(context.Background(), log, []interfaceintent.Connection{untagged}, nil)
+	results, err = untaggedState.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{untagged},
+		nil,
+	)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
 		t.Fatalf("foreign untagged name was accepted: results=%+v err=%v", results, err)
 	}
@@ -434,34 +550,49 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil || foreignUntaggedAfter.Attrs().Index != foreignUntagged.Attrs().Index {
 		t.Fatalf("foreign untagged link changed: link=%+v err=%v", foreignUntaggedAfter, err)
 	}
-	interruptedRemoval, err := NewOwnedLinkReconciler(filepath.Join(t.TempDir(), "interrupted-removal.json"))
+	interruptedRemoval, err := NewOwnedLinkReconciler(
+		filepath.Join(t.TempDir(), "interrupted-removal.json"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"mw-prune-temp", "prune-final"} {
 		id := "prune-" + name
 		interruptedRemoval.state.Virtuals[id] = virtualRecord{
-			BootID: interruptedRemoval.bootID, ConnectionID: id,
-			Alias: aliasFor(id) + ":reserved-token", TempName: "mw-prune-temp",
-			Name: "prune-final", Kind: string(interfaceintent.KindBridge),
+			BootID:       interruptedRemoval.bootID,
+			ConnectionID: id,
+			Alias:        aliasFor(id) + ":reserved-token",
+			TempName:     "mw-prune-temp",
+			Name:         "prune-final",
+			Kind:         string(interfaceintent.KindBridge),
 		}
-		if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: name}}); err != nil {
+		if err := netlink.LinkAdd(&netlink.Bridge{
+			LinkAttrs: netlink.LinkAttrs{Name: name},
+		}); err != nil {
 			t.Fatal(err)
 		}
 		link, err := netlink.LinkByName(name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := netlink.LinkSetAlias(link, interruptedRemoval.state.Virtuals[id].Alias); err != nil {
+		if err := netlink.LinkSetAlias(
+			link,
+			interruptedRemoval.state.Virtuals[id].Alias,
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
 	interruptedRemoval.state.Virtuals["untagged-reservation"] = virtualRecord{
-		BootID: interruptedRemoval.bootID, ConnectionID: "untagged-reservation",
-		Alias:    aliasFor("untagged-reservation") + ":reserved-token",
-		TempName: "mw-untagged", Name: "untagged-final", Kind: string(interfaceintent.KindBridge),
+		BootID:       interruptedRemoval.bootID,
+		ConnectionID: "untagged-reservation",
+		Alias:        aliasFor("untagged-reservation") + ":reserved-token",
+		TempName:     "mw-untagged",
+		Name:         "untagged-final",
+		Kind:         string(interfaceintent.KindBridge),
 	}
-	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "mw-untagged"}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Bridge{
+		LinkAttrs: netlink.LinkAttrs{Name: "mw-untagged"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := interruptedRemoval.save(); err != nil {
@@ -482,7 +613,9 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if _, exists := interruptedRemoval.state.Virtuals["untagged-reservation"]; !exists {
 		t.Fatal("untagged reservation was forgotten")
 	}
-	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "retry-parent"}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Bridge{
+		LinkAttrs: netlink.LinkAttrs{Name: "retry-parent"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	retryParent, err := netlink.LinkByName("retry-parent")
@@ -493,23 +626,31 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	retryConnection := interfaceintent.Connection{
-		ID: "retry-vlan", Name: "retry-vlan", Owner: interfaceintent.OwnerMWAN,
+		ID:    "retry-vlan",
+		Name:  "retry-vlan",
+		Owner: interfaceintent.OwnerMWAN,
 		Link: &interfaceintent.Link{
 			Kind: interfaceintent.KindVLAN,
 			VLAN: &interfaceintent.VLAN{Parent: "retry-parent", ID: 398},
 		},
 	}
 	retryParentConnection := interfaceintent.Connection{
-		ID: "retry-parent", Name: "retry-parent",
-		Owner: interfaceintent.OwnerExternal, Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+		ID:    "retry-parent",
+		Name:  "retry-parent",
+		Owner: interfaceintent.OwnerExternal,
+		Link:  &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 	}
 	retryStatePath := filepath.Join(t.TempDir(), "retry.json")
 	retryReconciler, err := NewOwnedLinkReconciler(retryStatePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	retryResults, err := retryReconciler.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{retryParentConnection, retryConnection}, nil)
+	retryResults, err := retryReconciler.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{retryParentConnection, retryConnection},
+		nil,
+	)
 	if err != nil || len(retryResults) != 1 || retryResults[0].Status != OwnedLinkWaiting ||
 		retryResults[0].Operation != "wait-for-parent" {
 		t.Fatalf("deleted parent result: results=%+v err=%v", retryResults, err)
@@ -521,7 +662,9 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if _, exists := onDisk.state.Virtuals[retryConnection.ID.String()]; exists {
 		t.Fatal("failed LinkAdd left a blocking reservation")
 	}
-	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "retry-parent"}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Bridge{
+		LinkAttrs: netlink.LinkAttrs{Name: "retry-parent"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	retryParent, err = netlink.LinkByName("retry-parent")
@@ -531,8 +674,12 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err := netlink.LinkSetUp(retryParent); err != nil {
 		t.Fatal(err)
 	}
-	results, err = onDisk.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{retryParentConnection, retryConnection}, nil)
+	results, err = onDisk.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{retryParentConnection, retryConnection},
+		nil,
+	)
 	if err != nil || len(results) < 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("retry after parent recreation: results=%+v err=%v", results, err)
 	}
@@ -542,8 +689,12 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		waitGroup.Add(1)
 		go func() {
 			defer waitGroup.Done()
-			results, err := onDisk.Reconcile(context.Background(), log,
-				[]interfaceintent.Connection{retryParentConnection, retryConnection}, nil)
+			results, err := onDisk.Reconcile(
+				context.Background(),
+				log,
+				[]interfaceintent.Connection{retryParentConnection, retryConnection},
+				nil,
+			)
 			if err != nil {
 				failures <- err
 				return
@@ -561,7 +712,9 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if _, err := NewOwnedLinkReconciler(statePath); err != nil {
 		t.Fatalf("concurrent reconciliation corrupted the journal: %v", err)
 	}
-	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "mac-parent"}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Bridge{
+		LinkAttrs: netlink.LinkAttrs{Name: "mac-parent"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	bridgeParent, err := netlink.LinkByName("mac-parent")
@@ -572,11 +725,15 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	bridgeParentConnection := interfaceintent.Connection{
-		ID: "mac-parent", Name: "mac-parent", Owner: interfaceintent.OwnerExternal,
-		Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+		ID:    "mac-parent",
+		Name:  "mac-parent",
+		Owner: interfaceintent.OwnerExternal,
+		Link:  &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 	}
 	bridgeChild := interfaceintent.Connection{
-		ID: "mac-vlan", Name: "mac-vlan", Owner: interfaceintent.OwnerMWAN,
+		ID:    "mac-vlan",
+		Name:  "mac-vlan",
+		Owner: interfaceintent.OwnerMWAN,
 		Link: &interfaceintent.Link{
 			Kind: interfaceintent.KindVLAN,
 			VLAN: &interfaceintent.VLAN{Parent: bridgeParentConnection.Name, ID: 400},
@@ -587,8 +744,12 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err = bridgeChildState.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{bridgeParentConnection, bridgeChild}, nil)
+	results, err = bridgeChildState.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{bridgeParentConnection, bridgeChild},
+		nil,
+	)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("bridge-parent VLAN creation: results=%+v err=%v", results, err)
 	}
@@ -600,7 +761,10 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		{"mac-high", "mac-high-peer", net.HardwareAddr{2, 0, 94, 0, 58, 255}},
 		{"mac-low", "mac-low-peer", net.HardwareAddr{2, 0, 94, 0, 58, 1}},
 	} {
-		if err := netlink.LinkAdd(&netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: member.name, HardwareAddr: member.mac}, PeerName: member.peer}); err != nil {
+		if err := netlink.LinkAdd(&netlink.Veth{
+			LinkAttrs: netlink.LinkAttrs{Name: member.name, HardwareAddr: member.mac},
+			PeerName:  member.peer,
+		}); err != nil {
 			t.Fatal(err)
 		}
 		link, err := netlink.LinkByName(member.name)
@@ -612,29 +776,42 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		}
 	}
 	bridgeParentAfter, err := netlink.LinkByName("mac-parent")
-	if err != nil || bridgeParentAfter.Attrs().HardwareAddr.String() == bridgeParent.Attrs().HardwareAddr.String() {
+	if err != nil ||
+		bridgeParentAfter.Attrs().HardwareAddr.String() == bridgeParent.Attrs().HardwareAddr.String() {
 		t.Fatalf("bridge-parent MAC did not change: link=%+v err=%v", bridgeParentAfter, err)
 	}
 	bridgeChildRestart, err := NewOwnedLinkReconciler(bridgeChildStatePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err = bridgeChildRestart.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{bridgeParentConnection, bridgeChild}, nil)
+	results, err = bridgeChildRestart.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{bridgeParentConnection, bridgeChild},
+		nil,
+	)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("bridge-parent MAC drift blocked adoption: results=%+v err=%v", results, err)
 	}
-	results, err = bridgeChildRestart.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{bridgeParentConnection}, nil)
+	results, err = bridgeChildRestart.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{bridgeParentConnection},
+		nil,
+	)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkRemoved {
 		t.Fatalf("bridge-parent MAC drift blocked removal: results=%+v err=%v", results, err)
 	}
 	taggedParent := interfaceintent.Connection{
-		ID: "tag-parent", Name: "tag-parent", Owner: interfaceintent.OwnerMWAN,
-		Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+		ID:    "tag-parent",
+		Name:  "tag-parent",
+		Owner: interfaceintent.OwnerMWAN,
+		Link:  &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 	}
 	taggedChild := interfaceintent.Connection{
-		ID: "tag-vlan", Name: "tag-vlan", Owner: interfaceintent.OwnerMWAN,
+		ID:    "tag-vlan",
+		Name:  "tag-vlan",
+		Owner: interfaceintent.OwnerMWAN,
 		Link: &interfaceintent.Link{
 			Kind: interfaceintent.KindVLAN,
 			VLAN: &interfaceintent.VLAN{Parent: taggedParent.Name, ID: 401},
@@ -645,9 +822,14 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err = taggedState.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{taggedChild, taggedParent}, nil)
-	if err != nil || len(results) != 2 || results[0].Status != OwnedLinkReady || results[1].Status != OwnedLinkReady {
+	results, err = taggedState.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{taggedChild, taggedParent},
+		nil,
+	)
+	if err != nil || len(results) != 2 || results[0].Status != OwnedLinkReady ||
+		results[1].Status != OwnedLinkReady {
 		t.Fatalf("tagged parent creation: results=%+v err=%v", results, err)
 	}
 	renamedTaggedParent := taggedParent
@@ -660,9 +842,14 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err = taggedRestart.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{renamedTaggedChild, renamedTaggedParent}, nil)
-	if err != nil || len(results) != 2 || results[0].Status != OwnedLinkReady || results[1].Status != OwnedLinkReady {
+	results, err = taggedRestart.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{renamedTaggedChild, renamedTaggedParent},
+		nil,
+	)
+	if err != nil || len(results) != 2 || results[0].Status != OwnedLinkReady ||
+		results[1].Status != OwnedLinkReady {
 		t.Fatalf("tagged parent rename blocked VLAN adoption: results=%+v err=%v", results, err)
 	}
 	waiting, err := NewOwnedLinkReconciler(filepath.Join(t.TempDir(), "waiting.json"))
@@ -670,37 +857,56 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	missingParent := interfaceintent.Connection{
-		ID: "absent-parent", Name: "absent-parent",
-		Owner: interfaceintent.OwnerExternal, Link: &interfaceintent.Link{
+		ID:    "absent-parent",
+		Name:  "absent-parent",
+		Owner: interfaceintent.OwnerExternal,
+		Link: &interfaceintent.Link{
 			Kind:  interfaceintent.KindPhysical,
 			Match: interfaceintent.Match{HardwareAddress: "02:00:5e:00:39:99"},
 		},
 	}
 	missingMaster := interfaceintent.Connection{
-		ID: "absent-br", Name: "absent-br",
-		Owner: interfaceintent.OwnerExternal, Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+		ID:    "absent-br",
+		Name:  "absent-br",
+		Owner: interfaceintent.OwnerExternal,
+		Link:  &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 	}
 	waitingVLAN := interfaceintent.Connection{
-		ID: "wait-vlan", Name: "wait-vlan",
-		Owner: interfaceintent.OwnerMWAN, Link: &interfaceintent.Link{
+		ID:    "wait-vlan",
+		Name:  "wait-vlan",
+		Owner: interfaceintent.OwnerMWAN,
+		Link: &interfaceintent.Link{
 			Kind: interfaceintent.KindVLAN,
 			VLAN: &interfaceintent.VLAN{Parent: missingParent.Name, ID: 399},
 		},
 	}
 	waitingMember := interfaceintent.Connection{
-		ID: "wait-member", Name: "wait-member",
-		Owner: interfaceintent.OwnerMWAN, Link: &interfaceintent.Link{
+		ID:    "wait-member",
+		Name:  "wait-member",
+		Owner: interfaceintent.OwnerMWAN,
+		Link: &interfaceintent.Link{
 			Kind:         interfaceintent.KindBridge,
 			BridgeMaster: missingMaster.Name,
 		},
 	}
 	independent := interfaceintent.Connection{
-		ID: "independent", Name: "independent",
-		Owner: interfaceintent.OwnerMWAN, Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+		ID:    "independent",
+		Name:  "independent",
+		Owner: interfaceintent.OwnerMWAN,
+		Link:  &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 	}
-	results, err = waiting.Reconcile(context.Background(), log, []interfaceintent.Connection{
-		waitingVLAN, waitingMember, independent, missingParent, missingMaster,
-	}, nil)
+	results, err = waiting.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{
+			waitingVLAN,
+			waitingMember,
+			independent,
+			missingParent,
+			missingMaster,
+		},
+		nil,
+	)
 	if err != nil || len(results) != 3 {
 		t.Fatalf("missing dependency reconcile: results=%+v err=%v", results, err)
 	}
@@ -715,7 +921,9 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if results[2].Status != OwnedLinkReady {
 		t.Fatalf("independent bridge result = %+v", results[2])
 	}
-	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "replace-br"}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Bridge{
+		LinkAttrs: netlink.LinkAttrs{Name: "replace-br"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	oldMaster, err := netlink.LinkByName("replace-br")
@@ -723,23 +931,32 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	masterConnection := interfaceintent.Connection{
-		ID: "replace-br", Name: "replace-br", Owner: interfaceintent.OwnerExternal,
-		Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+		ID:    "replace-br",
+		Name:  "replace-br",
+		Owner: interfaceintent.OwnerExternal,
+		Link:  &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 	}
 	memberConnection := interfaceintent.Connection{
-		ID: "member-vlan", Name: "member-vlan", Owner: interfaceintent.OwnerMWAN,
+		ID:    "member-vlan",
+		Name:  "member-vlan",
+		Owner: interfaceintent.OwnerMWAN,
 		Link: &interfaceintent.Link{
-			Kind:         interfaceintent.KindVLAN,
-			VLAN:         &interfaceintent.VLAN{Parent: parentConnection.Name, ID: 402},
-			BridgeMaster: masterConnection.Name, HardwareAddress: "02:00:5e:00:39:ff",
+			Kind:            interfaceintent.KindVLAN,
+			VLAN:            &interfaceintent.VLAN{Parent: parentConnection.Name, ID: 402},
+			BridgeMaster:    masterConnection.Name,
+			HardwareAddress: "02:00:5e:00:39:ff",
 		},
 	}
 	membership, err := NewOwnedLinkReconciler(filepath.Join(t.TempDir(), "membership.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err = membership.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, masterConnection, memberConnection}, nil)
+	results, err = membership.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{parentConnection, masterConnection, memberConnection},
+		nil,
+	)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("attach owned VLAN: results=%+v err=%v", results, err)
 	}
@@ -754,7 +971,10 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkSetHardwareAddr(firstMaster, net.HardwareAddr{2, 0, 94, 0, 57, 1}); err != nil {
+	if err := netlink.LinkSetHardwareAddr(
+		firstMaster,
+		net.HardwareAddr{2, 0, 94, 0, 57, 1},
+	); err != nil {
 		t.Fatal(err)
 	}
 	secondMaster, err := netlink.LinkByName("replace-br")
@@ -768,8 +988,12 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	detachedLink := *memberConnection.Link
 	detachedLink.BridgeMaster = ""
 	detachedMember.Link = &detachedLink
-	results, err = membership.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, masterConnection, detachedMember}, nil)
+	results, err = membership.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{parentConnection, masterConnection, detachedMember},
+		nil,
+	)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("bridge MAC change blocked recorded detach: results=%+v err=%v", results, err)
 	}
@@ -780,15 +1004,21 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if _, exists := membership.state.Memberships[memberConnection.ID.String()]; exists {
 		t.Fatal("detached VLAN retained a membership record")
 	}
-	results, err = membership.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, masterConnection, memberConnection}, nil)
+	results, err = membership.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{parentConnection, masterConnection, memberConnection},
+		nil,
+	)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("reattach owned VLAN: results=%+v err=%v", results, err)
 	}
 	if err := netlink.LinkDel(oldMaster); err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "replace-br"}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Bridge{
+		LinkAttrs: netlink.LinkAttrs{Name: "replace-br"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	newMaster, err := netlink.LinkByName("replace-br")
@@ -805,13 +1035,25 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err := netlink.LinkSetMasterByIndex(memberLink, newMaster.Attrs().Index); err != nil {
 		t.Fatal(err)
 	}
-	results, err = membership.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, masterConnection, memberConnection}, nil)
+	results, err = membership.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{parentConnection, masterConnection, memberConnection},
+		nil,
+	)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
-		t.Fatalf("replacement bridge was accepted as recorded master: results=%+v err=%v", results, err)
+		t.Fatalf(
+			"replacement bridge was accepted as recorded master: results=%+v err=%v",
+			results,
+			err,
+		)
 	}
-	results, err = membership.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, masterConnection, detachedMember}, nil)
+	results, err = membership.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{parentConnection, masterConnection, detachedMember},
+		nil,
+	)
 	if err == nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
 		t.Fatalf("replacement bridge membership was detached: results=%+v err=%v", results, err)
 	}
@@ -823,18 +1065,26 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal("conflicting membership record was forgotten")
 	}
 	unrecordedConnection := interfaceintent.Connection{
-		ID: "unrecorded-vlan", Name: "unrecorded-vlan", Owner: interfaceintent.OwnerMWAN,
+		ID:    "unrecorded-vlan",
+		Name:  "unrecorded-vlan",
+		Owner: interfaceintent.OwnerMWAN,
 		Link: &interfaceintent.Link{
 			Kind: interfaceintent.KindVLAN,
 			VLAN: &interfaceintent.VLAN{Parent: parentConnection.Name, ID: 404},
 		},
 	}
-	unrecordedState, err := NewOwnedLinkReconciler(filepath.Join(t.TempDir(), "unrecorded-membership.json"))
+	unrecordedState, err := NewOwnedLinkReconciler(
+		filepath.Join(t.TempDir(), "unrecorded-membership.json"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err = unrecordedState.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, masterConnection, unrecordedConnection}, nil)
+	results, err = unrecordedState.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{parentConnection, masterConnection, unrecordedConnection},
+		nil,
+	)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("create unrecorded VLAN: results=%+v err=%v", results, err)
 	}
@@ -849,8 +1099,12 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	unrecordedAttachedLink := *unrecordedConnection.Link
 	unrecordedAttachedLink.BridgeMaster = masterConnection.Name
 	unrecordedAttached.Link = &unrecordedAttachedLink
-	results, err = unrecordedState.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, masterConnection, unrecordedAttached}, nil)
+	results, err = unrecordedState.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{parentConnection, masterConnection, unrecordedAttached},
+		nil,
+	)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
 		t.Fatalf("unrecorded membership was accepted: results=%+v err=%v", results, err)
 	}
@@ -861,7 +1115,9 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if _, exists := unrecordedState.state.Memberships[unrecordedConnection.ID.String()]; exists {
 		t.Fatal("unrecorded membership acquired a journal entry")
 	}
-	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "tagged-br"}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Bridge{
+		LinkAttrs: netlink.LinkAttrs{Name: "tagged-br"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	taggedOld, err := netlink.LinkByName("tagged-br")
@@ -872,11 +1128,15 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	tagMasterConnection := interfaceintent.Connection{
-		ID: "tagged-br", Name: "tagged-br", Owner: interfaceintent.OwnerExternal,
-		Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+		ID:    "tagged-br",
+		Name:  "tagged-br",
+		Owner: interfaceintent.OwnerExternal,
+		Link:  &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 	}
 	tagMemberConnection := interfaceintent.Connection{
-		ID: "tag-member", Name: "tag-member", Owner: interfaceintent.OwnerMWAN,
+		ID:    "tag-member",
+		Name:  "tag-member",
+		Owner: interfaceintent.OwnerMWAN,
 		Link: &interfaceintent.Link{
 			Kind:         interfaceintent.KindVLAN,
 			VLAN:         &interfaceintent.VLAN{Parent: parentConnection.Name, ID: 403},
@@ -887,8 +1147,16 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err = tagMembership.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, tagMasterConnection, tagMemberConnection}, nil)
+	results, err = tagMembership.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{
+			parentConnection,
+			tagMasterConnection,
+			tagMemberConnection,
+		},
+		nil,
+	)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("attach VLAN to tagged bridge: results=%+v err=%v", results, err)
 	}
@@ -902,7 +1170,9 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err := netlink.LinkDel(taggedOld); err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "tagged-br"}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Bridge{
+		LinkAttrs: netlink.LinkAttrs{Name: "tagged-br"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	taggedNew, err := netlink.LinkByName("tagged-br")
@@ -922,19 +1192,39 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err := netlink.LinkSetMasterByIndex(tagMember, taggedNew.Attrs().Index); err != nil {
 		t.Fatal(err)
 	}
-	results, err = tagMembership.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, tagMasterConnection, tagMemberConnection}, nil)
+	results, err = tagMembership.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{
+			parentConnection,
+			tagMasterConnection,
+			tagMemberConnection,
+		},
+		nil,
+	)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
-		t.Fatalf("replacement tagged bridge was accepted as recorded master: results=%+v err=%v", results, err)
+		t.Fatalf(
+			"replacement tagged bridge was accepted as recorded master: results=%+v err=%v",
+			results,
+			err,
+		)
 	}
 	detachedTagMember := tagMemberConnection
 	detachedTagLink := *tagMemberConnection.Link
 	detachedTagLink.BridgeMaster = ""
 	detachedTagMember.Link = &detachedTagLink
-	results, err = tagMembership.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, tagMasterConnection, detachedTagMember}, nil)
+	results, err = tagMembership.Reconcile(
+		context.Background(),
+		log,
+		[]interfaceintent.Connection{parentConnection, tagMasterConnection, detachedTagMember},
+		nil,
+	)
 	if err == nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
-		t.Fatalf("replacement tagged bridge membership was detached: results=%+v err=%v", results, err)
+		t.Fatalf(
+			"replacement tagged bridge membership was detached: results=%+v err=%v",
+			results,
+			err,
+		)
 	}
 	tagMember, err = netlink.LinkByName(tagMemberConnection.Name)
 	if err != nil || tagMember.Attrs().MasterIndex != taggedNew.Attrs().Index {

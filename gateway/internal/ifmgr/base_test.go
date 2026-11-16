@@ -29,9 +29,11 @@ func TestBaseModuleStoresSharedModuleState(t *testing.T) {
 	if got := base.Name(); got != "test_module" {
 		t.Fatalf("Name() = %q, want %q", got, "test_module")
 	}
+
 	if got := base.Env; got != env {
 		t.Fatalf("Env = %p, want %p", got, env)
 	}
+
 	if got := base.Log; got == nil {
 		t.Fatal("Log is nil after InitBase")
 	}
@@ -51,6 +53,7 @@ func TestBaseModuleDefaultLifecycleHooksAreNoOps(t *testing.T) {
 	); err != nil {
 		t.Fatalf("OnKernelEvent returned error: %v", err)
 	}
+
 	if err := base.OnDHCPLease(
 		context.Background(),
 		slog.New(slog.NewTextHandler(io.Discard, nil)),

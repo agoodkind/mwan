@@ -25,7 +25,9 @@ const (
 
 func addTableRouteLink(t *testing.T, name string, address string) netlink.Link {
 	t.Helper()
-	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: name}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{Name: name},
+	}); err != nil {
 		t.Fatalf("add link %s: %v", name, err)
 	}
 	link, err := netlink.LinkByName(name)
@@ -67,7 +69,10 @@ func TestDeleteTableRouteMatchesDeviceMetricAndGateway(t *testing.T) {
 		if os.Geteuid() != 0 {
 			t.Skip("network namespace requires root")
 		}
-		child := exec.Command(os.Args[0], "-test.run=^TestDeleteTableRouteMatchesDeviceMetricAndGateway$")
+		child := exec.Command(
+			os.Args[0],
+			"-test.run=^TestDeleteTableRouteMatchesDeviceMetricAndGateway$",
+		)
 		child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
 		child.Env = append(os.Environ(), childEnv+"=1")
 		if output, err := child.CombinedOutput(); err != nil {
@@ -80,12 +85,22 @@ func TestDeleteTableRouteMatchesDeviceMetricAndGateway(t *testing.T) {
 	lowLink := addTableRouteLink(t, "route-low0", "2001:db8:ffff::1/64")
 	highLink := addTableRouteLink(t, "route-high0", "2001:db8:fffe::1/64")
 	low := netif.RouteSpec{
-		Family: "inet6", Dest: tableRouteDest, Via: "2001:db8:ffff::2", Dev: "route-low0",
-		TableID: tableRouteTestTable, Metric: tableRouteLowMetric, Protocol: unix.RTPROT_BGP,
+		Family:   "inet6",
+		Dest:     tableRouteDest,
+		Via:      "2001:db8:ffff::2",
+		Dev:      "route-low0",
+		TableID:  tableRouteTestTable,
+		Metric:   tableRouteLowMetric,
+		Protocol: unix.RTPROT_BGP,
 	}
 	high := netif.RouteSpec{
-		Family: "inet6", Dest: tableRouteDest, Via: "2001:db8:fffe::2", Dev: "route-high0",
-		TableID: tableRouteTestTable, Metric: tableRouteHighMetric, Protocol: unix.RTPROT_BGP,
+		Family:   "inet6",
+		Dest:     tableRouteDest,
+		Via:      "2001:db8:fffe::2",
+		Dev:      "route-high0",
+		TableID:  tableRouteTestTable,
+		Metric:   tableRouteHighMetric,
+		Protocol: unix.RTPROT_BGP,
 	}
 	for _, route := range []netif.RouteSpec{low, high} {
 		if err := netif.ReconcileTableRoute(t.Context(), log, route); err != nil {
@@ -106,15 +121,21 @@ func TestDeleteTableRouteMatchesDeviceMetricAndGateway(t *testing.T) {
 	}
 	links := tableRouteLinks(t)
 	if !links[lowLink.Attrs().Index] || !links[highLink.Attrs().Index] {
-		t.Fatalf("route devices after two requests that match no route = %v, want both routes", links)
+		t.Fatalf(
+			"route devices after two requests that match no route = %v, want both routes",
+			links,
+		)
 	}
 
 	// The kernel removes the higher-metric route on route-high0 when the
 	// request specifies route-high0 without a metric or gateway. The kernel
 	// does not remove the lower-metric route on route-low0.
 	deviceOnly := netif.RouteSpec{
-		Family: "inet6", Dest: tableRouteDest, Dev: "route-high0",
-		TableID: tableRouteTestTable, Protocol: unix.RTPROT_BGP,
+		Family:   "inet6",
+		Dest:     tableRouteDest,
+		Dev:      "route-high0",
+		TableID:  tableRouteTestTable,
+		Protocol: unix.RTPROT_BGP,
 	}
 	if err := netif.DeleteTableRoute(t.Context(), log, deviceOnly); err != nil {
 		t.Fatalf("delete the route on route-high0: %v", err)

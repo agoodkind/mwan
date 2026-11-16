@@ -26,6 +26,7 @@ func buildReportCommand(t *testing.T) string {
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build mwan: %v\n%s", err, output)
 	}
+
 	return binaryPath
 }
 
@@ -37,10 +38,12 @@ func runReportCommand(t *testing.T, configPath string, arguments ...string) (str
 	if err == nil {
 		return string(output), 0
 	}
+
 	var exitError *exec.ExitError
 	if !errors.As(err, &exitError) {
 		t.Fatalf("run report command: %v\n%s", err, output)
 	}
+
 	return string(output), exitError.ExitCode()
 }
 
@@ -52,15 +55,31 @@ func reportCommandConfig(t *testing.T, server *testsmtp.Server) (*config.Config,
 	if err != nil {
 		t.Fatalf("install RRDtool for reporting tests: %v", err)
 	}
-	text := fmt.Sprintf("[report]\nstate_directory = %q\nrrdtool_path = %q\n[email]\nmsmtprc_path = %q\nalert_email = %q\n", state, rrdtool, server.Path, "recipient@example.com")
+
+	text := fmt.Sprintf(
+		"[report]\nstate_directory = %q\nrrdtool_path = %q\n[email]\nmsmtprc_path = %q\nalert_email = %q\n",
+		state,
+		rrdtool,
+		server.Path,
+		"recipient@example.com",
+	)
 	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	cfg, err := config.LoadPath(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return cfg, path, []string{"report", "send", "--network", "../../yang/instances/network-min.json", "--schema-dir", "../../internal/yangpub/schema"}
+
+	return cfg, path, []string{
+		"report",
+		"send",
+		"--network",
+		"../../yang/instances/network-min.json",
+		"--schema-dir",
+		"../../internal/yangpub/schema",
+	}
 }
 
 func recordReportCommandHistory(t *testing.T, cfg *config.Config, arguments []string) {
@@ -69,6 +88,7 @@ func recordReportCommandHistory(t *testing.T, cfg *config.Config, arguments []st
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	logger, closer := logging.New(logging.Config{BuildVersion: "test"})
 	t.Cleanup(func() {
 		if err := closer.Close(); err != nil {
@@ -79,20 +99,54 @@ func recordReportCommandHistory(t *testing.T, cfg *config.Config, arguments []st
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := reporting.NewService(reporting.Options{Config: cfg.Report, Network: network, Notifications: manager, Log: logger})
+
+	service, err := reporting.NewService(reporting.Options{
+		Config:        cfg.Report,
+		Network:       network,
+		Notifications: manager,
+		Log:           logger,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	start := time.Now().UTC().Truncate(time.Minute).Add(-3 * time.Minute)
+
 	for index := range 3 {
-		minute := reporting.Minute{Start: start.Add(time.Duration(index) * time.Minute), End: start.Add(time.Duration(index+1) * time.Minute), Host: reporting.HostUsage{CPU: []reporting.CPUUsage{{Name: "cpu", Percent: 15, Available: true}, {Name: "cpu0", Percent: 15, Available: true}}, MemoryPercent: 30, MemoryAvailable: true}}
-		for key, wan := range network.WAN {
-			minute.Traffic = append(minute.Traffic, reporting.WANTraffic{WAN: connectionid.Resolve(network.ConnectionIDs[key].String(), key, wan.Iface), Downloaded: 1000, Uploaded: 500, Available: true})
+		minute := reporting.Minute{
+			Start: start.Add(time.Duration(index) * time.Minute),
+			End:   start.Add(time.Duration(index+1) * time.Minute),
+			Host: reporting.HostUsage{
+				CPU: []reporting.CPUUsage{
+					{Name: "cpu", Percent: 15, Available: true},
+					{Name: "cpu0", Percent: 15, Available: true},
+				},
+				MemoryPercent:   30,
+				MemoryAvailable: true,
+			},
 		}
+
+		for key, wan := range network.WAN {
+			minute.Traffic = append(
+				minute.Traffic,
+				reporting.WANTraffic{
+					WAN: connectionid.Resolve(
+						network.ConnectionIDs[key].String(),
+						key,
+						wan.Iface,
+					),
+					Downloaded: 1000,
+					Uploaded:   500,
+					Available:  true,
+				},
+			)
+		}
+
 		if err := service.RecordMinute(t.Context(), minute); err != nil {
 			t.Fatal(err)
 		}
 	}
+
 	if err := service.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -107,8 +161,10 @@ func TestReportCommandSendsPersistedSummary(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("report command failed: %s", output)
 	}
+
 	html := testsmtp.HTML(t, server.Next(t))
-	if !strings.Contains(html, "cpu-ram.png") || !strings.Contains(html, "Top talkers on") || !strings.Contains(output, "accepted") {
+	if !strings.Contains(html, "cpu-ram.png") || !strings.Contains(html, "Top talkers on") ||
+		!strings.Contains(output, "accepted") {
 		t.Fatal("public command did not send the persisted report")
 	}
 }
