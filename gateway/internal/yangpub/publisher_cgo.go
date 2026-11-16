@@ -795,7 +795,7 @@ func newestRevision(text []byte) string {
 		if len(fields) < 2 || fields[0] != "revision" {
 			continue
 		}
-		date := strings.Trim(fields[1], `";{`)
+		date := strings.Trim(fields[1], `"';{`)
 		if _, err := time.Parse(time.DateOnly, date); err == nil && date > revision {
 			revision = date
 		}
