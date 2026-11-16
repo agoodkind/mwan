@@ -29,7 +29,7 @@ may proceed in parallel when files and runtime objects have separate writers.
 | --- | --- |
 | [The network loader](../../../gateway/internal/networkjson/networkjson.go) | `build` skips entries with no `WAN`, keys `Config.WAN` by provider name, rejects duplicate provider names, and calls `buildLink` only for accepted providers. |
 | [The networkd specification](../../../gateway/internal/networkd/spec.go) | `Spec`, `Family`, and `Delegation` combine shared intent with rendering data. `Validate` rejects free-form keys that overlap typed values. |
-| [The active schema](../../../gateway/internal/yangpub/schema/goodkind-mwan-steering@2026-09-26.yang) | Production validation uses this schema for the network document. |
+| [The active schema](../../../gateway/internal/yangpub/schema/goodkind-mwan-steering.yang) | Production validation uses this schema for the network document. |
 | [The daemon configuration](../../../gateway/internal/config/config.go) | `IfMgrSection.Links` stores `[]networkd.Spec`; provider settings use the separate `WAN` map. |
 | [The served tree](../../../gateway/internal/wanconfig/tree.go) | `Gateway` uses `InternalIface` for the internal interface and `Member.Link` for provider link specifications. |
 | [Daemon startup](../../../gateway/cmd/mwan/ifmgr.go) | `bootstrapWANFirewall` installs and inspects protective policy. `parseNetworkConfig` loads and applies validated configuration. After daemon construction validates module settings, `writeNetworkConfig` writes units and reloads networkd when files change. |

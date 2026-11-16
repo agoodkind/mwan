@@ -105,8 +105,7 @@ type Installer interface {
 	// installed with its features. A module whose Model sets Update and
 	// that is installed at a revision other than the file's is updated to
 	// the file, which keeps its stored data and its enabled features. Any
-	// other installed module is left alone. The revision is read from the
-	// file name, name@revision.yang.
+	// other installed module is left alone.
 	InstallModules(ctx context.Context, models []Model, searchDirs string) ([]ModuleChange, error)
 	// ImportConfig replaces module's whole configuration in ds with the XML
 	// document xml, the way `sysrepocfg --import` does: the document is

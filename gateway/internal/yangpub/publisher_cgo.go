@@ -28,6 +28,7 @@ import (
 	"runtime/cgo"
 	"strings"
 	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -717,8 +718,26 @@ func (p *publisher) InstallModules(
 	defer C.free(unsafe.Pointer(cSearch))
 	var changes []ModuleChange
 	for _, model := range models {
-		name, revision := moduleNameRevision(model.Path)
+		base := strings.TrimSuffix(filepath.Base(model.Path), filepath.Ext(model.Path))
+		name, _, _ := strings.Cut(base, "@")
 		installedRev, installed := implementedRevision(conn, name)
+		if installed && !model.Update {
+			continue
+		}
+		text, err := os.ReadFile(model.Path)
+		if err != nil {
+			readErr := fmt.Errorf("yangpub: read module %q: %w", model.Path, err)
+			p.log.ErrorContext(
+				ctx,
+				"module revision read failed",
+				"path",
+				model.Path,
+				"err",
+				readErr,
+			)
+			return changes, readErr
+		}
+		revision := newestRevision(text)
 		switch {
 		case !installed:
 			if err := installModule(conn, model, cSearch); err != nil {
@@ -769,13 +788,19 @@ func (p *publisher) InstallModules(
 	return changes, nil
 }
 
-// moduleNameRevision reads a module's name and revision from its file name,
-// name@revision.yang. A file with no revision in its name returns an empty
-// revision, which InstallModules never updates.
-func moduleNameRevision(path string) (name string, revision string) {
-	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-	name, revision, _ = strings.Cut(base, "@")
-	return name, revision
+func newestRevision(text []byte) string {
+	revision := ""
+	for line := range strings.Lines(string(text)) {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[0] != "revision" {
+			continue
+		}
+		date := strings.Trim(fields[1], `";{`)
+		if _, err := time.Parse(time.DateOnly, date); err == nil && date > revision {
+			revision = date
+		}
+	}
+	return revision
 }
 
 // implementedRevision reports whether the repository implements the module

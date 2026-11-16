@@ -387,7 +387,8 @@ func TestWanconfigSelftest_PrivateRepository(t *testing.T) {
 		t.Fatalf("private selftest failed: %v: %s", err, output)
 	}
 
-	name, revision := moduleFileNameRevision(schema.SteeringFile)
+	name := moduleFileName(schema.SteeringFile)
+	revision := embeddedRevision(t, schema.SteeringFile)
 	installed := implementedModules(t, root, "private-selftest")
 	if module, present := installed[name]; !present || module.revision != revision {
 		t.Fatalf("private repository steering module = %+v, want revision %s", module, revision)
