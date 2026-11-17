@@ -1,8 +1,9 @@
-package main
+package moduleconfig
 
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"go.fd.io/govpp/binapi/ethernet_types"
 	"go.fd.io/govpp/binapi/interface_types"
@@ -17,6 +18,15 @@ import (
 	"goodkind.io/mwan/internal/vpp"
 )
 
+var (
+	errVPPMetadata    = errors.New("router VPP requires network metadata")
+	errTAPConnections = errors.New("requires declared VPP and host connections")
+	errTAPName        = errors.New("requires interface name")
+	errRXMode         = errors.New("has unsupported RX mode")
+	errTAPIPv4        = errors.New("requires one IPv4 address when IPv4 is present")
+	errTAPIPv6        = errors.New("requires one IPv6 address when IPv6 is present")
+)
+
 func buildVPPConfig(settings config.IfMgrSection) (vppmodule.Config, error) {
 	section := settings.Modules.VPP
 	if section == nil {
@@ -27,15 +37,17 @@ func buildVPPConfig(settings config.IfMgrSection) (vppmodule.Config, error) {
 		return vppmodule.Config{
 			Settings: nil,
 			Policy:   nil,
-		}, fmt.Errorf("router VPP requires network metadata")
+		}, errVPPMetadata
 	}
 
 	endpoints, err := section.Endpoints()
 	if err != nil {
+		slog.Warn("VPP transport settings are invalid.", "err", err)
+
 		return vppmodule.Config{
 			Settings: nil,
 			Policy:   nil,
-		}, errors.New("VPP module transport settings: " + err.Error())
+		}, fmt.Errorf("VPP module transport settings: %w", err)
 	}
 
 	runtime := &vpp.Settings{
@@ -57,14 +69,14 @@ func buildVPPConfig(settings config.IfMgrSection) (vppmodule.Config, error) {
 			return vppmodule.Config{
 				Settings: nil,
 				Policy:   nil,
-			}, fmt.Errorf("VPP TAP %d requires declared VPP and host connections", resource.ID)
+			}, fmt.Errorf("VPP TAP %d %w", resource.ID, errTAPConnections)
 		}
 
 		if connection.Name != fmt.Sprintf("tap%d", resource.ID) {
 			return vppmodule.Config{
 				Settings: nil,
 				Policy:   nil,
-			}, fmt.Errorf("VPP TAP %d requires interface name tap%d", resource.ID, resource.ID)
+			}, fmt.Errorf("VPP TAP %d %w tap%d", resource.ID, errTAPName, resource.ID)
 		}
 
 		request, err := buildTAPRequest(resource, connection, host)
@@ -84,7 +96,7 @@ func buildVPPConfig(settings config.IfMgrSection) (vppmodule.Config, error) {
 			return vppmodule.Config{
 				Settings: nil,
 				Policy:   nil,
-			}, fmt.Errorf("VPP TAP %d has unsupported RX mode %q", resource.ID, resource.RXMode)
+			}, fmt.Errorf("VPP TAP %d %w %q", resource.ID, errRXMode, resource.RXMode)
 		}
 
 		runtime.TAPs = append(
@@ -149,7 +161,9 @@ func buildTAPRequest(
 	if connection.Link != nil && connection.Link.HardwareAddress != "" {
 		mac, err := ethernet_types.ParseMacAddress(connection.Link.HardwareAddress)
 		if err != nil {
-			return request, errors.New(fmt.Sprintf("VPP TAP %d MAC: ", resource.ID) + err.Error())
+			slog.Warn("The VPP TAP has an invalid MAC address.", "tap_id", resource.ID, "err", err)
+
+			return request, fmt.Errorf("VPP TAP %d MAC: %w", resource.ID, err)
 		}
 
 		request.UseRandomMac, request.MacAddress = false, mac
@@ -163,9 +177,15 @@ func buildTAPRequest(
 		if host.Link.HardwareAddress != "" {
 			mac, err := ethernet_types.ParseMacAddress(host.Link.HardwareAddress)
 			if err != nil {
-				return request, errors.New(
-					fmt.Sprintf("VPP TAP %d host MAC: ", resource.ID) + err.Error(),
+				slog.Warn(
+					"The VPP TAP host has an invalid MAC address.",
+					"tap_id",
+					resource.ID,
+					"err",
+					err,
 				)
+
+				return request, fmt.Errorf("VPP TAP %d host MAC: %w", resource.ID, err)
 			}
 
 			request.HostMacAddrSet, request.HostMacAddr = true, mac
@@ -174,18 +194,20 @@ func buildTAPRequest(
 
 	if host.IPv4 != nil {
 		if len(host.IPv4.Addresses) != 1 {
-			return request, fmt.Errorf(
-				"VPP TAP %d host %s requires one IPv4 address when IPv4 is present",
-				resource.ID,
-				host.Name,
-			)
+			return request, fmt.Errorf("VPP TAP %d host %s %w", resource.ID, host.Name, errTAPIPv4)
 		}
 
 		prefix, err := ip_types.ParseIP4Prefix(host.IPv4.Addresses[0].Prefix.String())
 		if err != nil {
-			return request, errors.New(
-				fmt.Sprintf("VPP TAP %d host IPv4: ", resource.ID) + err.Error(),
+			slog.Warn(
+				"The VPP TAP host has an invalid IPv4 prefix.",
+				"tap_id",
+				resource.ID,
+				"err",
+				err,
 			)
+
+			return request, fmt.Errorf("VPP TAP %d host IPv4: %w", resource.ID, err)
 		}
 
 		request.HostIP4PrefixSet, request.HostIP4Prefix = true, ip_types.IP4AddressWithPrefix(
@@ -195,17 +217,23 @@ func buildTAPRequest(
 
 	if host.IPv6 != nil {
 		if len(host.IPv6.Addresses) != 1 {
-			return request, fmt.Errorf(
-				"VPP TAP %d host %s requires one IPv6 address when IPv6 is present",
-				resource.ID,
-				host.Name,
-			)
+			return request, fmt.Errorf("VPP TAP %d host %s %w", resource.ID, host.Name, errTAPIPv6)
 		}
 
 		prefix, err := ip_types.ParseIP6Prefix(host.IPv6.Addresses[0].Prefix.String())
 		if err != nil {
-			return request, errors.New(
-				fmt.Sprintf("VPP TAP %d host IPv6: ", resource.ID) + err.Error(),
+			slog.Warn(
+				"The VPP TAP host has an invalid IPv6 prefix.",
+				"tap_id",
+				resource.ID,
+				"err",
+				err,
+			)
+
+			return request, fmt.Errorf(
+				"VPP TAP %d has an invalid host IPv6 prefix: %w",
+				resource.ID,
+				err,
 			)
 		}
 

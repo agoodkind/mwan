@@ -1,4 +1,4 @@
-package main
+package moduleconfig
 
 import (
 	"net/netip"
