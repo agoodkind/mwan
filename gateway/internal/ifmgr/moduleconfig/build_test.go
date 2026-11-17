@@ -657,9 +657,7 @@ func TestBuildHealthConfigAcceptsSingleFamilyProvider(t *testing.T) {
 	}
 }
 
-// TestBuildHealthConfigKeepsAnOmittedTargetFamilyNil preserves the inherit:
-// a family the provider names no leaf for stays nil, which the module reads as
-// "use the module-wide list".
+// A nil target family makes the health module use its module-wide target list.
 func TestBuildHealthConfigKeepsAnOmittedTargetFamilyNil(t *testing.T) {
 	t.Parallel()
 
