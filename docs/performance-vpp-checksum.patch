@@ -1,0 +1,118 @@
+Apply with git apply --unidiff-zero.
+
+--- a/src/plugins/npt66/npt66_node.c
++++ b/src/plugins/npt66/npt66_node.c
+@@ -97,9 +97,2 @@
+-  if (plen <= 48)
+-    {
+-      // TODO: Check for 0xFFFF
+-      if (address->as_u16[3] == 0xffff)
+-	return -1;
+-      address->as_u16[3] = add ? ip_csum_add_even (address->as_u16[3], delta) :
+-				       ip_csum_sub_even (address->as_u16[3], delta);
+-    }
+-  else
++  int word = 3;
++  if (plen > 48)
+@@ -108,7 +101,2 @@
+-      for (int i = 4; i < 8; i++)
+-	{
+-	  if (address->as_u16[i] == 0xffff)
+-	    continue;
+-	  address->as_u16[i] = add ?
+-				       ip_csum_add_even (address->as_u16[i], delta) :
+-				       ip_csum_sub_even (address->as_u16[i], delta);
++      for (word = 4; word < 8; word++)
++	if (address->as_u16[word] != 0xffff)
+@@ -116,2 +104,9 @@
+-	}
+-    }
++    }
++  if (word == 8 || address->as_u16[word] == 0xffff)
++    return -1;
++
++  ip_csum_t sum = add ? ip_csum_add_even (address->as_u16[word], delta) :
++		       ip_csum_sub_even (address->as_u16[word], delta);
++  u16 adjusted = ip_csum_fold (sum);
++  /* RFC 6296 uses zero for the one's-complement negative zero. */
++  address->as_u16[word] = adjusted == 0xffff ? 0 : adjusted;
+--- a/test/test_npt66.py
++++ b/test/test_npt66.py
+@@ -9,0 +10 @@
++from scapy.layers.inet import TCP, UDP
+@@ -140,0 +142,75 @@
++    def test_npt66_checksum_carry(self) -> None:
++        """Preserve transport checksums when address arithmetic overflows."""
++        cases = (
++            (48, "2001:db8:100:1234::1", "2001:db8:300:1034::1"),
++            (48, "2001:db8:100:200::1", "2001:db8:300::1"),
++            (48, "2001:db8:100:1::1", "2001:db8:300:fe00::1"),
++            (56, "2001:db8:100:aa:ffff:1234:5678:9abc",
++             "2001:db8:300:aa:ffff:1034:5678:9abc"),
++            (56, "2001:db8:100:aa:ffff:ffff:1234:9abc",
++             "2001:db8:300:aa:ffff:ffff:1034:9abc"),
++            (56, "2001:db8:100:aa:200:1234:5678:9abc",
++             "2001:db8:300:aa:0:1234:5678:9abc"),
++            (56, "2001:db8:100:aa:1:1234:5678:9abc",
++             "2001:db8:300:aa:fe00:1234:5678:9abc"),
++        )
++        for prefix_length, source, expected in cases:
++            internal = f"2001:db8:100::/{prefix_length}"
++            external = f"2001:db8:300::/{prefix_length}"
++            self.vapi.npt66_binding_add_del(
++                sw_if_index=self.pg1.sw_if_index,
++                internal=internal, external=external, is_add=True,
++            )
++            self.vapi.cli(f"ip route add {internal} via {self.pg0.remote_ip6}")
++            for transport in (TCP, UDP):
++                packet = Ether(bytes(
++                    Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac)
++                    / IPv6(src=source, dst=self.pg1.remote_ip6)
++                    / transport(sport=12345, dport=54321)
++                    / Raw(b"NPT checksum carry")
++                ))
++                received = self.send_and_expect(self.pg0, packet, self.pg1)[0]
++                self.assertEqual(received[IPv6].src, expected)
++                self.assertEqual(received[transport].chksum, packet[transport].chksum)
++                checksum = received[transport].chksum
++                del received[transport].chksum
++                self.assertEqual(Ether(bytes(received))[transport].chksum, checksum)
++
++                reply = Ether(bytes(
++                    Ether(dst=self.pg1.local_mac, src=self.pg1.remote_mac)
++                    / IPv6(src=self.pg1.remote_ip6, dst=expected)
++                    / transport(sport=54321, dport=12345)
++                    / Raw(b"NPT checksum carry reply")
++                ))
++                restored = self.send_and_expect(self.pg1, reply, self.pg0)[0]
++                self.assertEqual(restored[IPv6].dst, source)
++                checksum = restored[transport].chksum
++                self.assertEqual(checksum, reply[transport].chksum)
++                del restored[transport].chksum
++                self.assertEqual(Ether(bytes(restored))[transport].chksum, checksum)
++            self.vapi.npt66_binding_add_del(
++                sw_if_index=self.pg1.sw_if_index,
++                internal=internal, external=external, is_add=False,
++            )
++
++    def test_npt66_rejects_unadjustable_iid(self) -> None:
++        """Drop an address when every candidate adjustment word is all ones."""
++        self.vapi.npt66_binding_add_del(
++            sw_if_index=self.pg1.sw_if_index,
++            internal="2001:db8:100::/56", external="2001:db8:300::/56",
++            is_add=True,
++        )
++        packet = (
++            Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac)
++            / IPv6(src="2001:db8:100:aa:ffff:ffff:ffff:ffff",
++                   dst=self.pg1.remote_ip6)
++            / UDP(sport=12345, dport=54321)
++            / Raw(b"Unadjustable IID")
++        )
++        self.send_and_assert_no_replies(self.pg0, packet)
++        self.vapi.npt66_binding_add_del(
++            sw_if_index=self.pg1.sw_if_index,
++            internal="2001:db8:100::/56", external="2001:db8:300::/56",
++            is_add=False,
++        )
++
