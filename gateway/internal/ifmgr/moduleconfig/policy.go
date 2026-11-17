@@ -1,6 +1,7 @@
-package main
+package moduleconfig
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os/user"
@@ -8,6 +9,8 @@ import (
 
 	"goodkind.io/mwan/internal/config"
 )
+
+var errUIDSelectors = errors.New("uid_range and uid_user are mutually exclusive")
 
 type userIDLookup func(username string) (string, error)
 
@@ -17,7 +20,7 @@ func buildPolicyRuleUIDRange(
 ) (string, error) {
 	logger := slog.Default().With("component", "ifmgr")
 	if rule.UIDRange != "" && rule.UIDUser != "" {
-		return "", fmt.Errorf("uid_range and uid_user are mutually exclusive")
+		return "", errUIDSelectors
 	}
 
 	if rule.UIDUser == "" {

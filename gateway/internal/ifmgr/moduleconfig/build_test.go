@@ -1,4 +1,4 @@
-package main
+package moduleconfig
 
 import (
 	"errors"
@@ -188,8 +188,6 @@ func sharedWANForTest() config.IfMgrSection {
 	}
 }
 
-// ifmgrForTest is sharedWANForTest with the given modules attached, for the
-// role-scoped buildIfMgrModuleConfigs tests.
 func ifmgrForTest(mods config.IfMgrModulesSection) config.IfMgrSection {
 	s := sharedWANForTest()
 	s.Modules = mods
@@ -203,8 +201,8 @@ func ifmgrForTest(mods config.IfMgrModulesSection) config.IfMgrSection {
 func TestBuildWANRefs(t *testing.T) {
 	t.Parallel()
 
-	got := buildWANRefs(sharedWANForTest())
-	want := sharedWANInputs{
+	got := WANRefs(sharedWANForTest())
+	want := WANInputs{
 		InternalPrefix: "3d06:bad:b01::/60",
 		OpnsenseEdgeV6: "3d06:bad:b01:201::1",
 		MwanbrEdgeV6:   "3d06:bad:b01:200::1",
@@ -253,7 +251,7 @@ func TestBuildWANRefs(t *testing.T) {
 func TestBuildWANRoutesConfig(t *testing.T) {
 	t.Parallel()
 
-	shared := buildWANRefs(sharedWANForTest())
+	shared := WANRefs(sharedWANForTest())
 	cfg, err := buildWANRoutesConfig(
 		shared,
 		&config.IfMgrWANRoutesSection{
@@ -322,7 +320,7 @@ func TestBuildWANRoutesConfig(t *testing.T) {
 func TestBuildWANRoutesConfigNilSection(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := buildWANRoutesConfig(buildWANRefs(sharedWANForTest()), nil)
+	cfg, err := buildWANRoutesConfig(WANRefs(sharedWANForTest()), nil)
 	if err != nil {
 		t.Fatalf("buildWANRoutesConfig returned error: %v", err)
 	}
@@ -333,11 +331,6 @@ func TestBuildWANRoutesConfigNilSection(t *testing.T) {
 	}
 }
 
-// modulesWithUnresolvableUIDRule is a [ifmgr.modules] section that carries a
-// policy_rules rule referencing a user that does not exist on the build host,
-// plus a wan.routes section. It models the production MWAN VM config, where the
-// shared config.toml carries an oob policy_rules rule (cloudflared-oob, a
-// hypervisor-host user) even though the VM only runs the wan role.
 func modulesWithUnresolvableUIDRule() config.IfMgrModulesSection {
 	return config.IfMgrModulesSection{
 		PolicyRules: &config.IfMgrPolicyRulesSection{
@@ -357,16 +350,12 @@ func modulesWithUnresolvableUIDRule() config.IfMgrModulesSection {
 	}
 }
 
-// TestBuildIfMgrModuleConfigsWANRoleSkipsPolicyRules is the regression test for
-// the mwan-ifmgr@wan crash-loop. The wan role must build only wan.routes, so it
-// never resolves the policy_rules uid_user (which would fail on a host lacking
-// that user) even when the shared config carries that rule.
 func TestBuildIfMgrModuleConfigsWANRoleSkipsPolicyRules(t *testing.T) {
 	t.Parallel()
 
-	set, err := buildIfMgrModuleConfigs(ifmgrForTest(modulesWithUnresolvableUIDRule()), "wan")
+	set, err := Build(ifmgrForTest(modulesWithUnresolvableUIDRule()), "wan")
 	if err != nil {
-		t.Fatalf("buildIfMgrModuleConfigs(wan) returned error: %v", err)
+		t.Fatalf("Build(wan) returned error: %v", err)
 	}
 
 	if _, ok := set["policy_rules"]; ok {
@@ -378,13 +367,10 @@ func TestBuildIfMgrModuleConfigsWANRoleSkipsPolicyRules(t *testing.T) {
 	}
 }
 
-// TestBuildIfMgrModuleConfigsOOBRoleBuildsPolicyRules pins that the oob role
-// does build policy_rules (and surfaces the uid lookup failure), so the
-// role-scoped build does not silently drop a module the role actually runs.
 func TestBuildIfMgrModuleConfigsOOBRoleBuildsPolicyRules(t *testing.T) {
 	t.Parallel()
 
-	_, err := buildIfMgrModuleConfigs(ifmgrForTest(modulesWithUnresolvableUIDRule()), "oob")
+	_, err := Build(ifmgrForTest(modulesWithUnresolvableUIDRule()), "oob")
 	if err == nil {
 		t.Fatal("oob role must build policy_rules and surface the uid lookup failure")
 	}
@@ -399,16 +385,16 @@ func TestBuildIfMgrModuleConfigsOOBRoleBuildsPolicyRules(t *testing.T) {
 func TestBuildIfMgrModuleConfigsUnknownRole(t *testing.T) {
 	t.Parallel()
 
-	if _, err := buildIfMgrModuleConfigs(config.IfMgrSection{}, "bogus"); err == nil {
-		t.Fatal("buildIfMgrModuleConfigs with an unknown role must error")
+	if _, err := Build(config.IfMgrSection{}, "bogus"); err == nil {
+		t.Fatal("Build with an unknown role must error")
 	}
 }
 
 func TestBuildHealthConfig(t *testing.T) {
 	t.Parallel()
 
-	shared := buildWANRefs(sharedWANForTest())
-	cfg, err := buildHealthConfig(
+	shared := WANRefs(sharedWANForTest())
+	cfg, err := HealthConfig(
 		shared,
 		&config.IfMgrHealthSection{
 			StateFile:          "/run/health",
@@ -545,8 +531,8 @@ func TestBuildHealthConfigSkipsDisabledAndAbsentWANs(t *testing.T) {
 			func(t *testing.T) {
 				t.Parallel()
 
-				cfg, err := buildHealthConfig(
-					buildWANRefs(sharedWANForTest()),
+				cfg, err := HealthConfig(
+					WANRefs(sharedWANForTest()),
 					&config.IfMgrHealthSection{WAN: test.wan},
 				)
 				if err != nil {
@@ -579,6 +565,7 @@ func TestBuildHealthConfigRejectsUnderspecifiedEnabledWAN(t *testing.T) {
 			name: "zero ping_count",
 			mutate: func(s config.IfMgrHealthWANSection) config.IfMgrHealthWANSection {
 				s.PingCount = new(0)
+
 				return s
 			},
 			wantSub: "health/ping-count",
@@ -587,6 +574,7 @@ func TestBuildHealthConfigRejectsUnderspecifiedEnabledWAN(t *testing.T) {
 			name: "zero success_threshold",
 			mutate: func(s config.IfMgrHealthWANSection) config.IfMgrHealthWANSection {
 				s.SuccessThreshold = new(0)
+
 				return s
 			},
 			wantSub: "health/success-threshold",
@@ -605,6 +593,7 @@ func TestBuildHealthConfigRejectsUnderspecifiedEnabledWAN(t *testing.T) {
 			name: "success_threshold exceeds targets",
 			mutate: func(s config.IfMgrHealthWANSection) config.IfMgrHealthWANSection {
 				s.SuccessThreshold = new(3)
+
 				return s
 			},
 			wantSub: "exceeds targets-v4",
@@ -616,8 +605,8 @@ func TestBuildHealthConfigRejectsUnderspecifiedEnabledWAN(t *testing.T) {
 			func(t *testing.T) {
 				t.Parallel()
 
-				_, err := buildHealthConfig(
-					buildWANRefs(sharedWANForTest()),
+				_, err := HealthConfig(
+					WANRefs(sharedWANForTest()),
 					&config.IfMgrHealthSection{
 						WAN: map[string]config.IfMgrHealthWANSection{
 							"att": test.mutate(base),
@@ -636,32 +625,27 @@ func TestBuildHealthConfigRejectsUnderspecifiedEnabledWAN(t *testing.T) {
 	}
 }
 
-// TestBuildHealthConfigAcceptsSingleFamilyProvider is the loader half of the
-// IPv4-only provider: the configuration loads, and the empty list the provider
-// declared reaches the module as an empty list rather than as an omission. The
-// module inherits its public ping targets on an omission, so losing the
-// distinction here would probe public resolvers out a link with no IPv6.
 func TestBuildHealthConfigAcceptsSingleFamilyProvider(t *testing.T) {
 	t.Parallel()
 
 	section := enabledHealthWANSection(10)
 	section.TargetsV6 = []string{}
-	cfg, err := buildHealthConfig(
-		buildWANRefs(sharedWANForTest()),
+	cfg, err := HealthConfig(
+		WANRefs(sharedWANForTest()),
 		&config.IfMgrHealthSection{
 			WAN: map[string]config.IfMgrHealthWANSection{"att": section},
 		},
 	)
 	if err != nil {
-		t.Fatalf("buildHealthConfig rejected an IPv4-only provider: %v", err)
+		t.Fatalf("HealthConfig rejected an IPv4-only provider: %v", err)
 	}
 
 	if len(cfg.WANs) != 1 {
-		t.Fatalf("WAN count = %d, want 1", len(cfg.WANs))
+		t.Fatalf("The configuration contains %d WAN entries. The test expects 1.", len(cfg.WANs))
 	}
 
 	if cfg.WANs[0].TargetsV6 == nil {
-		t.Fatal("a declared-empty targets-v6 must reach the module as an empty list, not as nil")
+		t.Fatal("The provider configured an empty IPv6 target list, but the module received nil.")
 	}
 
 	if len(cfg.WANs[0].TargetsV6) != 0 {
@@ -673,16 +657,14 @@ func TestBuildHealthConfigAcceptsSingleFamilyProvider(t *testing.T) {
 	}
 }
 
-// TestBuildHealthConfigKeepsAnOmittedTargetFamilyNil preserves the inherit:
-// a family the provider names no leaf for stays nil, which the module reads as
-// "use the module-wide list".
+// A nil target family makes the health module use its module-wide target list.
 func TestBuildHealthConfigKeepsAnOmittedTargetFamilyNil(t *testing.T) {
 	t.Parallel()
 
 	section := enabledHealthWANSection(10)
 	section.TargetsV6 = nil
-	cfg, err := buildHealthConfig(
-		buildWANRefs(sharedWANForTest()),
+	cfg, err := HealthConfig(
+		WANRefs(sharedWANForTest()),
 		&config.IfMgrHealthSection{
 			WAN: map[string]config.IfMgrHealthWANSection{"att": section},
 		},
@@ -696,14 +678,17 @@ func TestBuildHealthConfigKeepsAnOmittedTargetFamilyNil(t *testing.T) {
 	}
 
 	if cfg.WANs[0].TargetsV6 != nil {
-		t.Fatalf("targets-v6 = %v, want nil so the module inherits", cfg.WANs[0].TargetsV6)
+		t.Fatalf(
+			"The provider IPv6 target list must remain nil when omitted, but it is %v. A nil list tells the health module to use the module-wide IPv6 target list.",
+			cfg.WANs[0].TargetsV6,
+		)
 	}
 }
 
 func TestBuildHealthConfigNilSection(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := buildHealthConfig(buildWANRefs(sharedWANForTest()), nil)
+	cfg, err := HealthConfig(WANRefs(sharedWANForTest()), nil)
 	if err != nil {
 		t.Fatalf("buildHealthConfig returned error: %v", err)
 	}
@@ -724,9 +709,9 @@ func TestBuildIfMgrModuleConfigsWANRoleBuildsAll(t *testing.T) {
 			Routes: &config.IfMgrWANRoutesSection{InternalIface: "enmwanbr0"},
 		},
 	}
-	set, err := buildIfMgrModuleConfigs(ifmgrForTest(modules), "wan")
+	set, err := Build(ifmgrForTest(modules), "wan")
 	if err != nil {
-		t.Fatalf("buildIfMgrModuleConfigs(wan) returned error: %v", err)
+		t.Fatalf("Build(wan) returned error: %v", err)
 	}
 
 	if _, ok := set["wan.routes"]; !ok {
@@ -752,15 +737,12 @@ func TestBuildIfMgrModuleConfigsWANRoleBuildsAll(t *testing.T) {
 	}
 }
 
-// TestBuildSteeringConfig pins that the balancer reads the same provider list,
-// internal link, and internal network the routing module reads, plus the group
-// hash mode the network configuration carries.
 func TestBuildSteeringConfig(t *testing.T) {
 	t.Parallel()
 
 	ifmgrCfg := sharedWANForTest()
 	ifmgrCfg.HashMode = "source"
-	shared := buildWANRefs(ifmgrCfg)
+	shared := WANRefs(ifmgrCfg)
 	cfg, err := buildSteeringConfig(
 		shared,
 		ifmgrCfg,
@@ -808,9 +790,9 @@ func TestBuildIfMgrModuleConfigsWANRoleBuildsSteering(t *testing.T) {
 
 	ifmgrCfg := ifmgrForTest(modulesWithUnresolvableUIDRule())
 	ifmgrCfg.HashMode = "random"
-	set, err := buildIfMgrModuleConfigs(ifmgrCfg, "wan")
+	set, err := Build(ifmgrCfg, "wan")
 	if err != nil {
-		t.Fatalf("buildIfMgrModuleConfigs(wan) returned error: %v", err)
+		t.Fatalf("Build(wan) returned error: %v", err)
 	}
 
 	steeringCfg, isSteering := set["steering"].(steering.Config)
@@ -827,18 +809,9 @@ func TestBuildIfMgrModuleConfigsWANRoleBuildsSteering(t *testing.T) {
 	}
 }
 
-// TestNetworkConfigOwnsTheNetworkTree drives the real two-file load path. A
-// config.toml that still carries the legacy network keys must contribute none
-// of them, and the network tree must reach the module configs from the JSON
-// loader's output instead. A render-versus-schema mismatch that struct-built
-// fixtures cannot catch fails here rather than in production.
 func TestNetworkConfigOwnsTheNetworkTree(t *testing.T) {
 	t.Parallel()
 
-	// Every network key below appears in a pre-cutover config.toml. None of them
-	// may reach the parsed config. persist_state_file is here for a second
-	// reason: no field claims it any more, and a gateway that still renders it
-	// must parse its config.toml without error.
 	const configTOML = `
 [ifmgr]
 role = "wan"
@@ -961,9 +934,9 @@ ping_count = 99
 	}
 	network.Apply(&cfg)
 
-	set, err := buildIfMgrModuleConfigs(cfg.IfMgr, "wan")
+	set, err := Build(cfg.IfMgr, "wan")
 	if err != nil {
-		t.Fatalf("buildIfMgrModuleConfigs(wan): %v", err)
+		t.Fatalf("Build(wan): %v", err)
 	}
 
 	wr, ok := set["wan.routes"].(wanroutes.Config)
@@ -1072,9 +1045,9 @@ state_file = "/run/mwan-health.state"
 	}
 	network.Apply(&cfg)
 
-	set, err := buildIfMgrModuleConfigs(cfg.IfMgr, "wan")
+	set, err := Build(cfg.IfMgr, "wan")
 	if err != nil {
-		t.Fatalf("buildIfMgrModuleConfigs(wan): %v", err)
+		t.Fatalf("Build(wan): %v", err)
 	}
 
 	nptConfig, ok := set["npt"].(npt.Config)
@@ -1117,5 +1090,16 @@ state_file = "/run/mwan-health.state"
 
 	if len(hc.WANs) != 1 || hc.WANs[0].CheckInterval != 10*time.Second {
 		t.Fatalf("health WAN list did not resolve: %#v", hc.WANs)
+	}
+}
+
+func testNPTPolicy(external string) *config.IPv6Translation {
+	return &config.IPv6Translation{
+		Mode: config.TranslationNPTv6,
+		NPT: &config.NPTv6Translation{
+			InternalPrefix: netip.MustParsePrefix("3d06:bad:b01::/60"),
+			ExternalSource: config.PrefixDelegated,
+			ExpectedPrefix: netip.MustParsePrefix(external),
+		},
 	}
 }
