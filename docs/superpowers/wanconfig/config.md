@@ -28,12 +28,10 @@ hint, and any free-form unit-file sections the provider needs. The
 delegation client identity is a public identifier, not a secret.
 
 Everything else stays in `config.toml` with no schema node: alert mail,
-notify cadence, the agent, the watchdog, the Proxmox API, the OPNsense
-sections, the BGP speaker, the failover section, the publish gate, the
-host identity leaves, the interface manager's plumbing scalars, the
-standalone policy rules, and every credential. No secret ever enters the
-JSON. The daemon reads both files, and exactly one file owns each
-section.
+notify cadence, the agent, OPNsense settings, the BGP speaker, the publish
+gate, interface-manager settings, standalone policy rules, and credentials.
+No secret ever enters the JSON. The daemon reads both files, and exactly one
+file owns each section.
 
 The inventory remains the source of truth: group_vars render the file,
 and a provider change is an inventory edit plus a deploy. No value
@@ -79,8 +77,7 @@ setting.
 
 The provider values stay in the two gateway groups the TOML template
 already reads, so the JSON template and the TOML template render from one
-set of variables. Moving the catalogue into a group the hypervisor can
-read is separate work that belongs with the provider-set epic.
+set of variables.
 
 The environment file stays. The pinned-destination refresher and the
 whole 802.1X chain read it, and it hardcodes both the variable names and
@@ -95,10 +92,6 @@ Validation must remain strict in the same places it is strict today. A
 missing value is a load-time failure, not a defaulted one. The model
 makes that easier to enforce, since a leaf is either present or it is
 not.
-
-The failover container and the hypervisor keep their TOML-only
-configuration untouched; their roles run none of the sections the JSON
-carries.
 
 ## Acceptance
 

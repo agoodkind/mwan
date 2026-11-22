@@ -9,13 +9,12 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
-	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/internal/configstate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -52,12 +51,7 @@ func testLogger(t *testing.T) *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// TestAgentServesOnTCPWithoutVsock checks that the MWAN gRPC API is reachable over a
-// real TCP connection (same stack as main's tcpLis path). main() is not importable,
-// but vsock is optional there while TCP is required; NewServer has no vsock
-// dependency, so this is the practical guarantee that GetHealth works when only TCP
-// is used (e.g. --vsock-port 0 or vsock listen failure).
-func TestAgentServesOnTCPWithoutVsock(t *testing.T) {
+func TestAgentServesOnTCP(t *testing.T) {
 	dir := writeGetHealthBinDir(t, 0, 0, "", false)
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
@@ -68,10 +62,9 @@ func TestAgentServesOnTCPWithoutVsock(t *testing.T) {
 	addr := lis.Addr().String()
 
 	grpcServer := grpc.NewServer()
-	deployPath := filepath.Join(t.TempDir(), "deploy")
 	mwanv1.RegisterMWANAgentServer(
 		grpcServer,
-		NewServer(deployPath, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil),
+		NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), nil),
 	)
 
 	go func() { _ = grpcServer.Serve(lis) }()
@@ -123,7 +116,7 @@ func TestGetHealth_HappyPath(t *testing.T) {
 	dir := writeGetHealthBinDir(t, 0, 0, "", false)
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	srv := NewServer("/nonexistent-deploy", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
 	ctx := context.Background()
 	res, err := cli.GetHealth(ctx, &mwanv1.GetHealthRequest{})
@@ -139,7 +132,7 @@ func TestGetHealth_IPv4FailsIPv6OK(t *testing.T) {
 	dir := writeGetHealthBinDir(t, 1, 0, "", false)
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	srv := NewServer("/nonexistent-deploy", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
 	res, err := cli.GetHealth(context.Background(), &mwanv1.GetHealthRequest{})
 	if err != nil {
@@ -154,7 +147,7 @@ func TestGetHealth_BothFail(t *testing.T) {
 	dir := writeGetHealthBinDir(t, 1, 1, "", false)
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	srv := NewServer("/nonexistent-deploy", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
 	res, err := cli.GetHealth(context.Background(), &mwanv1.GetHealthRequest{})
 	if err != nil {
@@ -170,7 +163,7 @@ func TestGetHealth_FailedUnits(t *testing.T) {
 	dir := writeGetHealthBinDir(t, 0, 0, body, false)
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	srv := NewServer("/nonexistent-deploy", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
 	res, err := cli.GetHealth(context.Background(), &mwanv1.GetHealthRequest{})
 	if err != nil {
@@ -197,7 +190,7 @@ func TestGetHealth_FailedUnitsSkipsNoiseLines(t *testing.T) {
 	dir := writeGetHealthBinDir(t, 0, 0, body, false)
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	srv := NewServer("/nonexistent-deploy", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
 	res, err := cli.GetHealth(context.Background(), &mwanv1.GetHealthRequest{})
 	if err != nil {
@@ -213,7 +206,7 @@ func TestGetHealth_SystemctlFails(t *testing.T) {
 	dir := writeGetHealthBinDir(t, 0, 0, "", true)
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	srv := NewServer("/nonexistent-deploy", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
 	res, err := cli.GetHealth(context.Background(), &mwanv1.GetHealthRequest{})
 	if err != nil {
@@ -254,7 +247,7 @@ func TestPing_IPv4UsesPingBinary(t *testing.T) {
 	}
 	t.Setenv("PATH", tmp+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	srv := NewServer("/x", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
 	_, err := cli.Ping(
 		context.Background(),
@@ -295,7 +288,7 @@ func TestPing_IPv6UsesPing6Binary(t *testing.T) {
 	}
 	t.Setenv("PATH", tmp+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	srv := NewServer("/x", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
 	_, err := cli.Ping(
 		context.Background(),
@@ -332,7 +325,7 @@ func TestPing_BindInterfaceAddsIFlag(t *testing.T) {
 	}
 	t.Setenv("PATH", tmp+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	srv := NewServer("/x", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
 	_, err := cli.Ping(
 		context.Background(),
@@ -370,7 +363,7 @@ func TestPing_CountAndTimeoutDefaults(t *testing.T) {
 	}
 	t.Setenv("PATH", tmp+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	srv := NewServer("/x", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
 	_, err := cli.Ping(
 		context.Background(),
@@ -392,7 +385,7 @@ func TestPing_FailsExitOne(t *testing.T) {
 	dir := writeFakePingScript(t, 1, "2 packets transmitted, 0 received")
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	srv := NewServer("/x", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
 	res, err := cli.Ping(context.Background(), &mwanv1.PingRequest{Target: "8.8.8.8"})
 	if err != nil {
@@ -410,7 +403,7 @@ func TestPing_PacketsReceivedParsed(t *testing.T) {
 	dir := writeFakePingScript(t, 0, "2 packets transmitted, 7 received")
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	srv := NewServer("/x", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
 	res, err := cli.Ping(context.Background(), &mwanv1.PingRequest{Target: "8.8.8.8"})
 	if err != nil {
@@ -423,7 +416,7 @@ func TestPing_PacketsReceivedParsed(t *testing.T) {
 
 func TestPing_EmptyTarget(t *testing.T) {
 	t.Parallel()
-	srv := NewServer("/x", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
 	_, err := cli.Ping(context.Background(), &mwanv1.PingRequest{Target: "  "})
 	if err == nil {
@@ -437,7 +430,7 @@ func TestPing_EmptyTarget(t *testing.T) {
 func TestPing_MissingBinary(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 
-	srv := NewServer("/x", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
 	_, err := cli.Ping(context.Background(), &mwanv1.PingRequest{Target: "8.8.8.8"})
 	if err == nil {
@@ -448,132 +441,30 @@ func TestPing_MissingBinary(t *testing.T) {
 	}
 }
 
-func TestGetConfigState_OK(t *testing.T) {
+func TestGetConfigStateWithoutDeploymentFile(t *testing.T) {
 	t.Parallel()
-	p := filepath.Join(t.TempDir(), "deploy")
-	epoch := int64(1700000000)
-	if err := os.WriteFile(p, []byte(strconv.FormatInt(epoch, 10)+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	srv := NewServer(p, testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
+	before := time.Now().Unix()
 	res, err := cli.GetConfigState(context.Background(), &mwanv1.GetConfigStateRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Hash is a composite of whatever critical paths exist on this host; we
-	// only assert it is non-empty (test hosts may have none of the watched paths).
-	if res.GetConfigHash() == "" {
-		t.Fatal("config_hash is empty")
+	expected := configstate.Read("")
+	if res.GetConfigHash() != expected.ConfigHash || res.GetConfigManifest() != expected.ConfigManifest {
+		t.Fatalf("configuration state differs: response=%v expected=%+v", res, expected)
 	}
-	if res.GetLastDeployEpoch() != epoch {
-		t.Fatalf("last_deploy_epoch=%d want %d", res.GetLastDeployEpoch(), epoch)
-	}
-	// last_change_epoch is time.Now() at call time; allow a generous 5s window.
-	now := time.Now().Unix()
-	delta := now - res.GetLastChangeEpoch()
-	if delta < -5 || delta > 5 {
-		t.Fatalf("last_change_epoch=%d now=%d delta=%d", res.GetLastChangeEpoch(), now, delta)
-	}
-}
-
-func TestGetConfigState_MissingDeployFile(t *testing.T) {
-	t.Parallel()
-	// Missing deploy file is not an error: deployEpoch is just 0.
-	srv := NewServer(filepath.Join(t.TempDir(), "nope"), testLogger(t), nil, nil)
-	cli := startTestServer(t, srv)
-	res, err := cli.GetConfigState(context.Background(), &mwanv1.GetConfigStateRequest{})
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if res.GetLastDeployEpoch() != 0 {
-		t.Fatalf("last_deploy_epoch=%d want 0", res.GetLastDeployEpoch())
+	after := time.Now().Unix()
+	if res.GetLastChangeEpoch() < before || res.GetLastChangeEpoch() > after {
+		t.Fatalf(
+			"last_change_epoch=%d outside observation interval [%d, %d]",
+			res.GetLastChangeEpoch(),
+			before,
+			after,
+		)
 	}
 }
 
-func TestGetConfigState_InvalidDeployContent(t *testing.T) {
-	t.Parallel()
-	p := filepath.Join(t.TempDir(), "deploy")
-	if err := os.WriteFile(p, []byte("not-a-number\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	srv := NewServer(p, testLogger(t), nil, nil)
-	cli := startTestServer(t, srv)
-	// Invalid content is not an error: deployEpoch is 0, hash still computed.
-	res, err := cli.GetConfigState(context.Background(), &mwanv1.GetConfigStateRequest{})
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if res.GetLastDeployEpoch() != 0 {
-		t.Fatalf("last_deploy_epoch=%d want 0", res.GetLastDeployEpoch())
-	}
-}
-
-// recordingNotifier is a minimal Notifier that captures every Notify
-// call so the deploy-expected gate test can assert on whether the
-// "deploy-file-missing" event fires.
-type recordingNotifier struct {
-	notifies []notify.Event
-	resolves int
-}
-
-func (r *recordingNotifier) Notify(_ context.Context, ev notify.Event) {
-	r.notifies = append(r.notifies, ev)
-}
-
-func (r *recordingNotifier) Resolve(
-	_ context.Context,
-	_ string,
-	_ string,
-	_ string,
-	_ ...slog.Attr,
-) {
-	r.resolves++
-}
-
-func (r *recordingNotifier) Active(_, _ string) bool { return false }
-
-func TestGetConfigState_DeployExpectedFalseSuppressesNotify(t *testing.T) {
-	t.Parallel()
-	rec := &recordingNotifier{}
-	srv := NewServer(filepath.Join(t.TempDir(), "missing"), testLogger(t), nil, rec)
-	srv.SetDeployExpected(false)
-	cli := startTestServer(t, srv)
-	res, err := cli.GetConfigState(context.Background(), &mwanv1.GetConfigStateRequest{})
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if res.GetLastDeployEpoch() != 0 {
-		t.Fatalf("last_deploy_epoch=%d want 0", res.GetLastDeployEpoch())
-	}
-	if len(rec.notifies) != 0 {
-		t.Fatalf("expected no Notify calls when deploy_expected=false, got %d", len(rec.notifies))
-	}
-}
-
-func TestGetConfigState_DeployExpectedTrueFiresNotify(t *testing.T) {
-	t.Parallel()
-	rec := &recordingNotifier{}
-	// Default deployExpected is true; do not flip the setter.
-	srv := NewServer(filepath.Join(t.TempDir(), "missing"), testLogger(t), nil, rec)
-	cli := startTestServer(t, srv)
-	if _, err := cli.GetConfigState(
-		context.Background(),
-		&mwanv1.GetConfigStateRequest{},
-	); err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if len(rec.notifies) != 1 {
-		t.Fatalf("expected one Notify call when deploy_expected=true, got %d", len(rec.notifies))
-	}
-	if rec.notifies[0].Kind != "deploy-file-missing" {
-		t.Fatalf("kind=%q want deploy-file-missing", rec.notifies[0].Kind)
-	}
-}
-
-// fakeWatchStream implements grpc.ServerStreamingServer[AgentEvent] for direct
-// WatchEvents tests (bufconn integration does not accumulate coverage for this
-// handler in full-suite -cover runs).
 type fakeWatchStream struct {
 	ctx context.Context
 }
@@ -596,7 +487,7 @@ func TestWatchEvents_DirectHandlerReturnsContextErr(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	srv := NewServer("/x", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	err := srv.WatchEvents(&mwanv1.WatchEventsRequest{}, &fakeWatchStream{ctx: ctx})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err=%v want Canceled", err)
@@ -604,7 +495,7 @@ func TestWatchEvents_DirectHandlerReturnsContextErr(t *testing.T) {
 }
 
 func TestWatchEvents_ContextCancelled(t *testing.T) {
-	srv := NewServer("/x", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
 	ctx, cancel := context.WithCancel(context.Background())
 	stream, err := cli.WatchEvents(ctx, &mwanv1.WatchEventsRequest{})
@@ -687,10 +578,6 @@ func TestParseMeminfoLineKB(t *testing.T) {
 	)
 }
 
-// ---------------------------------------------------------------------------
-// readUptimeSecondsFrom
-// ---------------------------------------------------------------------------
-
 func TestReadUptimeSecondsFrom(t *testing.T) {
 	t.Parallel()
 	t.Run(
@@ -747,10 +634,6 @@ func TestReadUptimeSecondsFrom(t *testing.T) {
 	)
 }
 
-// ---------------------------------------------------------------------------
-// readLoadAverageFrom
-// ---------------------------------------------------------------------------
-
 func TestReadLoadAverageFrom(t *testing.T) {
 	t.Parallel()
 	t.Run(
@@ -792,10 +675,6 @@ func TestReadLoadAverageFrom(t *testing.T) {
 		},
 	)
 }
-
-// ---------------------------------------------------------------------------
-// readMeminfoKBFrom
-// ---------------------------------------------------------------------------
 
 func TestReadMeminfoKBFrom(t *testing.T) {
 	t.Parallel()
@@ -890,10 +769,6 @@ func TestReadMeminfoKBFrom(t *testing.T) {
 	)
 }
 
-// ---------------------------------------------------------------------------
-// GetSystemInfo via injectable paths (cross-platform)
-// ---------------------------------------------------------------------------
-
 func TestGetSystemInfo_InjectablePaths(t *testing.T) {
 	t.Parallel()
 	tmp := t.TempDir()
@@ -913,12 +788,10 @@ func TestGetSystemInfo_InjectablePaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	srv := NewServer("/x", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	srv.uptimePath = uptimePath
 	srv.loadAvgPath = loadAvgPath
 	srv.meminfoPath = meminfoPath
-	// statfsPath stays "/" which works on all platforms
-
 	cli := startTestServer(t, srv)
 	res, err := cli.GetSystemInfo(context.Background(), &mwanv1.GetSystemInfoRequest{})
 	if err != nil {
@@ -948,7 +821,7 @@ func TestGetSystemInfo_InjectablePaths(t *testing.T) {
 
 func TestGetSystemInfo_UptimeError(t *testing.T) {
 	t.Parallel()
-	srv := NewServer("/x", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	srv.uptimePath = filepath.Join(t.TempDir(), "nope")
 	cli := startTestServer(t, srv)
 	_, err := cli.GetSystemInfo(context.Background(), &mwanv1.GetSystemInfoRequest{})
@@ -964,7 +837,7 @@ func TestGetSystemInfo_LoadAvgError(t *testing.T) {
 	if err := os.WriteFile(uptimePath, []byte("100.0 200.0\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	srv := NewServer("/x", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	srv.uptimePath = uptimePath
 	srv.loadAvgPath = filepath.Join(tmp, "nope")
 	cli := startTestServer(t, srv)
@@ -985,7 +858,7 @@ func TestGetSystemInfo_MeminfoError(t *testing.T) {
 	if err := os.WriteFile(loadAvgPath, []byte("0.1 0.2 0.3 1/50 123\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	srv := NewServer("/x", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	srv.uptimePath = uptimePath
 	srv.loadAvgPath = loadAvgPath
 	srv.meminfoPath = filepath.Join(tmp, "nope")
@@ -1015,11 +888,10 @@ func TestGetSystemInfo_StatfsError(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	srv := NewServer("/x", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	srv.uptimePath = uptimePath
 	srv.loadAvgPath = loadAvgPath
 	srv.meminfoPath = meminfoPath
-	// Point statfsPath at a non-existent path to trigger a statfs error.
 	srv.statfsPath = filepath.Join(tmp, "nonexistent-mount")
 	cli := startTestServer(t, srv)
 	_, err := cli.GetSystemInfo(context.Background(), &mwanv1.GetSystemInfoRequest{})
@@ -1028,17 +900,10 @@ func TestGetSystemInfo_StatfsError(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// GetHealth -- scanner error branch via readMeminfoKBFrom (indirect, exercises
-// listFailedSystemdUnits sc.Err path indirectly via very large output)
-// Also exercises the ping error path through GetHealth directly.
-// ---------------------------------------------------------------------------
-
 func TestGetHealth_PingExecMissing(t *testing.T) {
-	// PATH with no ping/ping6 at all: GetHealth should still return without error
-	// (errors are logged, not propagated).
+	// PATH omits ping and ping6. GetHealth logs command errors and returns a response.
 	t.Setenv("PATH", t.TempDir())
-	srv := NewServer("/x", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
 	res, err := cli.GetHealth(context.Background(), &mwanv1.GetHealthRequest{})
 	if err != nil {
@@ -1052,27 +917,3 @@ func TestGetHealth_PingExecMissing(t *testing.T) {
 		)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// GetConfigState -- os.Stat error after successful ReadFile
-// Achieved by making the file unstat-able after the read by replacing it with
-// a directory of the same name (triggers EISDIR on Stat on some platforms) or
-// simply removing it between ReadFile and Stat. We inject via a custom path
-// that is a directory (os.ReadFile on a directory fails on most platforms, so
-// we use a more reliable approach: write content then chmod 000 the parent so
-// Stat fails but ReadFile succeeds by having already read into a buffer).
-//
-// Actually the cleanest approach: point deployFilePath at a path inside a dir
-// we remove after WriteFile. ReadFile caches content; Stat then fails. But
-// os.ReadFile opens and reads in one call -- we can't interleave.
-//
-// The only reliable cross-platform way is to test the Stat branch by making
-// the file a symlink to a path that disappears between ReadFile and Stat.
-// On Darwin/Linux we can do: write file, read succeeds, remove file, Stat fails.
-// But os.ReadFile and os.Stat are separate calls so we can arrange them in order.
-// We test this by using a symlink to a temp file, reading via the symlink, then
-// removing the target before Stat is called. But since GetConfigState calls
-// ReadFile then Stat sequentially on the same path, and we can't hook between
-// them, we accept this branch stays uncovered (it's an OS-level TOCTOU).
-// Coverage note: the sc.Err() branch in listFailedSystemdUnits is similarly
-// unreachable without injecting a fake scanner.

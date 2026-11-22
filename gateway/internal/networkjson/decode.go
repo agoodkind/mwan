@@ -20,17 +20,13 @@ func (e *SyntaxError) Unwrap() error {
 	return e.err
 }
 
-// Decode applies semantic checks without YANG schema validation.
-// Decode reports provider entry rejections in Config.Rejected.
-// Decode treats JSON null as an absent member.
+// Decode checks network settings, treats JSON null as an absent member, and
+// records rejected providers in Config.Rejected. Use networkload.Load to check
+// a file against the YANG schema.
 func Decode(data []byte) (*Config, error) {
 	var doc document
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return nil, &SyntaxError{err: err}
-	}
-
-	if doc.VPP != nil {
-		return buildVPPNetwork(&doc)
 	}
 
 	return build(&doc)

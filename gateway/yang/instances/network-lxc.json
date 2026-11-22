@@ -1,6 +1,5 @@
 {
   "ietf-interfaces:interfaces": {
-    "goodkind-mwan-steering:guest-type": "lxc",
     "interface": [
       {
         "name": "enuplink0",
@@ -37,7 +36,8 @@
           "weight": 1
         }
       },
-      { "name": "enmwanbr0", "type": "iana-if-type:other" }
+      { "name": "enmwanbr0", "type": "iana-if-type:other" },
+      { "name": "enmgmt0", "type": "iana-if-type:other" }
     ],
     "goodkind-mwan-steering:steering-group": {
       "hash-mode": "source",
@@ -51,6 +51,8 @@
         "internal-net-v4": "192.0.2.0/29"
       },
       "firewall": {
+        "management-interface": "enmgmt0",
+        "management-service": [{ "protocol": "tcp", "port": 22 }],
         "pinned-set-v4-name": "uplink_pinned_v4",
         "pinned-set-v6-name": "uplink_pinned_v6"
       },

@@ -38,10 +38,10 @@ func DNSProbe(ctx context.Context, spec DNSProbeSpec) (observed DNSProbeResult, 
 	var resultMutex sync.Mutex
 	lookupNetwork := "ip4"
 	networkSuffix := "4"
-	if spec.Family == "inet6" {
+	if spec.Family == string(httpFamilyV6) {
 		lookupNetwork = "ip6"
 		networkSuffix = "6"
-	} else if spec.Family != "inet" {
+	} else if spec.Family != tunnelEndpointRouteFamily {
 		return result, fmt.Errorf("unsupported DNS family %q", spec.Family)
 	}
 

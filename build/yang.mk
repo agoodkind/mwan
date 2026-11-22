@@ -1,3 +1,7 @@
+################################################################################
+# Settings
+################################################################################
+
 YANG_NATIVE_MK      := $(abspath $(lastword $(MAKEFILE_LIST)))
 YANG_NATIVE_MK_DIR  := $(patsubst %/,%,$(dir $(YANG_NATIVE_MK)))
 YANG_NATIVE_PINS_MK := $(YANG_NATIVE_MK_DIR)/wanconfig.mk
@@ -8,9 +12,9 @@ YANG_NATIVE_HOST_OS   := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 YANG_NATIVE_HOST_ARCH := $(patsubst aarch64,arm64,$(patsubst x86_64,amd64,$(shell uname -m)))
 YANG_NATIVE_PLATFORM  := $(YANG_NATIVE_HOST_OS)-$(YANG_NATIVE_HOST_ARCH)
 
-# go.mk defines GO_MK_CGO_PREFIX only when GO_MK_CGO_DEPS is set and exports
-# the cached prefix through PKG_CONFIG_PATH. The standalone default uses a
-# per-platform directory under the including module's .make.
+# go.mk defines GO_MK_CGO_PREFIX when GO_MK_CGO_DEPS is set and includes its
+# pkg-config directory in PKG_CONFIG_PATH. Standalone builds use the
+# including module's .make directory with a separate prefix per platform.
 ifneq ($(strip $(GO_MK_CGO_DEPS)),)
 YANG_NATIVE_PREFIX ?= $(GO_MK_CGO_PREFIX)
 else
@@ -21,6 +25,10 @@ YANG_NATIVE_SRC ?= $(or $(XDG_CACHE_HOME),$(HOME)/.cache)/mwan/yang-native-src/$
 
 YANG_NATIVE_PCRE2_URL   ?= https://github.com/PCRE2Project/pcre2.git
 YANG_NATIVE_LIBYANG_URL ?= https://github.com/CESNET/libyang.git
+
+################################################################################
+# Build flags
+################################################################################
 
 YANG_NATIVE_COMMON_CMAKE_FLAGS := \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -38,18 +46,20 @@ YANG_NATIVE_PCRE2_CMAKE_FLAGS := \
 	-DPCRE2_BUILD_PCRE2GREP=OFF \
 	-DPCRE2_BUILD_TESTS=OFF
 
-# -DCMAKE_DISABLE_FIND_PACKAGE_XXHash=ON prevents CMake on macOS from
-# linking Homebrew's dynamic xxhash. ENABLE_TOOLS must be off because
-# libyang's executables fail to link against the static archive.
+# Disable XXHash discovery to avoid linking Homebrew's dynamic library.
+# Disable tools because libyang's executables cannot link against the static archive.
 YANG_NATIVE_LIBYANG_CMAKE_FLAGS := \
 	-DENABLE_TOOLS=OFF \
 	-DENABLE_TESTS=OFF \
 	-DCMAKE_DISABLE_FIND_PACKAGE_XXHash=ON
 
-# pkg-config prints only Libs because cgo omits --static. Static linking
-# requires -lpcre2-8 -lm in Libs. The recipe fails if the rewritten
-# libyang.pc Libs line differs from the required value.
+# cgo omits --static when invoking pkg-config. Static linking requires
+# -lpcre2-8 -lm in Libs; the build checks the rewritten line exactly.
 YANG_NATIVE_LIBYANG_PC_LIBS := Libs: -L$${libdir} -lyang -lpcre2-8 -lm
+
+################################################################################
+# Cache and compiler settings
+################################################################################
 
 YANG_NATIVE_FLAGS_REV := $(shell printf '%s' '$(YANG_NATIVE_COMMON_CMAKE_FLAGS) $(YANG_NATIVE_PCRE2_CMAKE_FLAGS) $(YANG_NATIVE_LIBYANG_CMAKE_FLAGS) $(YANG_NATIVE_LIBYANG_PC_LIBS)' | cksum | cut -d' ' -f1)
 
@@ -65,6 +75,10 @@ YANG_NATIVE_CACHE_VERSIONS := \
 	pcre2=$(WANCONFIG_PCRE2_COMMIT) \
 	libyang=$(WANCONFIG_LIBYANG_COMMIT)-f$(YANG_NATIVE_FLAGS_REV)
 YANG_NATIVE_CACHE_INPUTS := $(YANG_NATIVE_MK) $(YANG_NATIVE_PINS_MK)
+
+################################################################################
+# Build helpers
+################################################################################
 
 define yang_native_checkout
 	rm -rf $(YANG_NATIVE_SRC)/$(1)
@@ -84,9 +98,14 @@ define yang_native_build
 	cmake --install $(YANG_NATIVE_SRC)/$(1)/build
 endef
 
+################################################################################
+# Native libraries
+################################################################################
+
 .PHONY: yang-native-prefix go-mk-cgo-dep-yang
-yang-native-prefix: $(YANG_NATIVE_STAMP)
-go-mk-cgo-dep-yang: yang-native-prefix
+
+yang-native-prefix: $(YANG_NATIVE_STAMP) ## Build the pinned static PCRE2 and libyang libraries.
+go-mk-cgo-dep-yang: yang-native-prefix ## Prepare native YANG dependencies for the shared build engine.
 
 $(YANG_NATIVE_STAMP):
 	rm -f $(YANG_NATIVE_STAMP_PREFIX)*.stamp

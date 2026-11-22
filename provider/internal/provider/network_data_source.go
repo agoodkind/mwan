@@ -29,7 +29,6 @@ type networkDataSourceModel struct {
 
 	Content          types.String `tfsdk:"content"`
 	CanonicalContent types.String `tfsdk:"canonical_content"`
-	GuestType        types.String `tfsdk:"guest_type"`
 }
 
 func newNetworkDataSource() datasource.DataSource {
@@ -51,7 +50,7 @@ func (d *networkDataSource) Schema(
 ) {
 	resp.Schema = schema.Schema{
 		Description: "The data source validates known network content against the YANG schema during planning. " +
-			"The data source returns canonical JSON, the decoded guest type, and configured maps.",
+			"The data source returns canonical JSON and configured maps.",
 		Attributes: map[string]schema.Attribute{
 			"content": schema.StringAttribute{
 				Required:    true,
@@ -76,10 +75,6 @@ func (d *networkDataSource) Schema(
 				Computed:    true,
 				ElementType: networkProviderDefaultType(),
 				Description: providerDefaultsDescription,
-			},
-			"guest_type": schema.StringAttribute{
-				Computed:    true,
-				Description: guestTypeDescription,
 			},
 			"policy_rules": schema.MapAttribute{
 				Computed:    true,
@@ -174,7 +169,6 @@ func (d *networkDataSource) Read(
 	}
 
 	model.CanonicalContent = types.StringValue(string(canonical))
-	model.GuestType = types.StringValue(string(config.GuestType))
 	model.networkMaps = maps
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }

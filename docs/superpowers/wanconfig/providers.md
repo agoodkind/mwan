@@ -147,19 +147,17 @@ mwan_providers:
 
 mwan_hash_mode: random
 mwan_reserved_tables:
-  cloudflared: 400
-  oob: 500
+  tunnel: 400
 mwan_pin_provider: att
 ```
 
 A fourth provider is one more entry with `table: 600`, `mark: 4`,
 `mark_prio: 600`, `from_prio: 58`, its own tier, and its own link block.
-Tables 400 and 500 are reserved, so 600 is the first free hundred. An
-IPv4-only provider has no `npt_prefix` and no IPv6 probe targets. It gets no
-IPv6 lease, no translation, and no IPv6 source rule. Its `ipv6` block states
-`dhcp: false` and `accept_ra: false`, which renders `IPv6AcceptRA=no` into its
-unit file. The loader rejects any entry with an `ipv4` or `ipv6` block that
-omits `dhcp`.
+Table 400 is reserved for tunnel routes. An IPv4-only provider has no
+`npt_prefix` and no IPv6 probe targets. It gets no IPv6 lease, no translation,
+and no IPv6 source rule. Its `ipv6` block states `dhcp: false` and
+`accept_ra: false`, which renders `IPv6AcceptRA=no` into its unit file. The
+loader rejects any entry with an `ipv4` or `ipv6` block that omits `dhcp`.
 
 Each value is typed once. Where a gateway entry and a simulator definition
 describe the same wire, both read the service map.
@@ -184,8 +182,6 @@ The pinned-destination lists carry no provider name. `mwan_pin_provider`
 names the provider the pins target. The seed and name lists are named for
 what they pin. The kernel set names and the refresher timer keep their
 current names until the refresher moves into the daemon under its own ticket.
-The two WireGuard control-plane pins in the firewall ruleset file use the pin
-provider's mark.
 
 The network configuration renders by looping over the list. No template
 names a provider.
@@ -205,12 +201,10 @@ balancing rule's guard tests, and neither rule priority equals the catch-all
 priority the routing module owns. A failed check stops the daemon before it
 touches the kernel.
 
-The reserved set is typed once in inventory, in `mwan_reserved_tables`,
-rendered into the network configuration under the steering group, and read
-from there by the daemon. The tunnel table, 400, and the out-of-band table,
-500, are in the inventory registry that names the routing tables, and every
-template that needs one reads the registry. The kernel's own tables (253,
-254, 255, and 0) are always reserved. No reader carries a copy of the set.
+Inventory defines the reserved set in `mwan_reserved_tables`. The network
+configuration stores this set under the steering group, and the daemon reads
+it. Table 400 is reserved for tunnel routes. Templates read this value from
+inventory. Linux reserves tables 253, 254, 255, and 0.
 
 The fixed priority checks are deleted and the new checks land in one change.
 No state exists where one layer accepts a fourth provider and another rejects
@@ -501,23 +495,6 @@ free-form sections:
 ```
 
 The daemon writes a `.netdev` and a `.network` with those sections.
-
-## The watchdog holds no provider list
-
-The rollback watchdog on the hypervisor pings the internet through each
-provider interface during a diagnosis. After this piece the gateway daemon
-pushes its per-provider health verdict to the watchdog. The watchdog keeps its
-basic egress pings and smoke checks, drops its per-interface pings, and holds
-no interface names.
-
-The push is advisory and stateless. Every message carries the whole verdict,
-one entry per provider plus the active tier. The watchdog keeps the latest
-message and the time it arrived, and logs both during a diagnosis. A restart
-on either side, or a lost message, is repaired by the next probe cycle, which
-sends the whole state again. A watchdog that has received nothing reports
-that it holds no verdict. No rollback decision reads the verdict in this
-piece. Whether it blocks a rollback is separate work (MWAN-442, MWAN-332,
-MWAN-336).
 
 ## Source routing and interface ownership
 

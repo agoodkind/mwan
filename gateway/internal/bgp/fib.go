@@ -115,7 +115,7 @@ type desiredRoute struct {
 	gateway string
 }
 
-// NewFIB creates a learned-route installer.
+// NewFIB creates an installer for learned BGP routes.
 func NewFIB(cfg FIBConfig, log *slog.Logger) *FIB {
 	return newFIB(cfg, log, netifRouteWriter{})
 }
@@ -138,9 +138,8 @@ func newFIB(cfg FIBConfig, log *slog.Logger, writer routeWriter) *FIB {
 	}
 }
 
-// ArmSweep permits stale-route cleanup after a dynamic session proves recovery
-// or the no-peer fallback expires. Earlier sweeping could delete retained live
-// routes before their sessions repopulate desired state.
+// ArmSweep enables cleanup of routes missing from desired state.
+// Dynamic sessions arm cleanup after restoring retained paths.
 func (f *FIB) ArmSweep() {
 	f.sweep.Do(func() {
 		f.mu.Lock()
@@ -149,7 +148,8 @@ func (f *FIB) ArmSweep() {
 	})
 }
 
-// Apply installs or withdraws one accepted best path in every owned table.
+// Apply installs an accepted best path in every owned table.
+// A withdrawal removes the matching routes from the tables.
 func (f *FIB) Apply(ctx context.Context, event PathEvent) error {
 	prefix, err := pathPrefix(event.Prefix)
 	if err != nil {
@@ -172,9 +172,8 @@ func (f *FIB) Apply(ctx context.Context, event PathEvent) error {
 	return f.installPrefix(ctx, prefix, event.NextHop)
 }
 
-// SweepStale removes owned BGP routes absent from accepted best paths only after
-// ArmSweep. The recovery gate lets dynamic sessions repopulate retained routes
-// before cleanup runs.
+// SweepStale removes owned routes that no accepted best path currently uses.
+// ArmSweep controls when cleanup begins after sessions restore retained paths.
 func (f *FIB) SweepStale(ctx context.Context) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -324,8 +323,8 @@ func (f *FIB) withdraw(ctx context.Context, peer string, prefix netip.Prefix) er
 	return withdrawErr
 }
 
-// Installed returns the sorted prefixes of the kernel BGP routes that use the
-// interface and the metric of the installer in any owned table.
+// Installed returns sorted prefixes for this installer's kernel routes.
+// A prefix appears when at least one owned table contains it.
 func (f *FIB) Installed(ctx context.Context) ([]netip.Prefix, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -357,9 +356,8 @@ func (f *FIB) Installed(ctx context.Context) ([]netip.Prefix, error) {
 	return prefixes, nil
 }
 
-// WithdrawExact preserves the peer's more specific routes inside prefix when
-// removing the desired route for prefix. A withdrawal through Apply removes the
-// peer's more specific routes inside prefix.
+// WithdrawExact removes only the peer's route for prefix.
+// More specific routes remain in desired state and in kernel tables.
 func (f *FIB) WithdrawExact(ctx context.Context, peer string, prefix netip.Prefix) error {
 	masked, err := pathPrefix(prefix)
 	if err != nil {
@@ -373,7 +371,8 @@ func (f *FIB) WithdrawExact(ctx context.Context, peer string, prefix netip.Prefi
 	return f.deletePrefix(ctx, peer, masked)
 }
 
-// WithdrawPeer removes every desired route that the disconnected peer announced.
+// WithdrawPeer removes desired routes announced by one disconnected peer.
+// Routes from other peers remain in the owned tables.
 func (f *FIB) WithdrawPeer(ctx context.Context, peer string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

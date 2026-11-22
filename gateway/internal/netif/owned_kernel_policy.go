@@ -213,12 +213,12 @@ func kernelFieldKey(id, family, leaf string) string { return id + "/" + family +
 
 func kernelPolicySettings(connection interfaceintent.Connection) []kernelPolicySetting {
 	// Linux otherwise answers for another interface's address on this link.
-	settings := []kernelPolicySetting{{"ipv4", "arp_ignore", arpIgnoreIncomingInterface}}
+	settings := []kernelPolicySetting{{familyIPv4, "arp_ignore", arpIgnoreIncomingInterface}}
 	if connection.IPv4 != nil && connection.IPv4.Forwarding != nil {
 		settings = append(
 			settings,
 			kernelPolicySetting{
-				"ipv4",
+				familyIPv4,
 				"forwarding",
 				kernelPolicyBool(*connection.IPv4.Forwarding),
 			},

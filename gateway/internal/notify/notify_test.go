@@ -1,14 +1,65 @@
 package notify
 
 import (
+	"bytes"
+	"io"
 	"log/slog"
+	"net/mail"
 	"strings"
 	"testing"
 	"time"
+
+	"goodkind.io/mwan/internal/testsmtp"
 )
 
-// recordFromAttrs builds a slog.Record at LevelError with the given
-// message and attrs.
+func TestNotifyDeliversConfiguredAlert(t *testing.T) {
+	t.Parallel()
+	server := testsmtp.Start(t)
+	const recipient = "recipient@example.com"
+	manager, err := New(
+		EmailConfig{
+			AlertEmail:    recipient,
+			SubjectPrefix: "[gateway]",
+			MinLevel:      "ERROR",
+			MsmtprcPath:   server.Path,
+		},
+		Config{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		"mwan-ifmgr",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manager.Notify(
+		t.Context(),
+		Event{
+			Level:   slog.LevelError,
+			Kind:    "gateway-health",
+			Key:     "wan0",
+			Message: "WAN probe failed",
+		},
+	)
+	accepted := server.Next(t)
+	message, err := mail.ReadMessage(bytes.NewReader(accepted))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := message.Header.Get("To"); got != recipient {
+		t.Fatalf("To = %q, want %q", got, recipient)
+	}
+
+	const subject = "[gateway] ERROR: WAN probe failed"
+	if got := message.Header.Get("Subject"); got != subject {
+		t.Fatalf("Subject = %q, want %q", got, subject)
+	}
+
+	if html := testsmtp.HTML(t, accepted); !strings.Contains(html, "mwan-ifmgr") {
+		t.Fatal("alert email omitted the caller name")
+	}
+}
+
 func recordFromAttrs(msg string, attrs ...slog.Attr) slog.Record {
 	r := slog.NewRecord(time.Date(2026, 5, 6, 22, 33, 6, 0, time.UTC), slog.LevelError, msg, 0)
 	r.AddAttrs(attrs...)
@@ -16,15 +67,12 @@ func recordFromAttrs(msg string, attrs ...slog.Attr) slog.Record {
 	return r
 }
 
-// TestBuildEmailBodyShape covers the canonical case from the plan: a
-// service failure with the full attr set. The expected layout uses
-// the goal shape verbatim because formatting is the contract here.
 func TestBuildEmailBodyShape(t *testing.T) {
 	t.Parallel()
 	r := recordFromAttrs(
 		"Service status check failed",
 		slog.String("daemon", "ifmgr"),
-		slog.String("role", "oob"),
+		slog.String("role", "wan"),
 		slog.String("iface", "mbrains"),
 		slog.String("trace", "4df84777"),
 		slog.String("phase", "periodic-reconcile"),
@@ -46,7 +94,7 @@ func TestBuildEmailBodyShape(t *testing.T) {
 	want := "Service status check failed\n\n" +
 		"What:    ssh agoodkind@host: exit status 255\n" +
 		"         stderr: Permission denied (publickey)\n\n" +
-		"Where:   iface=mbrains, role=oob, daemon=ifmgr, phase=periodic-reconcile\n\n" +
+		"Where:   iface=mbrains, role=wan, daemon=ifmgr, phase=periodic-reconcile\n\n" +
 		"Trace:   4df84777    Build: bcf4019 (dirty) binhash=b80490fd54b5"
 
 	if got != want {
@@ -54,19 +102,17 @@ func TestBuildEmailBodyShape(t *testing.T) {
 	}
 }
 
-// TestBuildEmailBodyMissingOptionalWhere drops iface/daemon and confirms
-// the remaining where keys are still emitted in canonical order.
 func TestBuildEmailBodyMissingOptionalWhere(t *testing.T) {
 	t.Parallel()
 	r := recordFromAttrs(
-		"failover: route lost",
-		slog.String("role", "primary"),
-		slog.String("phase", "switchover"),
+		"route lost",
+		slog.String("role", "wan"),
+		slog.String("phase", "periodic-reconcile"),
 		slog.String("trace", "abc123"),
 	)
 
 	got := BuildEmailBody(r, nil)
-	if !strings.Contains(got, "Where:   role=primary, phase=switchover") {
+	if !strings.Contains(got, "Where:   role=wan, phase=periodic-reconcile") {
 		t.Fatalf("Where line missing or malformed:\n%s", got)
 	}
 
@@ -75,8 +121,6 @@ func TestBuildEmailBodyMissingOptionalWhere(t *testing.T) {
 	}
 }
 
-// TestBuildEmailBodyExtraKey verifies that an attr outside the
-// special-cased set lands as a sorted Key: value line below Where.
 func TestBuildEmailBodyExtraKey(t *testing.T) {
 	t.Parallel()
 	r := recordFromAttrs(
@@ -99,9 +143,6 @@ func TestBuildEmailBodyExtraKey(t *testing.T) {
 	}
 }
 
-// TestBuildEmailBodyErrWithoutStderr exercises the err branch where
-// there is no stderr=... fragment; the err prints verbatim under
-// What:.
 func TestBuildEmailBodyErrWithoutStderr(t *testing.T) {
 	t.Parallel()
 	r := recordFromAttrs("dial failed", slog.String("err", "context deadline exceeded"))
@@ -116,9 +157,6 @@ func TestBuildEmailBodyErrWithoutStderr(t *testing.T) {
 	}
 }
 
-// TestBuildEmailBodyDropsSubjectAndFooterDups confirms level, module,
-// time, and caller never appear in the body so the email subject and
-// host-snapshot footer stay the only place they show up.
 func TestBuildEmailBodyDropsSubjectAndFooterDups(t *testing.T) {
 	t.Parallel()
 	r := recordFromAttrs(

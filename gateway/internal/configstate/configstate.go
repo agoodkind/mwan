@@ -8,20 +8,18 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 )
 
-// State uses LastDeployEpoch 0 for missing or unparsable deploy files.
+// State contains the gateway configuration hash and file manifest.
 type State struct {
-	ConfigHash      string `json:"config_hash"`
-	ConfigManifest  string `json:"config_manifest"`
-	LastDeployEpoch int64  `json:"last_deploy_epoch"`
+	ConfigHash     string `json:"config_hash"`
+	ConfigManifest string `json:"config_manifest"`
 }
 
 // Read hashes file paths and contents, skipping unreadable files.
 // An empty root uses absolute gateway paths.
-func Read(root string, deployFile []byte) State {
+func Read(root string) State {
 	composite := sha256.New()
 	var manifest strings.Builder
 
@@ -42,12 +40,9 @@ func Read(root string, deployFile []byte) State {
 		_, _ = composite.Write(data)
 	}
 
-	deployEpoch, _ := strconv.ParseInt(strings.TrimSpace(string(deployFile)), 10, 64)
-
 	return State{
-		ConfigHash:      hex.EncodeToString(composite.Sum(nil)),
-		ConfigManifest:  manifest.String(),
-		LastDeployEpoch: deployEpoch,
+		ConfigHash:     hex.EncodeToString(composite.Sum(nil)),
+		ConfigManifest: manifest.String(),
 	}
 }
 

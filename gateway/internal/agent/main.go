@@ -10,11 +10,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/mdlayher/vsock"
 	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/logging"
-	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/tracing"
 	"goodkind.io/mwan/internal/version"
 	"google.golang.org/grpc"
@@ -22,12 +21,10 @@ import (
 )
 
 // Run is the entry point for the agent subcommand.
-// It starts logging and the gRPC server with explicit options.
+// It starts the configured gRPC listeners and BGP speaker.
 func Run(cfg *config.Config, options config.AgentSection) error {
-	vsockPort := &options.VsockPort
+	socketPath := &options.SocketPath
 	tcpAddr := &options.TCPAddr
-	deployFile := &options.DeployFile
-	deployExpected := &options.DeployExpected
 	logFile := &options.LogFile
 	debug := &options.Debug
 
@@ -39,21 +36,15 @@ func Run(cfg *config.Config, options config.AgentSection) error {
 		BuildVersion: version.BuildVersionString(),
 		Handlers:     handlers,
 	})
-	notifier := notify.FromConfig(cfg.Email, cfg.NotifyConfig(), logger, "mwan-agent")
 	runID := tracing.NewID()
-	logger = logger.With(
-		slog.String(tracing.RunIDKey, runID),
-		slog.String(tracing.ComponentKey, "agent"),
-	)
-
-	port := *vsockPort
+	logger = logger.With(slog.String("run_id", runID), slog.String(tracing.ComponentKey, "agent"))
 
 	logger.Info(
 		"mwan-agent starting",
 		"detail",
 		version.BuildVersionString(),
-		"vsock_port",
-		*vsockPort,
+		"socket_path",
+		*socketPath,
 		"tcp_addr",
 		*tcpAddr,
 	)
@@ -61,12 +52,36 @@ func Run(cfg *config.Config, options config.AgentSection) error {
 	runCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	tcpLis, err := net.Listen("tcp", *tcpAddr)
+	if err != nil {
+		logger.Error("tcp listen", "error", err, "tcp_addr", *tcpAddr)
+		return fmt.Errorf("tcp listen %s: %w", *tcpAddr, err)
+	}
+	defer tcpLis.Close()
+
+	var unixLis net.Listener
+	var closeUnix func()
+	if *socketPath != "" {
+		unixLis, closeUnix, err = listenUnix(logger, *socketPath)
+		if err != nil {
+			return err
+		}
+		defer closeUnix()
+	}
+
 	bgpSpeaker, err := newBGPSpeaker(cfg, logger)
 	if err != nil {
 		return err
 	}
 	if bgpSpeaker != nil {
-		if err := configurePlatformBGP(runCtx, cfg, bgpSpeaker, logger); err != nil {
+		if err := configureBGPFIB(
+			runCtx,
+			cfg,
+			bgpSpeaker,
+			logger,
+			networkjson.DefaultPath,
+			networkjson.DefaultSchemaDir,
+		); err != nil {
 			return err
 		}
 		if err := bgpSpeaker.Start(runCtx); err != nil {
@@ -76,32 +91,10 @@ func Run(cfg *config.Config, options config.AgentSection) error {
 		logger.Info("bgp speaker started", "asn", cfg.BGP.ASN, "router_id", cfg.BGP.RouterID)
 	}
 
-	var vsockLis net.Listener
-	if port != 0 {
-		var vsockErr error
-		vsockLis, vsockErr = vsock.Listen(port, nil)
-		if vsockErr != nil {
-			logger.Warn(
-				"vsock listen failed, continuing without vsock",
-				"error",
-				vsockErr,
-				"vsock_port",
-				port,
-			)
-		}
-	}
-
-	tcpLis, err := net.Listen("tcp", *tcpAddr)
-	if err != nil {
-		logger.Error("tcp listen", "error", err, "tcp_addr", *tcpAddr)
-		return fmt.Errorf("tcp listen %s: %w", *tcpAddr, err)
-	}
-
 	grpcServer := grpc.NewServer(
 		grpc.StatsHandler(newTraceStatsHandler(logger, &mwanv1.MWANAgent_ServiceDesc)),
 	)
-	agentServer := NewServer(*deployFile, logger, bgpSpeaker, notifier)
-	agentServer.SetDeployExpected(*deployExpected)
+	agentServer := NewServer(logger, bgpSpeaker)
 	if bgpSpeaker != nil && cfg.BGP.ForwardingReadinessEnabled() {
 		readiness := cfg.BGP.ForwardingReadiness
 		agentServer.SetForwardingReady(
@@ -110,7 +103,7 @@ func Run(cfg *config.Config, options config.AgentSection) error {
 			readiness.ReadTimeout(),
 			len(cfg.BGP.Announce.IPv4) > 0,
 			len(cfg.BGP.Announce.IPv6) > 0,
-			cfg.BGP.UseWanconfig,
+			true,
 		)
 		go func() {
 			defer func() {
@@ -133,11 +126,11 @@ func Run(cfg *config.Config, options config.AgentSection) error {
 	}
 
 	serveCount := 1
-	if vsockLis != nil {
+	if unixLis != nil {
 		serveCount++
 	}
 
-	errCh := make(chan error, 2)
+	errCh := make(chan error, serveCount)
 
 	go func() {
 		defer func() {
@@ -149,16 +142,16 @@ func Run(cfg *config.Config, options config.AgentSection) error {
 		}()
 		errCh <- grpcServer.Serve(tcpLis)
 	}()
-	if vsockLis != nil {
+	if unixLis != nil {
 		go func() {
 			defer func() {
 				if recovered := recover(); recovered != nil {
 					recoveredErr := fmt.Errorf("panic: %v", recovered)
-					logger.Error("grpc serve panic", "listener", "vsock", "error", recoveredErr)
-					errCh <- fmt.Errorf("grpc serve vsock panic: %v", recovered)
+					logger.Error("grpc serve panic", "listener", "unix", "error", recoveredErr)
+					errCh <- fmt.Errorf("grpc serve unix panic: %v", recovered)
 				}
 			}()
-			errCh <- grpcServer.Serve(vsockLis)
+			errCh <- grpcServer.Serve(unixLis)
 		}()
 	}
 
@@ -203,4 +196,39 @@ func Run(cfg *config.Config, options config.AgentSection) error {
 		}
 	}
 	return nil
+}
+
+func listenUnix(logger *slog.Logger, path string) (net.Listener, func(), error) {
+	listener, err := net.Listen("unix", path)
+	if err != nil {
+		logger.Error("unix listen failed", "error", err, "socket_path", path)
+		return nil, nil, fmt.Errorf("unix listen %s: %w", path, err)
+	}
+
+	unixListener, ok := listener.(*net.UnixListener)
+	if !ok {
+		_ = listener.Close()
+		err := fmt.Errorf("listener for %q is not a Unix socket", path)
+		logger.Error("unix listener setup failed", "error", err, "socket_path", path)
+		return nil, nil, err
+	}
+	unixListener.SetUnlinkOnClose(false)
+
+	created, err := os.Lstat(path)
+	if err != nil {
+		_ = listener.Close()
+		wrappedErr := fmt.Errorf("inspect created socket: %w", err)
+		logger.Error("unix listener setup failed", "error", wrappedErr, "socket_path", path)
+		return nil, nil, wrappedErr
+	}
+
+	closeListener := func() {
+		_ = listener.Close()
+		current, statErr := os.Lstat(path)
+		if statErr == nil && current.Mode()&os.ModeSocket != 0 && os.SameFile(created, current) {
+			_ = os.Remove(path)
+		}
+	}
+
+	return listener, closeListener, nil
 }

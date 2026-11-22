@@ -2,6 +2,7 @@ package addresses
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/netip"
@@ -11,6 +12,10 @@ import (
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/networkd"
+)
+
+var errNetworkdTimeoutRequired = errors.New(
+	"networkd acquisition observation requires a positive networkd timeout",
 )
 
 func (module *Module) reconcileLegacyMappings(
@@ -44,9 +49,7 @@ func (module *Module) reconcileLegacyMappings(
 	var acquired map[netip.Addr]bool
 	if connection.IPv4 != nil && connection.IPv4.DHCP != nil && *connection.IPv4.DHCP {
 		if module.networkdTimeout <= 0 {
-			return fmt.Errorf(
-				"networkd acquisition observation requires a positive watchdog timeout",
-			)
+			return errNetworkdTimeoutRequired
 		}
 
 		observationContext, cancel := context.WithTimeout(ctx, module.networkdTimeout)

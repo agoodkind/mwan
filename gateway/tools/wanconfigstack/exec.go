@@ -12,15 +12,10 @@ import (
 	"golang.org/x/sys/execabs"
 )
 
-// program is one of the external programs the build runs, the ones with no
-// library: apt, the apkg packaging tool and its Python environment, and
-// cmake. Each resolves to a fixed path or name at the exec call.
 type program int
 
 const (
 	programAptGet program = iota
-	programPython3
-	programPip
 	programApkg
 	programCmake
 	programSysrepoctl
@@ -29,8 +24,6 @@ const (
 
 const (
 	aptGetPath     = "apt-get"
-	python3Path    = "python3"
-	pipPath        = buildRoot + "/apkg-venv/bin/pip"
 	apkgPath       = buildRoot + "/apkg-venv/bin/apkg"
 	cmakePath      = "cmake"
 	sysrepoctlPath = "/usr/bin/sysrepoctl"
@@ -39,16 +32,11 @@ const (
 
 var errUnknownProgram = errors.New("unknown program")
 
-// process builds the [exec.Cmd] for the program. Each case names its
-// program as a constant, so the command line is never assembled from data.
+// Fixed program identifiers prevent input from selecting an executable.
 func (p program) process(ctx context.Context, args []string) (*exec.Cmd, error) {
 	switch p {
 	case programAptGet:
 		return execabs.CommandContext(ctx, aptGetPath, args...), nil
-	case programPython3:
-		return execabs.CommandContext(ctx, python3Path, args...), nil
-	case programPip:
-		return execabs.CommandContext(ctx, pipPath, args...), nil
 	case programApkg:
 		return execabs.CommandContext(ctx, apkgPath, args...), nil
 	case programCmake:
@@ -62,8 +50,6 @@ func (p program) process(ctx context.Context, args []string) (*exec.Cmd, error) 
 	return nil, errUnknownProgram
 }
 
-// command is one external invocation with its arguments, working
-// directory, and extra environment.
 type command struct {
 	program program
 	args    []string
@@ -85,9 +71,6 @@ func (c command) with(env ...string) command {
 	return c
 }
 
-// fail logs an error at the point it is known and returns it wrapped with
-// the same message, so every failure is both in the build log and in the
-// error the caller sees.
 func (b *builder) fail(ctx context.Context, msg string, err error, attrs ...slog.Attr) error {
 	b.log.LogAttrs(
 		ctx,
@@ -99,8 +82,7 @@ func (b *builder) fail(ctx context.Context, msg string, err error, attrs ...slog
 	return fmt.Errorf("%s: %w", msg, err)
 }
 
-// run runs one command, streaming its output to stderr so the build log
-// carries the compiler and packaging output verbatim.
+// Preserve compiler and packaging diagnostics in the container's stderr.
 func (b *builder) run(ctx context.Context, c command) error {
 	argv := strings.Join(c.args, " ")
 	proc, err := c.program.process(ctx, c.args)
@@ -126,7 +108,6 @@ func (b *builder) run(ctx context.Context, c command) error {
 	return nil
 }
 
-// runAll runs commands in order and stops at the first failure.
 func (b *builder) runAll(ctx context.Context, commands ...command) error {
 	for _, c := range commands {
 		if err := b.run(ctx, c); err != nil {

@@ -359,9 +359,7 @@ func TestElfNeededSkipsFilesTooShortForAHeader(t *testing.T) {
 	}
 }
 
-// TestUnpackBundleRejectsForeignMembers pins the unpack contract the proof
-// relies on: a member that is not a .deb, or whose name climbs out of the
-// bundle, stops the unpack before anything is written.
+// Reject unrelated files and parent directory components before extraction.
 func TestUnpackBundleRejectsForeignMembers(t *testing.T) {
 	t.Parallel()
 
@@ -465,5 +463,122 @@ func TestParseFlagsRequiresEveryPin(t *testing.T) {
 
 	if verify.verifyBundle != "/out/wanconfig-stack_linux_amd64.tar.gz" {
 		t.Fatalf("parseFlags verify = %+v", verify)
+	}
+}
+
+func TestParseFlagsSupportsComponentStages(t *testing.T) {
+	t.Parallel()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	for _, component := range components {
+		t.Run(
+			component.name,
+			func(t *testing.T) {
+				t.Parallel()
+				args := []string{
+					"-component",
+					component.name,
+					"-" + component.pinVar,
+					"v1",
+					"-" + component.commitVar,
+					strings.Repeat("a", 40),
+				}
+				opts, err := parseFlags(log, args)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if opts.component != component.name || len(opts.pins) != 2 {
+					t.Fatalf("component options = %+v", opts)
+				}
+
+				if _, err := parseFlags(log, args[:len(args)-2]); err == nil {
+					t.Fatal("component build accepted a missing commit")
+				}
+			},
+		)
+	}
+
+	if _, err := parseFlags(log, []string{"-bundle-only", "-out", "/bundle"}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, args := range [][]string{
+		{"-component", "unknown"},
+		{"-bundle-only"},
+		{"-verify", "/bundle/input.tar.gz", "-component", "libyang"},
+		{"-verify", "/bundle/input.tar.gz", "-bundle-only"},
+		{"-component", "libyang", "-bundle-only"},
+	} {
+		if _, err := parseFlags(log, args); err == nil {
+			t.Fatalf("accepted incompatible or incomplete arguments: %v", args)
+		}
+	}
+}
+
+func TestFailedVerificationDoesNotExportBundle(t *testing.T) {
+	t.Parallel()
+	b := testBuilder(t)
+	source := filepath.Join(t.TempDir(), "wanconfig-stack_linux_amd64.tar.gz")
+	writeTestBundle(t, source, "notes.txt")
+	opts, err := parseFlags(b.log, []string{"-verify", source, "-out", b.outDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := b.execute(context.Background(), opts); !errors.Is(err, errBundleMember) {
+		t.Fatalf("verification error = %v, want %v", err, errBundleMember)
+	}
+
+	entries, err := os.ReadDir(b.outDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(entries) != 0 {
+		t.Fatalf("failed verification exported files: %v", entries)
+	}
+}
+
+func TestExportVerifiedPreservesBundleBytes(t *testing.T) {
+	t.Parallel()
+	b := testBuilder(t)
+	source := filepath.Join(t.TempDir(), "wanconfig-stack_linux_amd64.tar.gz")
+	writeTestBundle(t, source, "debs/example.deb")
+	if err := b.exportVerified(context.Background(), source); err != nil {
+		t.Fatal(err)
+	}
+
+	want, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	target := filepath.Join(b.outDir, filepath.Base(source))
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(got, want) {
+		t.Fatal("export changed the bundle bytes")
+	}
+
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if info.Mode().Perm() != 0o644 {
+		t.Fatalf("export permissions = %v, want 0644", info.Mode().Perm())
+	}
+
+	entries, err := os.ReadDir(b.outDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("export retained temporary files: %v", entries)
 	}
 }

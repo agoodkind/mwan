@@ -7,18 +7,13 @@ type TierMember struct {
 	Tier uint8
 }
 
-// ActiveTier returns the lowest-numbered tier holding at least one healthy
-// member, and whether any member is healthy at all. The tiers in inventory
-// decide the failover order and nothing else does, so this function carries no
-// tie-break of its own.
+// ActiveTier returns the lowest-numbered tier with a member that is not
+// unhealthy. It also reports whether such a member exists.
 //
-// An unknown verdict reads healthy, which is what makes every member usable
-// before the health module writes its first state and is the startup behavior
-// the gateway has today.
+// Unknown verdicts count as usable so providers can serve traffic before the
+// health module writes its first state.
 //
-// Both the routing module and the steering module decide from this one
-// function, so the catch-all route and the balancing marks can never disagree
-// about which tier is carrying traffic.
+// Routing and steering use ActiveTier to select the same tier.
 func ActiveTier(members []TierMember, health HealthStates) (uint8, bool) {
 	active := uint8(0)
 	found := false

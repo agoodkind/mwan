@@ -10,44 +10,6 @@ import (
 	"strings"
 )
 
-// apkgVersion pins the upstream packaging tool, which is not in Debian.
-const apkgVersion = "1.0.0"
-
-// buildPackages are the apt packages the container needs: the Debian
-// packaging toolchain, cmake, and the -dev packages the nfpm components link
-// against. The apkg templates add their own Build-Depends on top. systemd-dev
-// carries the pkg-config file that names the unit directory on trixie; the
-// sysrepo template's Build-Depends predate that split and its sysrepo-tools
-// package expects the sysrepo-plugind unit that cmake only installs when the
-// directory resolves. git is not for cloning (the tool clones through a
-// library) but for the C++ components' cmake, which requires the git
-// program to stamp their version.
-var buildPackages = []string{
-	"ca-certificates",
-	"build-essential",
-	"cmake",
-	"pkg-config",
-	"git",
-	"debhelper",
-	"dpkg-dev",
-	"fakeroot",
-	"python3",
-	"python3-venv",
-	"python3-pip",
-	"systemd-dev",
-	"libpcre2-dev",
-	"libpam0g-dev",
-	"libaudit-dev",
-	"libhowardhinnant-date-dev",
-	"libspdlog-dev",
-	"libdocopt-dev",
-	"libboost-system-dev",
-	"libboost-thread-dev",
-	"libssl-dev",
-	"libnghttp2-dev",
-	"libsystemd-dev",
-}
-
 var aptEnv = []string{"DEBIAN_FRONTEND=noninteractive"}
 
 var (
@@ -60,26 +22,28 @@ func (b *builder) aptInstall(ctx context.Context, packages ...string) error {
 	return b.run(ctx, cmd(programAptGet, args...).with(aptEnv...))
 }
 
-func (b *builder) installBuildTools(ctx context.Context) error {
-	for _, dir := range []string{"src", "stage", "pkgs"} {
-		if err := os.MkdirAll(filepath.Join(buildRoot, dir), 0o755); err != nil {
-			return b.fail(ctx, "create build dir", err, slog.String("dir", dir))
+// Each Docker stage starts a new process but inherits installed packages.
+// Read their exact versions before computing subsequent package dependencies.
+func (b *builder) restoreVersions(ctx context.Context) error {
+	paths, err := filepath.Glob(filepath.Join(buildRoot, "pkgs", "*", "*.deb"))
+	if err != nil {
+		return b.fail(ctx, "list previous packages", err)
+	}
+
+	return b.recordVersions(ctx, paths)
+}
+
+func (b *builder) recordVersions(ctx context.Context, paths []string) error {
+	for _, path := range paths {
+		name, version, err := b.debIdentity(ctx, path)
+		if err != nil {
+			return err
 		}
+
+		b.versions[name] = version
 	}
 
-	if err := b.run(ctx, cmd(programAptGet, "update").with(aptEnv...)); err != nil {
-		return err
-	}
-
-	if err := b.aptInstall(ctx, buildPackages...); err != nil {
-		return err
-	}
-
-	return b.runAll(
-		ctx,
-		cmd(programPython3, "-m", "venv", filepath.Dir(filepath.Dir(pipPath))),
-		cmd(programPip, "install", "--quiet", "apkg=="+apkgVersion),
-	)
+	return nil
 }
 
 // apkgBuild builds a component through its own distro/pkg/deb template. The
@@ -202,13 +166,8 @@ func (b *builder) installBuilt(ctx context.Context, dir string) error {
 		return err
 	}
 
-	for _, debPath := range debs {
-		name, version, err := b.debIdentity(ctx, debPath)
-		if err != nil {
-			return err
-		}
-
-		b.versions[name] = version
+	if err := b.recordVersions(ctx, debs); err != nil {
+		return err
 	}
 
 	b.log.InfoContext(ctx, "wanconfigstack: packages installed", "dir", dir, "count", len(debs))

@@ -1,0 +1,30 @@
+x-ci: &ci
+  working_dir: ${WANCONFIG_DOCKER_SOURCE}/gateway
+  environment:
+    GIT_WORK_TREE: ${WANCONFIG_DOCKER_SOURCE}
+    GITHUB_OUTPUT: /github/output
+    GITHUB_ACTIONS: "true"
+    GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-}
+    GITHUB_RUN_NUMBER: ${GITHUB_RUN_NUMBER:-}
+    GITHUB_RUN_ID: ${GITHUB_RUN_ID:-}
+    GITHUB_SHA: ${GITHUB_SHA:-}
+    GITHUB_REF: ${GITHUB_REF:-}
+    GITHUB_REF_NAME: ${GITHUB_REF_NAME:-}
+    GITHUB_EVENT_NAME: ${GITHUB_EVENT_NAME:-}
+    GITHUB_WORKSPACE: ${WANCONFIG_DOCKER_SOURCE}
+  volumes:
+    - type: bind
+      source: ${WANCONFIG_DOCKER_SOURCE}
+      target: ${WANCONFIG_DOCKER_SOURCE}
+      bind:
+        create_host_path: false
+    - type: bind
+      source: ${GITHUB_OUTPUT:?Supply the GitHub output file}
+      target: /github/output
+      bind:
+        create_host_path: false
+
+services:
+  build: *ci
+  check: *ci
+  release: *ci

@@ -28,14 +28,13 @@ ignored `.make/releases` directory. No release is named on the command line,
 and a check run stages the release without touching a host. After it copies
 the binary onto a Linux host, the play runs `mwan version` on that copy and
 fails unless the reported commit is a prefix of the release's commit.
-`deploy-proxmox` and `deploy-opnsense` check opnsensectl the same way. To move
-an environment to a newer release, set its tag, the archive checksums from
-that release's `checksums.txt`, and for MWAN the repository that publishes the
-release in
+`deploy-opnsense` checks opnsensectl the same way. To move an environment to a
+newer release, set its tag, the archive checksums from that release's
+`checksums.txt`, and for MWAN the repository that publishes the release in
 [mwan_prod_all.yml](https://github.com/agoodkind/configs/blob/main/ansible/inventory/group_vars/mwan_prod_all.yml) or
 [mwan_testbed_all.yml](https://github.com/agoodkind/configs/blob/main/ansible/inventory/group_vars/mwan_testbed_all.yml).
-Use `--limit` on production so one command does not touch both hypervisors.
-Dry-run with `--check --diff` before a mutating run.
+Use `--limit` to constrain a production run. Dry-run with `--check --diff`
+before a mutating run.
 
 ## Run logs
 

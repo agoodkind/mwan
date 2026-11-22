@@ -66,7 +66,7 @@ func TestBackupBGPAnnouncesEachReadyFamily(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = speaker.Stop() })
-	agent := NewServer("", testLogger(t), speaker, nil)
+	agent := NewServer(testLogger(t), speaker)
 	agent.SetForwardingReady(socketPath, time.Second, readTimeout, true, true, false)
 	client := startTestServer(t, agent)
 	request := &mwanv1.AnnounceRoutesRequest{}
@@ -157,7 +157,7 @@ func TestPrimaryBGPAnnouncesOnlyReadyFamilies(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = speaker.Stop() })
-	agent := NewServer("", testLogger(t), speaker, nil)
+	agent := NewServer(testLogger(t), speaker)
 	agent.SetForwardingReady(socketPath, time.Second, readTimeout, true, true, true)
 	client := startTestServer(t, agent)
 

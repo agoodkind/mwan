@@ -32,10 +32,6 @@ the first module reconciliation. Management interface and service-port
 configuration must become available to the daemon before it can replace the
 early firewall service.
 
-The deployment gate still accepts its first successful IPv6 probe. IPv4 is
-reported but does not determine that result. This behavior must change before
-the firewall file is removed.
-
 ## Constraints
 
 1. Preserve MWAN-340's translation fields, TC/eBPF programs, IPv6 edge
@@ -50,12 +46,9 @@ the firewall file is removed.
 4. Use real packet and command boundaries for new tests. Reuse the existing
    namespace suites. Add no test suite that merely inspects builder calls or
    copies implementation constants.
-5. Finish the implementation before deployment. Keep PRs limited to one
-   coherent change. Deploy merged release commits through Configs, first to
-   the testbed and then to production after the required acceptance passes.
-6. Keep provider names, ASNs, public prefixes, and tunnel protocols out of
+5. Keep provider names, ASNs, public prefixes, and tunnel protocols out of
    firewall branching. Production service details are configuration values.
-7. Preserve the current forwarding policy during this ownership change.
+6. Preserve the current forwarding policy during this ownership change.
    Ordinary Sonic and Astound service remains independent of MWAN-507.
 
 ## Interfaces for MWAN-507
@@ -92,52 +85,7 @@ with real namespace traffic. It does not choose a production tunnel protocol.
 
 ## Tasks
 
-### 1. Require both address families in the deploy gate
-
-This task implements MWAN-354 and can be reviewed independently.
-
-Files:
-
-- Modify [deploygate.go](../../gateway/cmd/mwan/deploygate.go).
-- Create `gateway/cmd/mwan/deploygate_egress_netns_test.go` in the MWAN repository.
-- Modify [the MWAN Makefile](../../gateway/Makefile).
-- Modify [deploy-mwan.yml](https://github.com/agoodkind/configs/blob/main/ansible/playbooks/deploy-mwan.yml) to pass the required families and consecutive-success count.
-
-Behavior:
-
-The gate must require every address family configured for the deployment.
-A disabled family does not become an invented requirement. Both existing
-gateways require IPv4 and IPv6. A failed round resets the success count.
-Use three consecutive rounds for the initial Configs setting.
-
-Steps:
-
-1. Change `checkEgress`, `waitEgress`, and their callers to use one
-   explicit family requirement. Preserve their existing timeout budget and
-   hypervisor-local execution.
-2. Make each round test every required family. Accept the deployment only
-   after the configured number of complete successful rounds.
-3. Preserve the trace identifier, reboot verdict, mapped-address checks,
-   result collection, and existing rollback decisions.
-4. Execute `mwan deploy-gate wait-egress <seconds>` in an isolated Linux
-   network namespace. Route its probe addresses to a second namespace
-   that answers real ICMP requests. Block only IPv4 echo, restore it, and
-   use packet captures or per-round logs to verify the failed verdict and
-   reset of the consecutive-success count. Keep both namespaces isolated
-   from the public Internet.
-5. Add `make -C gateway test-firewall` using the existing native Linux builder with
-   namespace privileges and the real schema libraries. Run this CLI test
-   there. Task 2 extends the target for schema-dependent firewall checks.
-
-Verification:
-
-1. Run `make -C gateway test`, `make -C gateway check`, and `make -C gateway test-firewall` in MWAN.
-2. During Task 5, deliberately break IPv4 translation on the testbed.
-   Expect gate failure even while IPv6 probes succeed.
-3. Restore translation and rerun the gate. Expect success only after three
-   complete successful rounds.
-
-### 2. Generate firewall rules from typed configuration
+### 1. Generate firewall rules from typed configuration
 
 This task implements the rule generator and MWAN-355. It depends on the
 completed translation model.
@@ -149,9 +97,8 @@ Files:
 - Modify [ifmgr_module_configs.go](../../gateway/cmd/mwan/ifmgr_module_configs.go) and [wanconfig_publish.go](../../gateway/cmd/mwan/wanconfig_publish.go).
 - Extend the published `Gateway`, `GroupSettings`, and `ConfigItems` in [tree.go](../../gateway/internal/wanconfig/tree.go).
 - Extend [the publication roundtrip test](../../gateway/cmd/mwan/wanconfig_roundtrip_test.go) and [the public selftest](../../gateway/cmd/mwan/wanconfig_selftest.go).
-- Modify [the valid model instances](../../gateway/yang/instances) and [the public loader test](../../gateway/cmd/mwan/deploygate_checknetwork_test.go).
+- Modify [the valid model instances](../../gateway/yang/instances).
 - Create `gateway/internal/firewall/config.go`, `rules.go`, `apply_linux.go`, and `inspect_linux.go` in the MWAN repository.
-- Create `gateway/cmd/mwan/deploygate_firewall.go` and `gateway/cmd/mwan/deploygate_firewall_netns_test.go` in the MWAN repository.
 
 Behavior:
 
@@ -188,24 +135,23 @@ Steps:
 6. Create missing owned tables, chains, and sets before replacing owned
    chain contents. Commit each update atomically. Preserve existing
    destination-set elements and interval/automatic-merging metadata.
-7. Add the public command
-   `mwan deploy-gate check-firewall <network.json> <schema-dir>`.
-   The command validates the document, creates a private network namespace,
+7. Add firewall validation to the existing `debug` command.
+   `mwan debug check-firewall <network.json> <schema-dir>` validates the
+   document, creates a private network namespace,
    uses the production firewall writer, reads back the result, and reports
    any mismatch. It must never apply rules in the caller's namespace.
    Its output includes a normalized ruleset for review.
 8. Keep offline validation explicit about dynamic state. It proves the
    configured firewall and table definitions without inventing a delegated
    prefix or a healthy provider. Runtime NPT and steering state receive their
-   existing packet tests and the live checks in Task 5.
-9. Extend `make -C gateway test-firewall` from Task 1 with the new CLI test.
-   Do not add the schema-dependent CLI to the current
-   `CGO_ENABLED=0` namespace runner.
+   existing packet tests and the live checks in Task 4.
+9. Run the firewall check in the existing namespace suite. Do not add the
+   schema-dependent command to the `CGO_ENABLED=0` namespace runner.
 
 Verification:
 
-1. Run the existing `mwan deploy-gate check-network <network.json> <schema-dir>`
-   against both rendered environments.
+1. Run `mwan debug check-network <network.json> <schema-dir>` against both
+   rendered environments.
 2. Run `make -C gateway test-firewall`. Expect the public check to reject invalid
    configuration and accept valid rules in its private namespace. Verify
    that the caller's rules remain unchanged. The private namespace ends
@@ -213,12 +159,12 @@ Verification:
 3. Keep a reviewed normalized reference for each environment alongside these
    tests. Compare it with the command's kernel readback, excluding handles,
    counters, and refresher-owned elements. Complete packet acceptance in
-   Task 3 after the daemon can apply the new configuration.
+   Task 2 after the daemon can apply the new configuration.
 
-### 3. Install protective rules before configuring links
+### 2. Install protective rules before configuring links
 
 This task implements MWAN-325 and daemon support for MWAN-330. It depends
-on Task 2.
+on Task 1.
 
 Files:
 
@@ -282,7 +228,7 @@ Verification:
    schema, and network-file directories. Disable optional sysrepo publication
    through valid configuration. Use supported hand-authored provider links
    to avoid requesting a systemd reload in this namespace test. Verify actual
-   systemd readiness and networkd ordering separately in Task 5.
+   systemd readiness and networkd ordering in the systemd-tagged suite.
 2. Start the daemon with missing WAN links and a valid baseline. Verify
    management traffic and blocked unsolicited traffic without waiting for
    DHCP, NPT, a tunnel, or BGP.
@@ -301,140 +247,3 @@ Verification:
    interface without changing the policy.
 8. Exercise address-constrained TCP permissions and portless protocol
    permissions. Verify rejection from an unpermitted source or interface.
-
-### 4. Transfer deployment to daemon ownership
-
-This task completes MWAN-330 and MWAN-335. It depends on Tasks 1 through 3.
-
-Files:
-
-- Modify [the JSON renderer](https://github.com/agoodkind/configs/blob/main/mwan/config/network.json.j2).
-- Modify [production inventory](https://github.com/agoodkind/configs/blob/main/ansible/inventory/group_vars/mwan_servers.yml) and [testbed inventory](https://github.com/agoodkind/configs/blob/main/ansible/inventory/group_vars/mwan_suburban_servers.yml).
-- Remove [the gateway ruleset template](https://github.com/agoodkind/configs/blob/main/mwan/config/nftables.conf.j2) after its complete policy is generated by the daemon.
-- Modify [the destination refresher service](https://github.com/agoodkind/configs/blob/main/mwan/services/mwan-update-att-pinned-dests.service), [its timer](https://github.com/agoodkind/configs/blob/main/mwan/timers/mwan-update-att-pinned-dests.timer), and [its existing implementation](https://github.com/agoodkind/configs/blob/main/mwan/scripts/update-att-pinned-dests.sh) only as needed for set recovery.
-- Modify [the Configs render contract](https://github.com/agoodkind/configs/blob/main/spec/ansible/mwan_install_spec.rb).
-- Modify [the agent's critical paths](../../gateway/internal/agent/server.go).
-- Remove installation of [the gateway nftables drop-in](../../gateway/cmd/mwan/nftables-override.conf).
-- Update [the MWAN operator reference](../mwan.md) and affected procedures under [operations](../ops/README.md).
-
-Behavior:
-
-The compatible release, firewall configuration, and service transition deploy
-together. The destination refresher remains the only external writer of set
-elements. The gateway is the only role that changes ownership.
-
-Steps:
-
-1. Render the new firewall fields from existing inventory values. Keep the
-   existing network and translation values authoritative. Preserve the
-   refresher's existing set identities during this cutover.
-2. Run the released network and firewall checks before replacing the live
-   configuration. A schema check alone does not replace kernel validation.
-3. Declare the required nftables and connection-tracking kernel modules for
-   boot loading. Verify module load order before the gateway daemon starts;
-   retain the daemon's existing capabilities and module-loading restriction.
-4. Implement a handoff that preserves installed rules. Before stopping
-   nftables, install a temporary service drop-in that clears its inherited
-   `ExecStop` command, then reload systemd's unit definitions. Stop and
-   disable the service without flushing rules. Start the configured daemon,
-   inspect its replacement rules, and mask the retired service. Remove the
-   temporary drop-in only after the service is masked. Keep the existing
-   snapshot and recovery workflow for a failed handoff.
-5. Remove the installed ruleset, obsolete gateway drop-in, deployment task,
-   and reload handler. Preserve separate failover-container firewall files.
-6. Retain the playbook's merged-commit enforcement and bounded reconnect
-   handling around network changes. Add no shell deployment wrapper.
-7. Order the destination refresher after gateway readiness and add retry on
-   failure. When its sets are recreated, request a refresh through its
-   existing service. Keep the daemon from rewriting existing set contents.
-8. Update drift detection to hash the authoritative network and daemon
-   configuration. Remove the retired ruleset from the expected path list.
-9. Replace operator instructions for durable manual rule edits with the
-   configuration and deployment procedure. Keep temporary inspection and
-   recovery instructions separate from the specification.
-
-Verification:
-
-1. Run `./configsctl lint` and
-   `bundle exec rspec spec/ansible/mwan_install_spec.rb`.
-2. The render contract must run the released public validators on the
-   rendered document. Do not replace this with template-text assertions.
-3. Inspect the rendered service dependencies and the handoff task order.
-   Expect no gateway reload or stop action after daemon ownership starts.
-4. Verify that the failover and hypervisor deployments remain outside the
-   new firewall module.
-
-### 5. Deploy and validate the testbed
-
-This task depends on all implementation tasks. Build and merge the code
-before starting deployment.
-
-Files:
-
-- Modify [the testbed release pin](https://github.com/agoodkind/configs/blob/main/ansible/inventory/group_vars/mwan_testbed_all.yml).
-- Create `docs/mwan-341-acceptance.md` in MWAN for testbed and production evidence.
-
-Steps:
-
-1. Run `make -C gateway check`, `make -C gateway test`, `make -C gateway test-netns`, and
-   `make -C gateway test-firewall` in MWAN. Merge the reviewed changes and verify the
-   resulting release and attestations.
-2. Merge the compatible Configs changes and testbed release pin. Run
-   `./configsctl deploy deploy-mwan --limit mwan_suburban_servers`
-   from a clean merged commit.
-3. Compare the generated static rules with `nft -j list ruleset` after
-   reboot. Compare NPT and steering rules with their published current
-   intent. Preserve semantic rule order while excluding kernel handles,
-   counters, and changing destination-set elements.
-4. Verify the installed service's readiness ordering, actual capabilities,
-   kernel modules, mapped addresses, and the masked firewall service.
-5. Use the existing downstream test clients. Verify native and translated
-   traffic, inbound replies, DSCP and destination pins, fallback, NPT hairpin
-   behavior, and independent family exclusion.
-6. Send 100 fresh flows per address family with equal-weight providers.
-   Require a reply for every flow and 35 to 65 captured selections per
-   provider. Capture before simulator masquerade and account for every
-   command and flow.
-7. Run the IPv4 gate-failure case from Task 1, invalid-configuration cases,
-   daemon stop/restart, missing link at boot, and complete ruleset deletion.
-   Restore every deliberate failure before the next case.
-8. Verify destination-set definitions, retained elements during reconciliation,
-   and repopulation after deletion.
-9. Record each command, deployed commit, observation, and failure duration.
-   Store continuous probe output on the observing testbed host. Losing the
-   controller's SSH session must not destroy the measurement.
-
-Expected result:
-
-The testbed passes the firewall, translation, steering, startup, recovery,
-and load-balancing checks. The gateway no longer requires the generated
-ruleset file. These results do not claim external BGP or tunnel acceptance.
-
-### 6. Promote the accepted release to production
-
-This task depends on completed testbed acceptance.
-
-Files:
-
-- Modify [the production release pin](https://github.com/agoodkind/configs/blob/main/ansible/inventory/group_vars/mwan_prod_all.yml).
-- Add production observations to the Task 5 acceptance record.
-
-Steps:
-
-1. Pin the exact accepted release in a separate reviewed change. Merge it
-   before deployment.
-2. Start persistent observation from a downstream guest without an
-   out-of-band route. Record IPv4 and IPv6 service, the watchdog, and the
-   existing load-balancer monitors. Use the hypervisor for management
-   observation, not as the sole proof of client connectivity.
-3. Run `./configsctl deploy deploy-mwan --limit mwan_servers`
-   from a clean merged commit. Preserve the accepted snapshot and rollback
-   workflow.
-4. Verify the post-reboot rules, installed release, management access,
-   downstream IPv4 and IPv6, mapped addresses, provider health, and observed
-   balancing. Confirm that the retired service cannot reload a ruleset.
-5. Report the measured interruption and recovery using the persistent
-   observer's timestamps. Record any missing measurement explicitly.
-6. Close MWAN-341 only after its production acceptance is recorded.
-   Track MWAN-507's direct BGP and tunnel acceptance separately. New-circuit
-   production exercises remain after October 2026.

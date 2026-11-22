@@ -53,7 +53,6 @@ func TestVXLANLoadApplyAndPublish(t *testing.T) {
 	}
 
 	var gateway wanconfig.Gateway
-	gateway.GuestType = cfg.IfMgr.GuestType
 	gateway.InternalIface = loaded.InternalIface
 	gateway.Connections = cfg.IfMgr.Connections
 	items, err := wanconfig.ConfigItems(gateway)

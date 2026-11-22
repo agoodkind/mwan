@@ -1,15 +1,9 @@
 name: CI
 
-# Run CI on every branch push, exactly once, with no duplication. There is no
-# `pull_request` trigger: a same-repo PR would double-run (push + pull_request),
-# and same-repo PRs already show these checks because GitHub matches checks to
-# the head commit SHA. `'**'` matches branches but not tags, so the tag-driven
-# release workflow is untouched.
 on:
   push:
     branches: ['**']
 
-# Feature branch CI runs cancel superseded runs, and default branch CI runs are never cancelled mid-flight.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref_name != github.event.repository.default_branch }}
@@ -28,12 +22,7 @@ jobs:
     with:
       working_directory: gateway
       go_version_file: gateway/go.mod
-      # libpcre2-dev supports the declared libyang build. The dedicated
-      # YANG job installs yanglint separately.
-      apt_packages: libpcre2-dev rrdtool fonts-liberation
-      go_tool_packages: github.com/bufbuild/buf/cmd/buf@latest google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12 google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-      # Each module's Makefile sets its release platforms through RELEASE_PLATFORMS.
-      # The build gate compiles the gateway platforms on native runners with cgo.
+      skip_unchanged: false
       release_platforms: linux/amd64 linux/arm64
       cgo: true
 
@@ -62,18 +51,22 @@ jobs:
         with:
           go-version-file: gateway/go.mod
           cache-dependency-path: gateway/go.sum
+      - name: Apply Compose environment
+        working-directory: gateway
+        run: make apply-compose-env >> "$GITHUB_ENV"
       - name: Compare mwan install with the provider data
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: gateway
-        run: make test-provider-drift WANCONFIG_DOCKER_ARCH=amd64
+        run: docker compose -f compose.test.yaml run --build --rm provider-drift
 
   tofu-plan:
     name: provider tofu plan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # The testdata copy must match the validated gateway fixture because staticcheck-extra rejects constant input paths outside testdata.
+      # Staticcheck-extra requires constant test input paths to use testdata.
+      # Keep this copy aligned with the validated gateway fixture.
       - name: Check network route fixture copies
         run: cmp gateway/yang/instances/network-routes.json provider/internal/provider/testdata/networkplan/network-routes.json
       - uses: actions/setup-go@v7
@@ -126,38 +119,25 @@ jobs:
           test -n "$package"
           make -C provider test-release-package PROVIDER_PACKAGE="$package" TOFU="$(command -v tofu)" ALLOW_MISSING_CHECKSUMS=1
 
-  # The go-makefile quality matrix does not run check-yang.
-  # Run the schema gates separately to report schema failures independently
-  # of Go failures. Deployment validates the rendered network configuration
-  # with yanglint before writing it to the gateway.
   yang:
     name: yang gates
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # The gates are make targets, and the Makefile resolves the Go
-      # environment while make parses it, so Go is a hard dependency even
-      # though this job compiles nothing.
       - uses: actions/setup-go@v7
         with:
           go-version-file: gateway/go.mod
           cache-dependency-path: gateway/go.sum
-      # libyang3-tools provides yanglint, which both gates run.
-      - name: Install yanglint
-        run: sudo apt-get update && sudo apt-get install -y libyang3-tools
-      # The Makefile fetches go-makefile through gh while make parses it, so
-      # the token keeps that fetch on the authenticated API path instead of
-      # its anonymous raw fallback.
+      - name: Apply Compose environment
+        working-directory: gateway
+        run: make apply-compose-env >> "$GITHUB_ENV"
       - name: Validate the YANG model and its instance documents
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: gateway
-        run: make check-yang
+        run: docker compose -f compose.test.yaml run --build --rm check-yang
 
-  # This job exists because the netns-tagged tests create a private network
-  # namespace and build links, routes and policy rules inside it, which needs
-  # root. The go job above runs its tests as the unprivileged runner user, so
-  # it builds without the tag and never runs them.
+  # These tests create network namespaces and modify links, routes, and policy rules.
   netns:
     name: mwan netns tests
     runs-on: ubuntu-latest
@@ -167,28 +147,14 @@ jobs:
         with:
           go-version-file: gateway/go.mod
           cache-dependency-path: gateway/go.sum
-      # The Makefile fetches go-makefile through gh while make parses it, so
-      # the token keeps that fetch on the authenticated API path instead of
-      # its anonymous raw fallback.
+      - name: Apply Compose environment
+        working-directory: gateway
+        run: make apply-compose-env >> "$GITHUB_ENV"
       - name: Run the network namespace tests as root
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: gateway
-        run: make test-netns
-
-  reporting:
-    name: mwan reporting namespace tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: gateway/go.mod
-          cache-dependency-path: gateway/go.sum
-      - name: Verify WAN probes and client accounting
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: make -C gateway test-reporting-netns WANCONFIG_DOCKER_ARCH=amd64
+        run: docker compose -f compose.test.yaml run --build --rm netns
 
   # The firewall tests need the privileged builder and cgo schema libraries.
   firewall:
@@ -196,65 +162,52 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/checkout@v7
-        with:
-          repository: agoodkind/configs
-          ref: c6a9a869bc57a5bb69326681416b3d4661aa278b
-          path: .protocol-configs
-          persist-credentials: false
       - uses: actions/setup-go@v7
         with:
           go-version-file: gateway/go.mod
           cache-dependency-path: gateway/go.sum
-      - name: Verify the original release and run its preparation upgrade
-        env:
-          GH_TOKEN: ${{ github.token }}
-          MWAN_NPT_LEGACY_SHA256: 1c79542f6f9e56fc0ad0f101b0688a84f95bfc41706ebebf36982e0f4f8726fa
+      - name: Apply Compose environment
         working-directory: gateway
-        run: |
-          mkdir -p "$RUNNER_TEMP/mwan-original"
-          gh release download 202609292152-70-d442ba1 --repo agoodkind/mwan --pattern mwan_linux_amd64.tar.gz --dir "$RUNNER_TEMP/mwan-original"
-          tar -xzf "$RUNNER_TEMP/mwan-original/mwan_linux_amd64.tar.gz" -C "$RUNNER_TEMP/mwan-original" mwan
-          printf '%s  %s\n' "$MWAN_NPT_LEGACY_SHA256" "$RUNNER_TEMP/mwan-original/mwan" | sha256sum --check --strict
-          make test-legacy-upgrade WANCONFIG_DOCKER_ARCH=amd64 MWAN_NPT_LEGACY_BINARY="$RUNNER_TEMP/mwan-original/mwan" MWAN_NPT_LEGACY_SHA256="$MWAN_NPT_LEGACY_SHA256"
+        run: make apply-compose-env >> "$GITHUB_ENV"
       - name: Run the firewall and namespace acceptance tests
         env:
           GH_TOKEN: ${{ github.token }}
+          WANCONFIG_DOCKER_ARCH: amd64
         working-directory: gateway
-        run: make test-firewall test-protocol-namespace
+        run: |
+          docker compose -f compose.test.yaml run --build --rm firewall
+          docker compose -f compose.test.yaml run --build --rm protocol-namespace
       - name: Run the systemd acceptance tests
         if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
+          WANCONFIG_DOCKER_ARCH: amd64
         working-directory: gateway
-        run: make test-protocol-systemd MWAN_OWNED_ROLE_CONFIGS="$GITHUB_WORKSPACE/.protocol-configs"
-      - name: Upload protocol execution results
+        run: |
+          docker compose -f compose.systemd.yaml up --build --wait systemd
+          docker compose -f compose.systemd.yaml exec -T systemd \
+            go test -count=1 -timeout=20m -tags systemd \
+            ./internal/commandline
+      - name: Stop the systemd container
         if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: mwan-protocol-results-${{ github.run_attempt }}
-          path: gateway/bin/protocol-results/
-          if-no-files-found: warn
+        working-directory: gateway
+        run: docker compose -f compose.systemd.yaml down --remove-orphans
 
-  # The go job's quality matrix runs the suite on amd64 runners only. This job
-  # runs the whole suite, cgo binding included, in the arm64 builder image on
-  # a native arm64 runner.
   arm64:
     name: mwan arm64 tests
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v7
-      # The Makefile resolves the Go environment while make parses it, so Go
-      # is a hard dependency even though the suite runs in the container.
       - uses: actions/setup-go@v7
         with:
           go-version-file: gateway/go.mod
           cache-dependency-path: gateway/go.sum
-      # The Makefile fetches go-makefile through gh while make parses it, so
-      # the token keeps that fetch on the authenticated API path instead of
-      # its anonymous raw fallback.
+      - name: Apply Compose environment
+        working-directory: gateway
+        run: make apply-compose-env >> "$GITHUB_ENV"
       - name: Run the suite in the arm64 builder image
         env:
           GH_TOKEN: ${{ github.token }}
+          WANCONFIG_DOCKER_ARCH: arm64
         working-directory: gateway
-        run: make test-docker WANCONFIG_DOCKER_ARCH=arm64
+        run: docker compose -f compose.test.yaml run --build --rm test

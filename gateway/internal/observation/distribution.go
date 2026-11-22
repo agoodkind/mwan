@@ -10,6 +10,10 @@ import (
 	"goodkind.io/mwan/internal/wanstate"
 )
 
+var errDistributionRequiresLocalObservation = errors.New(
+	"distribution coordinator must use local gateway observation",
+)
+
 func validateDistribution(spec CheckSpec) error {
 	plan := spec.DistributionPlan
 	if plan == nil || spec.DistributionSamples <= 0 || len(plan.Providers) == 0 ||
@@ -21,7 +25,7 @@ func validateDistribution(spec CheckSpec) error {
 	}
 
 	if spec.Observer.Kind != EndpointLocal {
-		return errors.New("distribution coordinator must use local hypervisor observation")
+		return errDistributionRequiresLocalObservation
 	}
 
 	if plan.HashMode != "random" && plan.HashMode != "source" &&

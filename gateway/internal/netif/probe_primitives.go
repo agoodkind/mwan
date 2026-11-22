@@ -150,7 +150,7 @@ func ping4Source(
 		listenConfig.Control = bindToDevice(iface, logger)
 	}
 
-	listenAddress := "0.0.0.0"
+	listenAddress := ipv4UnspecifiedGateway
 	if source.IsValid() {
 		listenAddress = source.String()
 	}
@@ -247,8 +247,7 @@ func ping4Source(
 	}
 }
 
-// Ping6 keeps one-shot checks on the proven V6Probe path so interface-bound
-// behavior remains shared with the failover health probes.
+// Ping6 sends an interface-bound ICMPv6 probe through V6Probe.
 func Ping6(
 	ctx context.Context,
 	iface string,

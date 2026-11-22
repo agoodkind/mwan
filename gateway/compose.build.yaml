@@ -1,0 +1,98 @@
+x-build: &build
+  context: ..
+  dockerfile: gateway/Dockerfile
+  target: builder
+  args:
+    LIBYANG_VERSION: ${WANCONFIG_LIBYANG_VERSION:?Supply the libyang pin}
+    SYSREPO_VERSION: ${WANCONFIG_SYSREPO_VERSION:?Supply the sysrepo pin}
+    LIBYANG_COMMIT: ${WANCONFIG_LIBYANG_COMMIT:?Supply the libyang commit}
+    SYSREPO_COMMIT: ${WANCONFIG_SYSREPO_COMMIT:?Supply the sysrepo commit}
+
+x-environment: &environment
+  WANCONFIG_DOCKER_ARCH: ${WANCONFIG_DOCKER_ARCH:?Supply the architecture}
+  GOWORK: "off"
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: safe.directory
+  GIT_CONFIG_VALUE_0: /src
+  GH_TOKEN: ${GH_TOKEN:-}
+  RELEASE_STAGE: ${RELEASE_STAGE:-}
+  RELEASE_TAG: ${RELEASE_TAG:-}
+  RELEASE_PLATFORMS: ${RELEASE_PLATFORMS:-linux/amd64 linux/arm64}
+  GO_MK_TARGET_GOOS: ${GO_MK_TARGET_GOOS:-}
+  GO_MK_TARGET_GOARCH: ${GO_MK_TARGET_GOARCH:-}
+  GO_MK_JOB_LAYOUT: ${GO_MK_JOB_LAYOUT:-split}
+  GO_MK_API_REPO: ${GO_MK_API_REPO:-agoodkind/go-makefile}
+  GO_MK_API_REF: ${GO_MK_API_REF:-main}
+  YANG_SCHEMA_DIR: ${YANG_SCHEMA_DIR:-internal/yangpub/schema}
+  YANG_DIR: ${YANG_DIR:-yang}
+  YANGLINT: ${YANGLINT:-yanglint}
+  GO_MK_DIFF_BASE: ${GO_MK_DIFF_BASE:-}
+  GO_MK_DIFF_BASE_IS_EXACT: ${GO_MK_DIFF_BASE_IS_EXACT:-}
+  GO_MK_DIFF_HEAD: ${GO_MK_DIFF_HEAD:-}
+  GO_MK_DEFAULT_BRANCH: ${GO_MK_DEFAULT_BRANCH:-}
+  GO_MK_EVENT_NAME: ${GO_MK_EVENT_NAME:-}
+  GO_MK_REF_NAME: ${GO_MK_REF_NAME:-}
+  GO_MK_CI_PRIMARY_COMMAND: ${GO_MK_CI_PRIMARY_COMMAND:-}
+  GO_MK_CI_PRIMARY_OUTCOME: ${GO_MK_CI_PRIMARY_OUTCOME:-}
+  GO_MK_CI_GOLANGCI_RAN: ${GO_MK_CI_GOLANGCI_RAN:-}
+  GO_MK_CI_LINT_CACHE_HIT: ${GO_MK_CI_LINT_CACHE_HIT:-}
+  GO_MK_CI_LINT_CACHE_PATHS: ${GO_MK_CI_LINT_CACHE_PATHS:-}
+  GO_MK_CI_REPORT_GOLANGCI_RUN: ${GO_MK_CI_REPORT_GOLANGCI_RUN:-}
+
+services:
+  build: &builder
+    image: ${WANCONFIG_BUILDER_IMAGE:?Supply the builder image}
+    build: *build
+    platform: linux/${WANCONFIG_DOCKER_ARCH}
+    cpus: ${WANCONFIG_DOCKER_CPUS:-3}
+    mem_limit: ${WANCONFIG_DOCKER_MEMORY:-6g}
+    working_dir: /src/gateway
+    init: true
+    environment: *environment
+    volumes:
+      - type: bind
+        source: ..
+        target: /src
+        bind:
+          create_host_path: false
+      - gomod:/go/pkg/mod
+      - cache:/root/.cache
+      - gomk:/src/gateway/.make
+    command: [make, build]
+
+  check:
+    <<: *builder
+    command: [make, build-check]
+
+  release:
+    <<: *builder
+    image: mwan-release-builder:${WANCONFIG_DOCKER_ARCH}
+    build:
+      <<: *build
+      target: release
+    command: [make, release]
+
+  binary:
+    <<: *builder
+    command: [make, build-wanconfig]
+
+  proto:
+    <<: *builder
+    command: [make, proto]
+
+  bpf:
+    <<: *builder
+    command: [make, npt-bpf]
+
+volumes:
+  gomod:
+    name: mwan-gomod-${WANCONFIG_CACHE_ID:?Supply the checkout cache ID}-${WANCONFIG_DOCKER_ARCH}
+  cache:
+    name: mwan-build-${WANCONFIG_CACHE_ID:?Supply the checkout cache ID}-${WANCONFIG_DOCKER_ARCH}
+  gomk:
+    name: mwan-gomk-${WANCONFIG_CACHE_ID:?Supply the checkout cache ID}-${WANCONFIG_DOCKER_ARCH}
+
+networks:
+  default:
+    enable_ipv4: true
+    enable_ipv6: true

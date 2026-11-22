@@ -13,9 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/installspec"
-	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 const (
@@ -24,7 +22,7 @@ const (
 	enableMarker = "would enable "
 	moduleMarker = "installed module "
 
-	stackFixtureDir = "../../../gateway/cmd/mwan/testdata/rousette"
+	stackFixtureDir = "../../../gateway/internal/commandline/testdata/rousette"
 	octalBase       = 8
 	fileModeBits    = 32
 )
@@ -101,14 +99,9 @@ func TestProviderRoleMatchesMwanInstall(t *testing.T) {
 	provider := newServer(t, buildCommit, "")
 
 	for _, role := range installspec.Roles() {
-		for _, guest := range watchdogconfig.GuestTypes() {
-			t.Run(
-				string(role)+"/"+string(guest),
-				func(t *testing.T) {
-					checkRoleMatchesInstall(t, provider, binary, role, guest)
-				},
-			)
-		}
+		t.Run(string(role), func(t *testing.T) {
+			checkRoleMatchesInstall(t, provider, binary, role)
+		})
 	}
 }
 
@@ -117,10 +110,9 @@ func checkRoleMatchesInstall(
 	provider *protocolServer,
 	binary string,
 	role installspec.Role,
-	guest config.GuestType,
 ) {
 	root := t.TempDir()
-	data, diagnostics := provider.readRoleForGuest(t, string(role), string(guest))
+	data, diagnostics := provider.readRole(t, string(role))
 	if len(diagnostics) > 0 {
 		t.Fatalf("read mwan_role %s: %v", role, diagnostics[0].Detail)
 	}
@@ -131,14 +123,12 @@ func checkRoleMatchesInstall(
 		"--apply",
 		"--role",
 		string(role),
-		"--guest-type",
-		string(guest),
 		"--root",
 		root,
 	)
 	output, err := command.CombinedOutput()
 	if err != nil {
-		t.Fatalf("mwan install --role %s --guest-type %s: %v\n%s", role, guest, err, output)
+		t.Fatalf("mwan install --role %s: %v\n%s", role, err, output)
 	}
 	installed := walkInstalled(t, root)
 	for _, module := range data.StackModules {

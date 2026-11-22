@@ -117,7 +117,7 @@ func linkMatchesConnection(link netlink.Link, connection interfaceintent.Connect
 
 	switch configured.Kind {
 	case interfaceintent.KindBridge:
-		return link.Type() == "bridge" && attrs.Name == connection.Name
+		return link.Type() == virtualBridgeKind && attrs.Name == connection.Name
 	case interfaceintent.KindTunnel:
 		return configured.Tunnel != nil &&
 			link.Type() == tunnelKernelType(configured.Tunnel.Protocol) &&
@@ -133,7 +133,7 @@ func linkMatchesConnection(link netlink.Link, connection interfaceintent.Connect
 
 		return err == nil && parent.Attrs() != nil && parent.Attrs().Name == configured.VLAN.Parent
 	case interfaceintent.KindPhysical, "":
-		if link.Type() == "vlan" || link.Type() == "bridge" {
+		if link.Type() == "vlan" || link.Type() == virtualBridgeKind {
 			return false
 		}
 

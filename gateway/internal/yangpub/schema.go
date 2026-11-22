@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"goodkind.io/mwan/internal/installfile"
 	"goodkind.io/mwan/internal/yangpub/schema"
@@ -34,10 +33,6 @@ func WriteSchemaChanges(dir string) ([]Model, []string, error) {
 			return nil, changed, schemaFailed("read the embedded module", module.File, err)
 		}
 
-		if err := removeDated(dir, module.File); err != nil {
-			return nil, changed, err
-		}
-
 		path := filepath.Join(dir, module.File)
 		wrote, err := installfile.Write(path, content, schema.FileMode)
 		if err != nil {
@@ -52,49 +47,6 @@ func WriteSchemaChanges(dir string) ([]Model, []string, error) {
 	}
 
 	return models, changed, nil
-}
-
-func removeDated(dir string, file string) error {
-	if strings.Contains(file, "@") {
-		return nil
-	}
-
-	extension := filepath.Ext(file)
-	prefix := strings.TrimSuffix(file, extension) + "@"
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return schemaFailed("read the schema directory", dir, err)
-	}
-
-	for _, entry := range entries {
-		name := entry.Name()
-		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, extension) {
-			continue
-		}
-
-		if err := removeModule(dir, name); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func removeModule(dir string, name string) error {
-	if err := os.Remove(filepath.Join(dir, name)); err != nil {
-		return schemaFailed("remove the dated schema module", name, err)
-	}
-
-	slog.Info(
-		"yangpub: The schema writer removed the dated schema module.",
-		"dir",
-		dir,
-		"name",
-		name,
-	)
-
-	return nil
 }
 
 func schemaFailed(operation string, name string, err error) error {

@@ -13,7 +13,7 @@ source priority 58, and no translation prefix. The daemon renders
 `20-enastound0.link` and `20-enastound0.network` from it. The simulator is LXC
 903 on `suburban`; its ingress from the gateway is `veth903i0` and its uplink is
 `veth903i1`. The LAN IPv4 client for every fetch below is the testbed router,
-VM 201, driven with `qm guest exec 201` on `suburban`; its default route is
+VM 201; its default route is
 `10.240.240.3`, the gateway's address on `enmwanbr0`. The LAN guests on the
 management network have no IPv4 and cannot serve that role.
 
@@ -97,7 +97,6 @@ With all four providers healthy, suburban and the router at 15:17:
 
 ```bash
 timeout 15 tcpdump -ni veth903i0 -c 4 -q host 1.1.1.1 and tcp port 443
-qm guest exec 201 --timeout 20 -- /usr/local/bin/curl -4 -s -o /dev/null -w "%{http_code} %{remote_ip}" --max-time 10 https://1.1.1.1
 ```
 
 The fetch returned `301 1.1.1.1`. The capture ended at its timeout with
@@ -123,7 +122,6 @@ Suburban and the router at 15:28:
 
 ```bash
 timeout 20 tcpdump -ni veth903i0 -c 6 -q host 1.1.1.1 and tcp port 443
-qm guest exec 201 --timeout 25 -- /usr/local/bin/curl -4 -s -o /dev/null -w "%{http_code} %{remote_ip}" --max-time 15 https://1.1.1.1
 ```
 
 The router got its 301 through astound this time. The capture at 15:28:29

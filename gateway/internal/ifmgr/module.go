@@ -14,17 +14,14 @@ import (
 	"goodkind.io/mwan/internal/wanstate"
 )
 
-// Module is one feature plug-in for the ifmgr daemon. Each role
-// (oob, failover, ...) selects an ordered list of modules; the daemon
-// instantiates them via their Constructor and dispatches lifecycle
-// calls into them.
-//
-// All methods MUST be safe to call concurrently with each other on a
-// single Module instance: Reconcile and OnKernelEvent in particular run
-// in different goroutines.
+// Module defines one feature that the ifmgr daemon manages. The WAN role
+// selects the modules in dependency order. The daemon constructs each module
+// through its registered Constructor and dispatches lifecycle calls to it.
+// Methods must support concurrent calls because Reconcile and OnKernelEvent
+// can run in different goroutines.
 type Module interface {
-	// Name returns the stable module identifier used in logs and config
-	// (e.g. "oobv6", "slaac_health"). Must match the registry key.
+	// Name returns the module identifier used in configuration and logs. It must
+	// match the module registry key.
 	Name() string
 
 	// Init is called once before the daemon enters its main loop. The
@@ -69,9 +66,9 @@ type ModuleConfig interface {
 // ModuleConfigSet maps module names to their typed runtime configs.
 type ModuleConfigSet map[string]ModuleConfig
 
-// Constructor builds a Module from its typed runtime config. Config-file
-// parsing happens in internal/config plus the cmd/mwan ifmgr adapter; the
-// registry only sees the runtime shape it needs to instantiate a module.
+// Constructor builds a Module from its typed runtime configuration. The
+// configuration loader and commandline adapter parse the file before module
+// constructors run.
 type Constructor func(cfg ModuleConfig) (Module, error)
 
 // Env is everything the daemon hands a module at Init time. Modules MUST

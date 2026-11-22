@@ -1,0 +1,6 @@
+.git
+**/.make
+**/bin
+**/dist
+**/node_modules
+gateway/.tmp-*

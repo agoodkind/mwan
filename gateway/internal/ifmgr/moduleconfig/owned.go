@@ -76,6 +76,7 @@ func buildAddressesConfig(ifmgrCfg config.IfMgrSection) (addresses.Config, error
 		StateFile:       "",
 		LeaseDirectory:  ifmgrCfg.LeaseDirectory,
 		NetworkdTimeout: 0,
+		StartDHCPv4:     nil,
 	}
 	if ifmgrCfg.Modules.Addresses != nil {
 		settings.StateFile = ifmgrCfg.Modules.Addresses.StateFile

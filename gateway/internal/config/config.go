@@ -1,6 +1,6 @@
 // Package config defines the mwan TOML configuration schema and loads it.
 // Load applies the built-in defaults, reads the file, overlays the secrets
-// held in the environment, and checks the dynamic BGP settings. Every other
+// from the environment, and checks the dynamic BGP settings. Every other
 // section is validated by the subsystem that reads it, at the point it is
 // used.
 package config
@@ -21,19 +21,37 @@ import (
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/notify"
-	"goodkind.io/mwan/internal/vpp"
-	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
-// NetworkConfig omits provider lists because the gateway supplies verdicts.
-type NetworkConfig = watchdogconfig.NetworkConfig
+const maxNetworkdTimeoutSeconds = int64(1<<63-1) / int64(time.Second)
 
-// EmailConfig holds email notification settings.
+var (
+	errNetworkdTimeoutPositive = errors.New(
+		"[ifmgr] networkd_timeout_seconds must be greater than zero",
+	)
+	errNetworkdTimeoutExceeded = errors.New("[ifmgr] networkd_timeout_seconds must not exceed")
+)
+
+// EmailConfig is the email notification settings type.
 type EmailConfig = notify.EmailConfig
 
-// OPNsenseSection holds OPNsense API credentials, endpoint, and its own BGP config.
-// OPNsense is a BGP peer, not a speaker we control. Its BGP config is the inverse
-// of the agent's: different router-id, different neighbor list.
+// NotifySection configures repeat cadence for each alert kind.
+type NotifySection struct {
+	RepeatEvery string            `toml:"repeat_every"`
+	PerKind     map[string]string `toml:"per_kind"`
+}
+
+// IfMgrAlertsSection configures the default repeat cadence for each alert
+// kind and optional per-kind overrides.
+type IfMgrAlertsSection struct {
+	RepeatEvery string            `toml:"repeat_every"`
+	PerModule   map[string]string `toml:"per_module"`
+}
+
+// OPNsenseSection stores OPNsense API credentials, endpoint, and BGP peer settings.
+// OPNsense is a BGP peer. This process does not control its speaker. Its BGP
+// settings invert the agent settings: a different router-id and a different
+// neighbor list.
 type OPNsenseSection struct {
 	URL                string      `toml:"url"`
 	APIKey             string      `toml:"api_key"`
@@ -51,7 +69,7 @@ type OPNsenseSection struct {
 	SSHUser string `toml:"ssh_user"`
 }
 
-// OPNsenseBGP describes the BGP configuration to push to OPNsense via its API.
+// OPNsenseBGP is the BGP configuration written to OPNsense through its API.
 type OPNsenseBGP struct {
 	RouterID         string                `toml:"router_id"`
 	Neighbors        []OPNsenseBGPNeighbor `toml:"neighbors"`
@@ -66,33 +84,28 @@ type OPNsenseBGPNeighbor struct {
 	Preference  string `toml:"preference"` // "primary" or "backup"
 }
 
-// BGPSection holds embedded GoBGP speaker configuration.
+// BGPSection stores embedded GoBGP speaker configuration.
 type BGPSection struct {
-	Enabled           bool          `toml:"enabled"`
-	ASN               uint32        `toml:"asn"`
-	RouterID          string        `toml:"router_id"`
-	NextHopV6         string        `toml:"next_hop_v6"` // IPv6 next-hop for announced routes (optional, defaults to RouterID)
-	KeepaliveSeconds  uint32        `toml:"keepalive_seconds"`
-	HoldSeconds       uint32        `toml:"hold_seconds"`
-	ListenPort        int32         `toml:"listen_port"`
-	Neighbors         []BGPNeighbor `toml:"neighbors"`
-	NeighborsV6       []BGPNeighbor `toml:"neighbors_v6"`
-	DynamicNeighbors  []string      `toml:"dynamic_neighbors"`
-	LearnedRouteIface string        `toml:"learned_route_iface"`
-	// UseWanconfig marks a host whose BGP route installer owns the
-	// per-provider routing tables. Such a host reads the provider set from
-	// /etc/mwan/network.json, the wanconfig network configuration, and refuses
-	// to start without it. The failover container leaves it unset and owns the
-	// main table only.
-	UseWanconfig        bool                   `toml:"use_wanconfig"`
+	Enabled  bool   `toml:"enabled"`
+	ASN      uint32 `toml:"asn"`
+	RouterID string `toml:"router_id"`
+	// The IPv6 next hop defaults to RouterID when this value is empty.
+	NextHopV6           string                 `toml:"next_hop_v6"`
+	KeepaliveSeconds    uint32                 `toml:"keepalive_seconds"`
+	HoldSeconds         uint32                 `toml:"hold_seconds"`
+	ListenPort          int32                  `toml:"listen_port"`
+	Neighbors           []BGPNeighbor          `toml:"neighbors"`
+	NeighborsV6         []BGPNeighbor          `toml:"neighbors_v6"`
+	DynamicNeighbors    []string               `toml:"dynamic_neighbors"`
+	LearnedRouteIface   string                 `toml:"learned_route_iface"`
 	Announce            BGPAnnounce            `toml:"announce"`
 	GracefulRestart     BGPGracefulRestart     `toml:"graceful_restart"`
 	ForwardingReadiness BGPForwardingReadiness `toml:"forwarding_readiness"`
 }
 
-// ForwardingReadinessEnabled reports whether the host gates BGP announcements on ifmgr readiness.
+// ForwardingReadinessEnabled reports whether BGP checks a readiness socket.
 func (b *BGPSection) ForwardingReadinessEnabled() bool {
-	return b.UseWanconfig || b.ForwardingReadiness.SocketPath != ""
+	return b.ForwardingReadiness.SocketPath != ""
 }
 
 // BGPForwardingReadiness configures the ifmgr readiness check for BGP announcements.
@@ -114,13 +127,13 @@ func (r BGPForwardingReadiness) ReadTimeout() time.Duration {
 
 // BGPGracefulRestart configures BGP Graceful Restart (RFC 4724) on the
 // embedded GoBGP speaker. When Enabled is true, the speaker negotiates
-// the GR capability with each peer so that planned restarts of mwan-agent
-// do not trigger immediate route withdrawal on the helper (OPNsense FRR).
+// the GR capability with each peer. Planned restarts of mwan-agent then
+// leave the helper (OPNsense FRR) without an immediate route withdrawal.
 //
 // RestartTime is advertised to the helper as the maximum number of seconds
-// the helper should hold our routes after the BGP session drops.
-// NotificationEnabled mirrors the "N" bit (RFC 8538) so a
-// NOTIFICATION-triggered session reset still preserves the GR semantics.
+// the helper should keep our routes after the BGP session drops.
+// NotificationEnabled mirrors the "N" bit (RFC 8538). A
+// NOTIFICATION-triggered session reset then preserves the GR semantics.
 type BGPGracefulRestart struct {
 	Enabled             bool   `toml:"enabled"`
 	RestartTime         uint32 `toml:"restart_time"`
@@ -138,45 +151,20 @@ type BGPAnnounce struct {
 	IPv6 []string `toml:"ipv6"`
 }
 
-// AgentSection holds agent-specific configuration.
-//
-// DeployExpected gates the "deploy-file-missing" warning emitted by
-// GetConfigState when DeployFile cannot be read. The default is true,
-// which preserves the historical behaviour for production and testbed
-// hosts that are deployed by Ansible. Fresh hosts that have never been
-// deployed should set this to false so the missing file is treated as
-// steady state and no notify event is fired.
+// AgentSection stores the local agent listener and logging settings.
 type AgentSection struct {
-	VsockPort      uint32 `toml:"vsock_port"`
-	TCPAddr        string `toml:"tcp_addr"`
-	DeployFile     string `toml:"deploy_file"`
-	DeployExpected bool   `toml:"deploy_expected"`
-	LogFile        string `toml:"log_file"`
-	Debug          bool   `toml:"debug"`
+	SocketPath string `toml:"socket_path"`
+	TCPAddr    string `toml:"tcp_addr"`
+	LogFile    string `toml:"log_file"`
+	Debug      bool   `toml:"debug"`
 }
-
-// GuestType selects qm for QEMU guests and pct for LXC guests.
-type GuestType = watchdogconfig.GuestType
-
-const (
-	// GuestTypeQEMU selects qm for guest operations.
-	GuestTypeQEMU = watchdogconfig.GuestTypeQEMU
-	// GuestTypeLXC selects pct for guest operations.
-	GuestTypeLXC = watchdogconfig.GuestTypeLXC
-)
 
 // Config is the single TOML configuration for the mwan monolith.
 // Default path: /etc/mwan/config.toml, override with --config or MWAN_CONFIG env.
 type Config struct {
-	Path         string `toml:"-"`
-	Hostname     string `toml:"hostname"`
-	MwanVMID     string `toml:"mwan_vmid"`
-	MwanMgmtAddr string `toml:"mwan_mgmt_addr"`
-	// The configuration loader defaults guest_type to qemu.
-	GuestType GuestType `toml:"guest_type"`
-
-	Email   EmailConfig   `toml:"email"`
-	Network NetworkConfig `toml:"network"`
+	Path     string      `toml:"-"`
+	Hostname string      `toml:"hostname"`
+	Email    EmailConfig `toml:"email"`
 
 	Agent     AgentSection     `toml:"agent"`
 	BGP       BGPSection       `toml:"bgp"`
@@ -184,47 +172,37 @@ type Config struct {
 	IfMgr     IfMgrSection     `toml:"ifmgr"`
 	Notify    NotifySection    `toml:"notify"`
 	Wanconfig WanconfigSection `toml:"wanconfig"`
-	Report    ReportSection    `toml:"report"`
 }
 
-// WanconfigSection gates the gateway's management surface: whether this
-// host's ifmgr publishes the configuration it loaded into the wanconfig
-// datastore (sysrepo) for RESTCONF readers. It is false unless the rendered
-// config says otherwise, so a host without a sysrepo repository (the
-// hypervisors, the failover container, production until its stack is
-// installed) never opens a connection it cannot complete. Publishing is
-// never a precondition for running: a failed publish is logged and the
-// daemon carries on without a management surface.
+// WanconfigSection controls whether ifmgr publishes its loaded gateway
+// configuration to sysrepo for RESTCONF readers. A publish failure does not
+// stop gateway operation.
 type WanconfigSection struct {
 	Publish bool `toml:"publish"`
 }
 
-// NotifySection configures repeat cadence for each alert kind and key.
-type NotifySection = watchdogconfig.NotifySection
-
-// IfMgrSection holds the mwan ifmgr daemon's role-pluggable configuration.
+// IfMgrSection stores the mwan ifmgr daemon's role-pluggable configuration.
 // Each role is a list of modules (see internal/ifmgr/roles.go), and the
 // module config schema is explicitly modeled in IfMgrModulesSection.
 type IfMgrSection struct {
-	VPPPolicy          *vpp.Policy     `toml:"-"`
-	GuestType          GuestType       `toml:"-"`
-	Firewall           firewall.Config `toml:"-"`
-	PinnedConnectionID string          `toml:"-"`
-	Role               string          `toml:"role"`
-	ReconcileInterval  string          `toml:"reconcile_interval"`
-	LeaseDirectory     string          `toml:"lease_directory"`
-	LogFile            string          `toml:"log_file"`
-	JSONLogFile        string          `toml:"json_log_file"`
-	Debug              bool            `toml:"debug"`
+	Firewall               firewall.Config `toml:"-"`
+	PinnedConnectionID     string          `toml:"-"`
+	Role                   string          `toml:"role"`
+	ReconcileInterval      string          `toml:"reconcile_interval"`
+	NetworkdTimeoutSeconds int             `toml:"networkd_timeout_seconds"`
+	LeaseDirectory         string          `toml:"lease_directory"`
+	LogFile                string          `toml:"log_file"`
+	JSONLogFile            string          `toml:"json_log_file"`
+	Debug                  bool            `toml:"debug"`
 	// These three translation values and the WAN map below come from
-	// /etc/mwan/network.json. The skip tag is what stops the decoder reading a
-	// stale key out of a config.toml that still carries one, so exactly one
+	// /etc/mwan/network.json. The skip tag stops the decoder reading a
+	// stale key out of a config.toml that still contains one. Exactly one
 	// file owns them at every moment.
 	InternalPrefix string `toml:"-"`
 	OpnsenseEdgeV6 string `toml:"-"`
 	MwanbrEdgeV6   string `toml:"-"`
 	// HashMode and ReservedTables come from network.json's steering group
-	// beside the WAN map, so the same skip tag keeps a stale config.toml key
+	// beside the WAN map. The same skip tag keeps a stale config.toml key
 	// out of them. HashMode decides how the steering module assigns a new
 	// connection; ReservedTables is the set no provider may route into.
 	HashMode              string                       `toml:"-"`
@@ -238,18 +216,12 @@ type IfMgrSection struct {
 	Connections           []interfaceintent.Connection `toml:"-"`
 }
 
-// IfMgrAlertsSection controls the per-alert repeat cadence for the
-// AlertManager. RepeatEvery is the global default applied to every alert
-// kind unless overridden in PerModule. PerModule is keyed by alert kind
-// (the first arg to AlertManager.Notify, e.g. "service-unavailable" or
-// "check-failed"), not by module name. Keying on alert kind lets
-// one module emit multiple kinds and get a separate cadence for each.
-//
-// Default behaviour with empty values: RepeatEvery == "0s" means alerts
-// fire once per transition only and never repeat.
-type IfMgrAlertsSection = watchdogconfig.IfMgrAlertsSection
+// NetworkdTimeout returns the configured wait for networkd operations.
+func (section IfMgrSection) NetworkdTimeout() time.Duration {
+	return time.Duration(section.NetworkdTimeoutSeconds) * time.Second
+}
 
-// IfMgrIfaceSection holds one [ifmgr.iface.<name>] sub-table. The map
+// IfMgrIfaceSection stores one [ifmgr.iface.<name>] sub-table. The map
 // key is the conventional iface name (mbrains, eth0, ...); Name overrides
 // it when set explicitly.
 type IfMgrIfaceSection struct {
@@ -270,22 +242,18 @@ func AgentDefaults() AgentSection {
 }
 
 func defaultConfigBase() Config {
-	// Assign field-by-field instead of via a struct literal so the
-	// exhaustruct lint does not require enumerating every zero-value
+	// Assign field-by-field instead of via a struct literal. The
+	// exhaustruct lint then does not require enumerating every zero-value
 	// sub-section (OPNsense, IfMgr, and their many nested sub-structs).
 	var cfg Config
-	watchdogDefaults := watchdogconfig.Default()
-	cfg.GuestType = watchdogDefaults.GuestType
-	cfg.Email = watchdogDefaults.Email
-	cfg.Network = watchdogDefaults.Network
-	cfg.Report = DefaultReportSection()
+	cfg.Email.MinLevel = "ERROR"
+	cfg.Email.Cooldown = "5m"
+	cfg.IfMgr.NetworkdTimeoutSeconds = 60
 	cfg.Agent = AgentSection{
-		VsockPort:      50051,
-		TCPAddr:        "[::]:50052",
-		DeployFile:     "/var/lib/mwan/last-deploy",
-		DeployExpected: true,
-		LogFile:        "/var/log/mwan-agent.log",
-		Debug:          false,
+		SocketPath: "",
+		TCPAddr:    "[::]:50052",
+		LogFile:    "/var/log/mwan-agent.log",
+		Debug:      false,
 	}
 	cfg.BGP.GracefulRestart = BGPGracefulRestart{
 		Enabled:             true,
@@ -299,19 +267,45 @@ func defaultConfigBase() Config {
 // LoadPath validates gateway settings from the selected TOML file.
 func LoadPath(path string) (*Config, error) {
 	if path == "" {
-		path = watchdogconfig.DefaultPath()
+		path = os.Getenv("MWAN_CONFIG")
+		if path == "" {
+			path = "/etc/mwan/config.toml"
+		}
 	}
 
 	return loadConfig(path)
 }
 
 func loadConfig(path string) (*Config, error) {
-	// The path comes from the unit file or the operator's command line, both
-	// already privileged, so cleaning it normalizes the value rather than
-	// defending a trust boundary.
+	// The unit file and command line can select any configuration path.
 	path = filepath.Clean(path)
 
-	data, err := os.ReadFile(path)
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		slog.Error("resolve config path failed", "path", path, "error", err)
+		return nil, fmt.Errorf("read config %s: %w", path, err)
+	}
+
+	absPath, err = filepath.EvalSymlinks(absPath)
+	if err != nil {
+		slog.Error("resolve config path failed", "path", path, "error", err)
+		return nil, fmt.Errorf("read config %s: %w", path, err)
+	}
+
+	root, err := os.OpenRoot(string(filepath.Separator))
+	if err != nil {
+		slog.Error("open filesystem root failed", "error", err)
+		return nil, fmt.Errorf("read config %s: %w", path, err)
+	}
+	defer root.Close()
+
+	relativePath, err := filepath.Rel(string(filepath.Separator), absPath)
+	if err != nil {
+		slog.Error("resolve config path failed", "path", path, "error", err)
+		return nil, fmt.Errorf("read config %s: %w", path, err)
+	}
+
+	data, err := root.ReadFile(relativePath)
 	if err != nil {
 		slog.Error("read config failed", "path", path, "error", err)
 		return nil, fmt.Errorf("read config %s: %w", path, err)
@@ -321,31 +315,31 @@ func loadConfig(path string) (*Config, error) {
 	cfg.Path = path
 	if err := toml.Unmarshal(data, &cfg); err != nil {
 		slog.Error("parse config failed", "path", path, "error", err)
+
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
 
-	// Env overrides for secrets
-	watchdogconfig.ApplyEmailSecret(&cfg.Email)
+	// Environment variables override configured API secrets.
+	if value := strings.TrimSpace(os.Getenv("SMTP2GO_API_KEY")); value != "" {
+		cfg.Email.SMTP2GOAPIKey = value
+	}
+
 	if v := strings.TrimSpace(os.Getenv("OPNSENSE_API_SECRET")); v != "" {
 		cfg.OPNsense.APISecret = v
 	}
 
-	if err := watchdogconfig.ValidateGuestType(cfg.GuestType); err != nil {
-		slog.Error("validate guest type failed", "error", err)
-		return nil, fmt.Errorf("validate guest type: %w", err)
+	if cfg.IfMgr.NetworkdTimeoutSeconds <= 0 {
+		return nil, errNetworkdTimeoutPositive
+	}
+
+	if int64(cfg.IfMgr.NetworkdTimeoutSeconds) > maxNetworkdTimeoutSeconds {
+		return nil, fmt.Errorf("%w %d", errNetworkdTimeoutExceeded, maxNetworkdTimeoutSeconds)
 	}
 
 	if cfg.IfMgr.Modules.Health != nil {
 		if _, _, err := cfg.IfMgr.Modules.Health.ParseMaxStateAge(); err != nil {
 			slog.Error("validate health max state age failed", "error", err)
 			return nil, fmt.Errorf("validate [ifmgr.modules.health]: %w", err)
-		}
-	}
-
-	if cfg.IfMgr.Modules.VPP != nil {
-		if err := cfg.IfMgr.Modules.VPP.Validate(); err != nil {
-			slog.Error("validate VPP process resources failed", "path", path, "error", err)
-			return nil, fmt.Errorf("validate [ifmgr.modules.vpp]: %w", err)
 		}
 	}
 
@@ -362,9 +356,9 @@ func loadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// validateBGPDynamicConfig checks the dynamic-neighbor settings. Load calls it
-// on every start, so a gateway with a malformed dynamic_neighbors prefix
-// refuses to come up rather than silently accepting no peers.
+// validateBGPDynamicConfig checks the dynamic-neighbor settings. Load runs it
+// on every start. A gateway with a malformed dynamic_neighbors prefix
+// refuses to come up instead of accepting a configuration with no peers.
 func validateBGPDynamicConfig(b *BGPSection) error {
 	if err := validateBGPDynamicNeighbors(b.DynamicNeighbors); err != nil {
 		return err
@@ -423,23 +417,6 @@ func validateBGPForwardingReadiness(cfg *Config) error {
 	if readiness.ReadTimeoutMilliseconds <= 0 {
 		return errors.New(
 			"[bgp.forwarding_readiness] read_timeout_milliseconds must be greater than zero",
-		)
-	}
-
-	if b.UseWanconfig {
-		return nil
-	}
-
-	probe := cfg.IfMgr.Modules.ConnectivityProbe
-	if len(b.Announce.IPv4) > 0 && (probe == nil || len(probe.TargetsV4) == 0) {
-		return errors.New(
-			"[ifmgr.modules.connectivity_probe] targets_v4 is required when [bgp.announce] ipv4 is configured and forwarding readiness is enabled without use_wanconfig",
-		)
-	}
-
-	if len(b.Announce.IPv6) > 0 && (probe == nil || len(probe.TargetsV6) == 0) {
-		return errors.New(
-			"[ifmgr.modules.connectivity_probe] targets_v6 is required when [bgp.announce] ipv6 is configured and forwarding readiness is enabled without use_wanconfig",
 		)
 	}
 

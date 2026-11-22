@@ -13,7 +13,7 @@ func OnLinkMappedAddresses(current []CurrentAddr, mapped []netip.Addr) ([]netip.
 	assigned := make(map[netip.Addr]bool)
 
 	for _, address := range current {
-		if address.Family != "inet" {
+		if address.Family != tunnelEndpointRouteFamily {
 			continue
 		}
 

@@ -1,5 +1,4 @@
-// Package schema embeds YANG modules and defines their installation order and features.
-// The package does not require cgo.
+// Package schema provides the YANG modules for installation without linking to libyang.
 package schema
 
 import (
@@ -9,8 +8,6 @@ import (
 	"log/slog"
 )
 
-// The binary embeds the schema used by this release.
-//
 //go:embed *.yang
 var files embed.FS
 
@@ -53,7 +50,6 @@ func Modules() []Module {
 			Update:   true,
 		},
 		{File: SteeringFile, Features: nil, Update: true},
-		{File: "goodkind-mwan-vpp@2026-10-26.yang", Features: nil, Update: true},
 	}
 }
 

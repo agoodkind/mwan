@@ -106,7 +106,9 @@ func kernelRejected(err error) bool {
 		errors.Is(err, unix.EINVAL)
 }
 
-// Refresh reinstalls each desired route that is absent from the kernel or uses another gateway than the kernel route to the BGP next hop, and returns the prefixes with an installation that the kernel rejected.
+// Refresh compares desired routes with current kernel routes.
+// It reinstalls missing routes and routes with a different next-hop gateway.
+// The result separates prefixes rejected by the kernel from other errors.
 func (f *FIB) Refresh(ctx context.Context) (map[netip.Prefix]error, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

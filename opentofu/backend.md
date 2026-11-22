@@ -104,21 +104,19 @@ accumulate while plans remain broken.
 
 The provider has these expected readback gaps:
 
-- Ansible owns the live `args` field on the MWAN and OPNsense virtual machines.
-  The Proxmox API rejects token writes to that field, so OpenTofu ignores
-  `kvm_arguments` instead of removing the live value. The MWAN value sets its
-  virtual socket context identifier, which tracks its VMID. The OPNsense value
-  serves the out-of-band serial channel.
+- Ansible owns the live `args` field on the OPNsense virtual machine. The
+  Proxmox API rejects token writes to that field, so OpenTofu ignores
+  `kvm_arguments`. The value serves the out-of-band serial channel.
 - Proxmox does not return injected SSH keys. Resources with a configured
   `initialization.user_account` ignore that block so a reimport does not force a
   replacement.
 - Proxmox does not store the source template name in `pct config`. Imported
   containers ignore `operating_system.template_file_id`.
 - The object stores' disks moved to each hypervisor's slow storage tier with
-  `pct move-volume`, and the tack owner guests' backup roots are volumes hot
-  plugged with `pct set`. The provider can make neither change without
-  replacing the guest, so those containers ignore `disk[0].datastore_id` or
-  `mount_point`.
+  `pct move-volume`. The provider cannot update `disk[0].datastore_id` for those
+  disks without replacing the guest. The tack owner guests' backup roots are
+  volumes hot plugged with `pct set`. The provider cannot update `mount_point`
+  for those containers without replacing the guest.
 - Ansible owns `/etc/network/interfaces.d/testbed-masquerade.conf` and the extra
   routable IPv6 address on `vmbr1`.
 - A container state `id` contains only the VMID. Match a container by both

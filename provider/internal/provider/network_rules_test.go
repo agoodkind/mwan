@@ -370,10 +370,6 @@ func TestNetworkReturnsRuleMaps(t *testing.T) {
 
 				state := server.mustReadNetwork(t, string(content))
 
-				if got := text(t, state, "guest_type"); got != "qemu" {
-					t.Errorf("guest_type = %q, want qemu", got)
-				}
-
 				if got := decodeNetworkPolicyRules(
 					t,
 					state,

@@ -16,10 +16,9 @@ func TestLoadBGPForwardingReadiness(t *testing.T) {
 		wantConfig bool
 	}{
 		{
-			name: "primary",
+			name: "gateway with readiness socket",
 			config: `[bgp]
 enabled = true
-use_wanconfig = true
 
 [bgp.forwarding_readiness]
 socket_path = "/run/mwan-forwarding-ready.sock"
@@ -29,18 +28,15 @@ read_timeout_milliseconds = 500
 			wantConfig: true,
 		},
 		{
-			name: "primary missing table",
+			name: "gateway without readiness socket",
 			config: `[bgp]
 enabled = true
-use_wanconfig = true
 `,
-			wantError: "socket_path",
 		},
 		{
-			name: "primary relative socket",
+			name: "relative socket path",
 			config: `[bgp]
 enabled = true
-use_wanconfig = true
 
 [bgp.forwarding_readiness]
 socket_path = "mwan.sock"
@@ -50,10 +46,9 @@ read_timeout_milliseconds = 500
 			wantError: "socket_path",
 		},
 		{
-			name: "primary zero poll interval",
+			name: "zero poll interval",
 			config: `[bgp]
 enabled = true
-use_wanconfig = true
 
 [bgp.forwarding_readiness]
 socket_path = "/run/mwan-forwarding-ready.sock"
@@ -63,10 +58,9 @@ read_timeout_milliseconds = 500
 			wantError: "poll_interval_milliseconds",
 		},
 		{
-			name: "primary negative read timeout",
+			name: "negative read timeout",
 			config: `[bgp]
 enabled = true
-use_wanconfig = true
 
 [bgp.forwarding_readiness]
 socket_path = "/run/mwan-forwarding-ready.sock"
@@ -76,13 +70,17 @@ read_timeout_milliseconds = -1
 			wantError: "read_timeout_milliseconds",
 		},
 		{
-			name: "backup without readiness",
+			name: "announcements without readiness",
 			config: `[bgp]
 enabled = true
+
+[bgp.announce]
+ipv4 = ["0.0.0.0/0"]
+ipv6 = ["::/0"]
 `,
 		},
 		{
-			name: "backup with both target lists",
+			name: "announcements with readiness",
 			config: `[bgp]
 enabled = true
 
@@ -95,50 +93,8 @@ socket_path = "/run/mwan-forwarding-ready.sock"
 poll_interval_milliseconds = 1000
 read_timeout_milliseconds = 500
 
-[ifmgr.modules.connectivity_probe]
-iface = "eth0"
-targets_v4 = ["1.1.1.1"]
-targets_v6 = ["2606:4700:4700::1111"]
 `,
 			wantConfig: true,
-		},
-		{
-			name: "backup missing targets_v4",
-			config: `[bgp]
-enabled = true
-
-[bgp.announce]
-ipv4 = ["0.0.0.0/0"]
-
-[bgp.forwarding_readiness]
-socket_path = "/run/mwan-forwarding-ready.sock"
-poll_interval_milliseconds = 1000
-read_timeout_milliseconds = 500
-
-[ifmgr.modules.connectivity_probe]
-iface = "eth0"
-targets_v6 = ["2606:4700:4700::1111"]
-`,
-			wantError: "targets_v4",
-		},
-		{
-			name: "backup missing targets_v6",
-			config: `[bgp]
-enabled = true
-
-[bgp.announce]
-ipv6 = ["::/0"]
-
-[bgp.forwarding_readiness]
-socket_path = "/run/mwan-forwarding-ready.sock"
-poll_interval_milliseconds = 1000
-read_timeout_milliseconds = 500
-
-[ifmgr.modules.connectivity_probe]
-iface = "eth0"
-targets_v4 = ["1.1.1.1"]
-`,
-			wantError: "targets_v6",
 		},
 	}
 	for _, test := range tests {
@@ -162,6 +118,10 @@ targets_v4 = ["1.1.1.1"]
 
 				if err != nil {
 					t.Fatalf("LoadPath: %v", err)
+				}
+
+				if got := cfg.BGP.ForwardingReadinessEnabled(); got != test.wantConfig {
+					t.Errorf("ForwardingReadinessEnabled() = %v, want %v", got, test.wantConfig)
 				}
 
 				if test.wantConfig {

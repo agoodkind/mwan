@@ -10,7 +10,46 @@ import (
 	"strings"
 
 	"goodkind.io/mwan/internal/connectionid"
+	"goodkind.io/mwan/internal/installfile"
 )
+
+func writeOwnedJournal[T ownedStaticJournal | ownedLinkState](
+	path string,
+	name string,
+	journal T,
+) error {
+	data, err := json.Marshal(journal)
+	if err != nil {
+		slog.Warn(name+" encode failed", "path", path, "err", err)
+
+		return fmt.Errorf("encode %s: %w", name, err)
+	}
+
+	if _, err := installfile.Write(path, append(data, '\n'), 0o600); err != nil {
+		slog.Warn(name+" write failed", "path", path, "err", err)
+
+		return fmt.Errorf("write %s: %w", name, err)
+	}
+
+	return nil
+}
+
+func syncOwnedDirectory(path, name, logName string) error {
+	directory, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		slog.Warn(logName+" directory open failed", "path", path, "err", err)
+
+		return fmt.Errorf("open %s directory: %w", name, err)
+	}
+	defer directory.Close()
+	if err := directory.Sync(); err != nil {
+		slog.Warn(logName+" directory sync failed", "path", path, "err", err)
+
+		return fmt.Errorf("sync %s directory: %w", name, err)
+	}
+
+	return nil
+}
 
 func readOwnedJournal[T ownedLinkState | ownedStaticJournal | ownedKernelJournal](
 	path string,

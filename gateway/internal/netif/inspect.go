@@ -12,6 +12,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+var errLinkStatisticsUnavailable = errors.New("link statistics are unavailable")
+
 // LinkState is the current operational and carrier state of one interface.
 type LinkState struct {
 	OperState string
@@ -38,6 +40,11 @@ type RouteLookupResult struct {
 }
 
 // ListRules returns the current policy rules for one address family.
+// It returns an error when the kernel cannot provide the rule list.
+//
+// Example:
+//
+//	ListRules(ctx, log, "inet")
 func ListRules(ctx context.Context, log *slog.Logger, family string) ([]CurrentRule, error) {
 	log = log.With("component", "rules", "op", "list", "family", family)
 	rules, err := listRulesNetlink(log, family)
@@ -50,6 +57,11 @@ func ListRules(ctx context.Context, log *slog.Logger, family string) ([]CurrentR
 }
 
 // ListDHCPRoutes returns routes installed with the DHCP protocol for one family.
+// It returns an empty slice when the kernel has no matching routes.
+//
+// Example:
+//
+//	ListDHCPRoutes(ctx, log, "inet")
 func ListDHCPRoutes(
 	ctx context.Context,
 	log *slog.Logger,
@@ -61,6 +73,11 @@ func ListDHCPRoutes(
 }
 
 // ListProtocolRoutes returns routes installed with protocol in tableID for one family.
+// It returns an empty slice when the kernel has no matching routes.
+//
+// Example:
+//
+//	ListProtocolRoutes(ctx, log, "inet", 100, unix.RTPROT_STATIC)
 func ListProtocolRoutes(
 	ctx context.Context,
 	log *slog.Logger,
@@ -81,6 +98,11 @@ func ListProtocolRoutes(
 }
 
 // ListTableRoutes returns all routes in tableID for one address family.
+// It returns an empty slice when the kernel has no matching routes.
+//
+// Example:
+//
+//	ListTableRoutes(ctx, log, "inet", 100)
 func ListTableRoutes(
 	ctx context.Context,
 	log *slog.Logger,
@@ -145,10 +167,17 @@ func listRoutesFiltered(
 }
 
 // ReadLinkState returns the current operational and carrier state for iface.
+// It logs and wraps kernel link lookup errors.
+//
+// Example:
+//
+//	ReadLinkState(log, "wan0")
 func ReadLinkState(log *slog.Logger, iface string) (LinkState, error) {
-	link, err := linkByName(log, iface)
+	link, err := netlink.LinkByName(iface)
 	if err != nil {
-		return LinkState{}, err
+		log.Warn("link: state lookup failed", "iface", iface, "err", err)
+
+		return LinkState{}, fmt.Errorf("link %q: %w", iface, err)
 	}
 
 	attrs := link.Attrs()
@@ -160,15 +189,24 @@ func ReadLinkState(log *slog.Logger, iface string) (LinkState, error) {
 }
 
 // ReadLinkStats returns the current receive and transmit counters for iface.
+// It logs and wraps kernel link lookup errors.
+//
+// Example:
+//
+//	ReadLinkStats(log, "wan0")
 func ReadLinkStats(log *slog.Logger, iface string) (LinkStats, error) {
-	link, err := linkByName(log, iface)
+	link, err := netlink.LinkByName(iface)
 	if err != nil {
-		return LinkStats{}, err
+		log.Warn("link: statistics lookup failed", "iface", iface, "err", err)
+
+		return LinkStats{}, fmt.Errorf("link %q: %w", iface, err)
 	}
 
 	statistics := link.Attrs().Statistics
 	if statistics == nil {
-		return LinkStats{}, fmt.Errorf("link %q has no statistics", iface)
+		log.Warn("link: statistics unavailable", "iface", iface)
+
+		return LinkStats{}, errLinkStatisticsUnavailable
 	}
 
 	return LinkStats{
@@ -282,7 +320,7 @@ func parseFamilyIP(family string, rawIP string) (net.IP, error) {
 		return nil, fmt.Errorf("parse %q: not an IP address", rawIP)
 	}
 
-	if family == "inet" {
+	if family == tunnelEndpointRouteFamily {
 		ip = ip.To4()
 		if ip == nil {
 			return nil, fmt.Errorf("parse %q: not an IPv4 address", rawIP)
@@ -291,7 +329,7 @@ func parseFamilyIP(family string, rawIP string) (net.IP, error) {
 		return ip, nil
 	}
 
-	if family != "inet6" || ip.To4() != nil {
+	if family != string(httpFamilyV6) || ip.To4() != nil {
 		return nil, fmt.Errorf("parse %q: not an IPv6 address", rawIP)
 	}
 

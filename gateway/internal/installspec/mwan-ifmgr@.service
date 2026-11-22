@@ -1,29 +1,19 @@
 [Unit]
 Description=MWAN ifmgr (interface manager) daemon for role %i
 Documentation=https://github.com/agoodkind/configs
-# The daemon runs before udev's coldplug trigger and networkd because it writes
-# the provider .link files, and udev reads a .link file only when the device
-# appears.
+# The daemon writes provider .link files before udev handles device events.
 DefaultDependencies=no
-# No ordering after local-fs.target: that target waits for the /boot/efi
-# device, which the coldplug trigger creates, and the boot stalls 90 seconds.
-# Ordering after systemd-remount-fs.service keeps /var/lib/mwan writable,
-# because ProtectSystem=strict fixes the mounts as they are at start and the
-# root filesystem is read-only until that service runs. That service waits only
-# for the journal socket and the root filesystem check.
+# local-fs.target waits for the /boot/efi device created by udev. This unit
+# starts after systemd-remount-fs.service. That service remounts / as writable.
 After=systemd-journald.socket systemd-remount-fs.service
 Before=systemd-udev-trigger.service systemd-networkd.service shutdown.target
-# Conflicts= is stated because DefaultDependencies=no drops the implicit
-# shutdown ordering.
+# DefaultDependencies=no removes the usual shutdown ordering.
 Conflicts=shutdown.target
 
 [Service]
 Type=simple
-# Role is selected by the systemd instance name.
-#
-# EnvironmentFile is optional. Ansible renders /etc/mwan/secrets.env with
-# SMTP2GO_API_KEY when the host has email configured. The leading dash
-# tells systemd to start the unit even when the file is absent.
+# The systemd instance name selects the WAN role.
+# The secrets file is optional when email delivery is not configured.
 EnvironmentFile=-/etc/mwan/secrets.env
 ExecStart=/usr/local/bin/mwan ifmgr --role %i
 Restart=always
@@ -32,27 +22,24 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=mwan-ifmgr@%i
 
-# The daemon needs:
+# The daemon needs these capabilities:
 #   CAP_BPF              - load NPTv6 programs and policy maps
 #   CAP_PERFMON          - verify NPTv6 map-value pointer arithmetic
 #   CAP_SYS_ADMIN        - inspect surviving NPTv6 programs and maps by kernel ID
 #   CAP_NET_ADMIN        - addr/rule/route mutations via netlink
 #   CAP_NET_RAW          - ICMPv6 sockets for NDP and connectivity probes,
 #                          plus DHCPv4 raw sockets (insomniacslk/dhcp)
-#   CAP_NET_BIND_SERVICE - reserved for any future low-port bind
-AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN CAP_NET_ADMIN CAP_NET_RAW
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN CAP_NET_ADMIN CAP_NET_RAW
 
-# Lock down the rest of the filesystem.
+# Restrict writes to the paths listed below.
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 ProtectKernelModules=true
 ProtectControlGroups=true
-# PrivateTmp is absent because it orders the unit after
-# systemd-tmpfiles-setup.service, and that ordering stalls the boot 90 seconds:
-# the service waits for local-fs.target, which waits for the /boot/efi device
-# the coldplug trigger creates. The daemon writes nothing under /tmp.
+# PrivateTmp would delay this unit until systemd-tmpfiles-setup.service, which
+# waits for local-fs.target and the /boot/efi device.
 
 # The WAN role changes promote_secondaries for DHCPv4 and configures kernel
 # router discovery for MWAN-owned IPv6 links.
@@ -65,25 +52,13 @@ ProtectKernelTunables=false
 # entry on hosts without the wanconfig stack (sysrepo's shared memory under
 # /dev/shm is already writable, since ProtectSystem leaves /dev alone).
 #
-# Guests start when /var/lib/mwan is missing because systemd creates it as root
-# (0755) before namespace setup. StateDirectory adds
-# RequiresMountsFor=/var/lib/mwan and After=systemd-remount-fs.service.
-# Only PrivateTmp adds After=systemd-tmpfiles-setup.service.
+# StateDirectory creates /var/lib/mwan before the service starts and adds the
+# mount dependency for that path.
 StateDirectory=mwan
 ReadWritePaths=/var/log /var/run /run /var/lib/mwan /etc/systemd/network /proc/sys/net/ipv4/conf /proc/sys/net/ipv6/conf -/etc/sysrepo
-# The static sysrepo inside the binary follows the upstream access policy:
-# repository files are group sysrepo with umask 007. The daemon joins that
-# group so its files and the packaged tools' files stay mutually readable.
-# deploy-mwan creates the group on every gateway; the unit fails to start
-# where the group is absent.
+# The sysrepo repository uses group sysrepo and umask 007. The daemon joins
+# group sysrepo to read and write repository files.
 SupplementaryGroups=sysrepo
-
-# Allow reading SSH credentials for outbound SSH from modules like
-# wg that probe remote WG endpoints. ProtectHome=true otherwise
-# hides /root entirely. Read-only is sufficient: the SSH client also
-# needs UserKnownHostsFile=/dev/null in its options to skip the
-# known_hosts write that this read-only mount cannot satisfy.
-BindReadOnlyPaths=-/root/.ssh
 
 [Install]
 WantedBy=multi-user.target

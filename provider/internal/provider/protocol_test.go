@@ -111,20 +111,8 @@ func newServer(t *testing.T, buildCommit string, releaseBaseURL string) *protoco
 
 func (s *protocolServer) readRole(t *testing.T, role string) (roleData, []*tfprotov6.Diagnostic) {
 	t.Helper()
-	return s.readRoleForGuest(t, role, "")
-}
-
-func (s *protocolServer) readRoleForGuest(
-	t *testing.T,
-	role string,
-	guestType string,
-) (roleData, []*tfprotov6.Diagnostic) {
-	t.Helper()
 	attributes := map[string]tftypes.Value{
 		"role": tftypes.NewValue(tftypes.String, role),
-	}
-	if guestType != "" {
-		attributes["guest_type"] = tftypes.NewValue(tftypes.String, guestType)
 	}
 
 	state, diagnostics := s.read(t, roleDataSource, attributes)

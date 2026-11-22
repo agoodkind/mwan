@@ -285,8 +285,7 @@ func TestManager_PerKindOverride(t *testing.T) {
 	}
 }
 
-// TestManager_NotifyEventShape exercises the typed Event entry point so
-// the locked types from the plan stay covered.
+// TestManager_NotifyEventShape checks that Notify and Resolve update alert state.
 func TestManager_NotifyEventShape(t *testing.T) {
 	h := &captureHandler{}
 	log := slog.New(h)
@@ -298,18 +297,18 @@ func TestManager_NotifyEventShape(t *testing.T) {
 		Event{
 			Now:     now,
 			Level:   slog.LevelWarn,
-			Kind:    "vsock-fallback",
-			Key:     "950:50051",
-			Message: "vsock unavailable, used TCP fallback",
-			Fields:  []slog.Attr{slog.String("vmid", "950"), slog.Int("port", 50051)},
+			Kind:    "gateway-health",
+			Key:     "wan0",
+			Message: "WAN health check failed",
+			Fields:  []slog.Attr{slog.String("interface", "wan0")},
 		},
 	)
-	if !m.Active("vsock-fallback", "950:50051") {
+	if !m.Active("gateway-health", "wan0") {
 		t.Fatal("expected alert to be Active after Notify")
 	}
 
-	m.Resolve(context.Background(), "vsock-fallback", "950:50051", "vsock back online")
-	if m.Active("vsock-fallback", "950:50051") {
+	m.Resolve(context.Background(), "gateway-health", "wan0", "WAN health check recovered")
+	if m.Active("gateway-health", "wan0") {
 		t.Fatal("expected alert to be cleared after Resolve")
 	}
 

@@ -42,8 +42,7 @@
 				"internal-prefix": "2001:db8:b01::/60"
 			},
 			"reserved-tables": [
-				400,
-				500
+				400
 			],
 			"hash-mode": "source"
 		},

@@ -48,8 +48,6 @@ func HealthConfig(
 	if section != nil {
 		cfg.Observations = observations
 		cfg.StateFile = section.StateFile
-		cfg.StatusPushCID = section.StatusPushCID
-		cfg.StatusPushPort = section.StatusPushPort
 	}
 
 	return cfg, nil
@@ -76,8 +74,6 @@ func HealthProviderConfig(
 		SuccessThreshold:  0,
 		FailureThreshold:  0,
 		RecoveryThreshold: 0,
-		StatusPushCID:     0,
-		StatusPushPort:    0,
 		WANs:              make([]health.WAN, 0, len(shared.WANs)),
 	}
 	if section == nil {

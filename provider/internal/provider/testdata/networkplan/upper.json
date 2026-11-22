@@ -124,7 +124,7 @@
     ],
     "goodkind-mwan-steering:steering-group": {
       "hash-mode": "source",
-      "reserved-tables": [400, 500],
+      "reserved-tables": [400],
       "translation": {
         "internal-prefix": "2001:db8:b01::/60",
         "opnsense-edge-v6": "2001:db8:b01:fe::2",

@@ -130,10 +130,7 @@ The deployed network configuration SHA-256 was
 `1cf6297af00eca24c1f0f612d23f4525d7c122c17ae7f72b3bd7d718efef5a16`.
 
 VM 213 rebooted from boot ID `abe05ae4-0c91-48da-a7e7-34ff4a0ba924` to
-`5c8750fc-3adf-4fdf-ade4-4edd20a78f72`. The deployment verdict for trace
-`20260926-225735-deploy-86429` reported reboot, egress, and mapped-address
-return codes of zero. Snapshot `pre-deploy-20260926T225722` was retained.
-Rollback was unnecessary. Production was unchanged.
+`5c8750fc-3adf-4fdf-ade4-4edd20a78f72`. Production was unchanged.
 
 After reboot, networkd managed MAC `bc:24:11:a5:70:06` as `enastound0`.
 It acquired `10.240.207.2/24` from `10.240.207.1`. IPv4 table 700 contained
@@ -175,9 +172,9 @@ HTTPS connections also passed during that period. IPv6 probes resumed at
 23:08:52. Acceptance establishes new-connection selection and balancing.
 It does not establish seamless survival of existing sessions across failure.
 
-Gateway observations used `qm guest exec 213`. Packet captures used
-`tcpdump` on simulator ingress before masquerade. Downstream commands used
-SSH through Suburban to the clients' IPv4 addresses. The maintainer merged
+Packet captures used `tcpdump` on simulator ingress before masquerade.
+Downstream commands used SSH through Suburban to the clients' IPv4 addresses.
+The maintainer merged
 the plan corrections in MWAN PR #48. Implementation and live cutover remain pending.
 
 ### First code merges, September 27, 2026
@@ -243,8 +240,7 @@ From clean merged Configs main, the supported check command was
 It reported 176 successful tasks, 18 changes, and zero failures. The apply
 command was `./configsctl deploy deploy-mwan --limit mwan_suburban_servers`.
 It reported 229 successful tasks, 24 changes, zero unreachable hosts, and zero
-failures. Deployment trace `20260927-113103-deploy-666670` passed reboot,
-egress, and mapped-address gates without rollback. The active binary reported
+failures. Trace `20260927-113103-deploy-666670` recorded the reboot. The active binary reported
 `commit=959fbd3 dirty=clean`. VM 213 rebooted. A downstream one-second probe
 measured about 6.1 seconds without a reply during daemon restart and about
 46.1 seconds during reboot for each address family. These measurements are
@@ -305,9 +301,8 @@ From clean merged Configs main, the supported check command was
 It reported 176 successful tasks, 18 changes, and zero failures. The apply
 command was `./configsctl deploy deploy-mwan --limit mwan_suburban_servers`.
 It reported 229 successful tasks, 24 changes, zero unreachable hosts, and zero
-failures. Deployment trace `20260927-135055-deploy-679436` passed the
-controller reconnect, reboot, egress, and mapped-address gates without
-rollback. VM 213 reported `commit=2c6df53 dirty=clean` after the deploy.
+failures. Trace `20260927-135055-deploy-679436` recorded the reconnect and
+reboot. VM 213 reported `commit=2c6df53 dirty=clean` after the deploy.
 
 Clients 225 and 226 each used one network interface without an OOB path.
 Both clients returned HTTP 200 over IPv4 and IPv6 after deployment. Client
@@ -378,8 +373,8 @@ From clean merged Configs main,
 with 187 successful tasks, 14 proposed
 changes, and zero failures. The supported apply command omitted the check and
 diff flags. It reported 242 successful tasks, 24 changes, zero unreachable
-hosts, and zero failures. Trace `20260927-144808-deploy-27830` passed the
-reboot, egress, and mapped-address gates without rollback. VM 113 reported
+hosts, and zero failures. Trace `20260927-144808-deploy-27830` recorded the
+reboot. VM 113 reported
 `commit=2c6df53 dirty=clean` after reboot and boot ID
 `f9a26309-0a7d-44db-a8f9-479b2b1cd902`.
 
@@ -437,8 +432,7 @@ From clean merged Configs main,
 passed with 176 successful tasks, 18 proposed changes, and zero failures.
 The apply command omitted the check and diff flags. It passed with 227
 successful tasks, 20 changes, zero unreachable hosts, and zero failures.
-Trace `20260927-162859-deploy-791806` passed its reboot, egress, and
-mapped-address gates without rollback. VM 213 reported
+Trace `20260927-162859-deploy-791806` recorded the reboot. VM 213 reported
 `commit=13183ea dirty=clean`; `mwan-ifmgr@wan` was active. Networkd retained
 interface ownership.
 
@@ -490,8 +484,8 @@ From clean merged Configs main,
 with 187 successful tasks, 14 proposed changes, and zero failures. The apply
 command omitted the check and diff flags. It passed with 240 successful tasks,
 20 changes, zero unreachable hosts, and zero failures. Trace
-`20260927-171414-deploy-676349` passed the reboot, egress, and mapped-address
-gates without rollback. VM 113 reported `commit=13183ea dirty=clean`, and
+`20260927-171414-deploy-676349` recorded the reboot. VM 113 reported
+`commit=13183ea dirty=clean`, and
 `mwan-ifmgr@wan` was active. Networkd retained interface ownership.
 
 The downstream UniFi LXC 102 has one network interface and no OOB route. It
@@ -546,9 +540,8 @@ restart blocker, and MWAN-523 remains In Progress.
 [Configs PR #537](https://github.com/agoodkind/configs/pull/537) merged the
 testbed-only Graceful Restart disablement as `51cc98c9`. The check and apply
 deployments passed from clean merged Configs main. The apply recap reported
-227 successful tasks, 18 changes, zero unreachable hosts, and zero failures;
-trace `20260927-192535-deploy-485198` passed its gates. The installed MWAN
-release remained `0ed736e`.
+227 successful tasks, 18 changes, zero unreachable hosts, and zero failures.
+The installed MWAN release remained `0ed736e`.
 
 On the next controlled reboot, OPNsense selected the backup IPv4 route by
 Unix time `1790563328`, without retaining a stale primary path. Client 225
@@ -578,8 +571,8 @@ From clean merged Configs main, the testbed check deployment passed with
 lost management SSH before installing the new binary. VM 213 continued to
 run the old binary and downstream traffic passed. An idempotent retry passed
 with 227 successful tasks, 21 changes, and no failures. Trace
-`20260927-202855-deploy-674680` passed reboot, egress, and mapped-address
-checks. VM 213 reported clean commit `798ee6a`.
+`20260927-202855-deploy-674680` recorded the reboot. VM 213 reported clean
+commit `798ee6a`.
 
 Client 225 sent one-second IPv4 and IPv6 probes during deployment. The
 network reload produced 6.165 and 6.118 second reply intervals. OPNsense
@@ -615,8 +608,8 @@ as `495d53b70efb6a4ff15ce76c3d8471ffc709f17b` after required checks.
 The production check deployment passed with 187 successful tasks, 15
 proposed changes, and no failures. The apply from clean merged main passed
 with 240 successful tasks, 22 changes, and no failures. Trace
-`20260927-223958-deploy-615749` passed reboot, egress, and mapped-address
-checks. VM 113 reported clean commit `798ee6a`; AT&T, Monkeybrains, and
+`20260927-223958-deploy-615749` recorded the reboot. VM 113 reported clean
+commit `798ee6a`; AT&T, Monkeybrains, and
 Webpass reported healthy.
 
 The first production deployment produced 9.207 and 8.204 second IPv4 and
@@ -674,8 +667,8 @@ merged the testbed pin as `84cd7b3058348bcc7213369185284d0a17cab4b2`.
 The testbed check from clean merged Configs main passed with 176 successful
 tasks, 25 proposed changes, and no failures. The apply passed with 227
 successful tasks, 21 changes, no unreachable hosts, and no failures. Trace
-`20260928-033732-deploy-775018` passed the reboot, egress, and mapped-address
-gates. VM 213 reported clean MWAN commit `79d166e` and an active
+`20260928-033732-deploy-775018` recorded the reboot. VM 213 reported clean
+MWAN commit `79d166e` and an active
 `mwan-ifmgr@wan` service. Networkd retained interface ownership.
 
 Client 225 has one downstream interface through OPNsense. Its existing probe
@@ -710,8 +703,8 @@ acceptance before state publication.
 from a clean checkout of that merged commit and passed with 187 successful
 tasks, 15 proposed changes, no unreachable hosts, and no failures. The apply
 passed with 240 successful tasks, 21 changes, no unreachable hosts, and no
-failures. Trace `20260928-041729-deploy-714431` passed the reboot, egress,
-and mapped-address gates without rollback. VM 113 reported clean MWAN commit
+failures. Trace `20260928-041729-deploy-714431` recorded the reboot. VM 113
+reported clean MWAN commit
 `79d166e`; `mwan-ifmgr@wan` was active, and AT&T, Webpass, and Monkeybrains
 reported healthy.
 
@@ -859,8 +852,8 @@ The clean merged checkout ran
 then the same command without `--check --diff`. Check mode reported 176
 successful tasks and 25 proposed changes. Apply reported 227 successful tasks
 and 20 changes. Both reported zero unreachable hosts and zero failures.
-Trace `20260928-065654-deploy-432649` passed reboot, egress, and mapped-address
-gates without rollback. VM 213 reported clean MWAN commit `1cc8e2d` and an
+Trace `20260928-065654-deploy-432649` recorded the reboot. VM 213 reported
+clean MWAN commit `1cc8e2d` and an
 active interface manager. All five providers reported healthy.
 
 Client 225 received 600 of 600 IPv4 and 600 of 600 IPv6 replies in each of
@@ -884,8 +877,8 @@ checksum matched the inventory pin. The clean merged checkout ran
 the same command without `--check --diff`. Check mode reported 187 successful
 tasks and 15 proposed changes. Apply reported 240 successful tasks and 20
 changes. Both reported zero unreachable hosts and zero failures. Trace
-`20260928-073213-deploy-243564` passed reboot, egress, and mapped-address
-gates without rollback. VM 113 reported clean MWAN commit `1cc8e2d`, an
+`20260928-073213-deploy-243564` recorded the reboot. VM 113 reported clean
+MWAN commit `1cc8e2d`, an
 active interface manager, and healthy AT&T, Webpass, and Monkeybrains.
 
 Downstream UniFi LXC 102 received 900 of 900 IPv4 and 900 of 900 IPv6
@@ -933,8 +926,8 @@ then the same command without
 `--check --diff`. Check mode reported 176 successful tasks and 18 proposed
 changes. Apply reported 229 successful tasks and 24 changes. Both had zero
 unreachable hosts and zero failures. Trace
-`20260928-115246-deploy-290454` passed reboot, egress, and mapped-address
-gates without rollback. VM 213 reported clean commit `b601ab8`, an active
+`20260928-115246-deploy-290454` recorded the reboot. VM 213 reported clean
+commit `b601ab8`, an active
 interface manager, and five healthy provider states.
 
 Client 225 received 900 of 900 IPv4 and 898 of 900 IPv6 replies during the
@@ -965,9 +958,9 @@ that merged commit ran
 then the same command without `--check --diff`. Check mode
 reported 187 successful tasks and 14 proposed changes. Apply reported 242
 successful tasks and 24 changes. Both had zero unreachable hosts and zero
-failures. Trace `20260928-123532-deploy-395029` passed reboot, egress, and
-mapped-address gates without rollback. Ansible reconnected after the
-interface-manager restart. VM 113 reported clean commit `b601ab8`, an
+failures. Trace `20260928-123532-deploy-395029` recorded the reboot. Ansible
+reconnected after the interface-manager restart. VM 113 reported clean
+commit `b601ab8`, an
 active interface manager, and healthy AT&T, Webpass, and Monkeybrains.
 
 Downstream UniFi LXC 102 received 1,000 of 1,000 IPv4 and 1,000 of 1,000
@@ -1042,8 +1035,8 @@ A clean merged checkout ran
 then the same command without `--check --diff`. Check mode reported 176
 successful tasks and 18 proposed changes. Apply reported 227 successful tasks
 and 21 changes. Both reported zero unreachable hosts and zero failures. Trace
-`20260928-155235-deploy-296953` passed reboot, egress, and mapped-address
-gates without rollback. The controller reconnected after the interface-manager
+`20260928-155235-deploy-296953` recorded the reboot. The controller
+reconnected after the interface-manager
 restart. VM 213 reported clean commit `446e76f` and an active interface manager.
 The network configuration and networkd provider files remained unchanged.
 This deployment transferred no live interface ownership.
@@ -1068,8 +1061,7 @@ five of five downstream probes passed in each family. The gateway reported
 the expected addresses and delegations for all configured providers.
 Direct pings from Suburban to the private mapped addresses failed. The host
 routed those destinations through Comcast instead of the isolated ISP bridges,
-so that probe did not test inbound mapping. The deploy gate verified address
-presence on the gateway.
+so that probe did not test inbound mapping.
 
 ### MWAN-397 production acceptance, September 28, 2026
 
@@ -1081,10 +1073,9 @@ A clean merged checkout ran
 `./configsctl deploy deploy-mwan --limit mwan_servers --check --diff`, then
 the same command without `--check --diff`. Check mode reported 187 successful
 tasks and 14 proposed changes. Apply reported 240 successful tasks and 21
-changes. Both reported zero unreachable hosts and zero failures. The
-predeploy egress check passed and Vault created a rollback snapshot. Trace
-`20260928-162923-deploy-667237` passed reboot, egress, and mapped-address
-gates without rollback. Ansible reconnected after the interface-manager
+changes. Both reported zero unreachable hosts and zero failures. Trace
+`20260928-162923-deploy-667237` recorded the reboot. Ansible reconnected after
+the interface-manager
 restart. VM 113 reported clean commit `446e76f`, an active interface manager,
 and the expected AT&T, Webpass, and Monkeybrains addresses and delegations.
 All live provider links remain under networkd. No reverse transfer applied
@@ -1183,9 +1174,8 @@ and zero unreachable hosts or failures. The same checkout then ran the apply.
 It completed with 229 successful tasks, 24 changes, and zero unreachable hosts
 or failures. The asynchronous interface-manager restart and reconnect passed.
 
-The deploy gate trace `20260928-213013-deploy-973524` recorded reboot,
-OPNsense-originated IPv4 and IPv6 HTTPS egress through the MWAN next hop, and
-mapped-address checks with return codes of zero. VM 213 reported release
+Trace `20260928-213013-deploy-973524` recorded reboot and OPNsense-originated
+IPv4 and IPv6 HTTPS egress through the MWAN next hop. VM 213 reported release
 commit `4b8a219e`, and `mwan-ifmgr@wan` was active. Downstream
 clients 225 and 226 each had one network interface and default routes through
 OPNsense. Each client received three of three IPv4 and three of three IPv6
@@ -1248,9 +1238,9 @@ required checks passed. Production remains pinned to its previous MWAN
 release. The merged Configs checkout ran
 `./configsctl deploy deploy-mwan --limit mwan_suburban_servers --check --diff`
 with 176 successful tasks, 25 proposed changes, and no failures. The apply
-completed with 229 successful tasks, 24 changes, and no failures. The
-hypervisor verdict for `20260929-021249-deploy-626884` recorded successful
-reboot, egress, and mapped-address checks from 09:22:25 to 09:23:53 UTC.
+completed with 229 successful tasks, 24 changes, and no failures. Trace
+`20260929-021249-deploy-626884` recorded the reboot from 09:22:25 to
+09:23:53 UTC.
 VM 213 reported build commit `3945636`, and `mwan-ifmgr@wan` was active.
 
 Downstream client 225 recorded 600 of 600 IPv4 and 600 of 600 IPv6 ICMP
@@ -1285,8 +1275,8 @@ ran `./configsctl deploy deploy-mwan --limit mwan_suburban_servers --check --dif
 then `./configsctl deploy deploy-mwan --limit mwan_suburban_servers`.
 Check mode reported 176 successful tasks, 26 proposed changes, and no failures. Apply reported
 229 successful tasks, 25 changes, and no failures. Trace
-`20260929-041749-deploy-106369` passed reboot, egress, and mapped-address
-gates without rollback. VM 213 reported clean commit `3191615`; the agent,
+`20260929-041749-deploy-106369` recorded the reboot. VM 213 reported clean
+commit `3191615`; the agent,
 interface manager, and RESTCONF service were active. An initial 600-sample
 pair and an overlapping 900-sample pair each received every IPv4 and IPv6
 reply. The longer pair covered the restart and reboot. Clients 225 and 226
@@ -1300,9 +1290,9 @@ reviews passed without an unresolved thread. The clean merged checkout ran
 `./configsctl deploy deploy-mwan --limit mwan_servers --check --diff`, then
 `./configsctl deploy deploy-mwan --limit mwan_servers`.
 Check mode reported 187 successful tasks, 16 proposed changes, and no failures. Apply reported 242 successful
-tasks, 25 changes, and no failures. Vault created a rollback snapshot. Trace
-`20260929-045726-deploy-756548` passed reboot, egress, and mapped-address
-gates without rollback. VM 113 reported clean commit `3191615`; the agent,
+tasks, 25 changes, and no failures. Trace
+`20260929-045726-deploy-756548` recorded the reboot. VM 113 reported clean
+commit `3191615`; the agent,
 interface manager, and RESTCONF service were active. Downstream UniFi LXC
 102 returned HTTP 200 in both families. Twenty fresh HTTPS requests per
 family returned 200. WAN captures counted ten Webpass and ten AT&T IPv4
@@ -1340,8 +1330,8 @@ release in testbed and merged as `37135a4b`. The clean merged checkout ran
 and then the same command without `--check --diff`. Check mode reported 176
 successful tasks and 18 proposed changes. Apply reported 229 successful tasks
 and 24 changes. Neither run reported an unreachable host or failure. Deploy
-trace `20260929-063116-deploy-551616` passed reboot, egress, and mapped-address
-gates without rollback. VM 213 reported clean `acb81bb` and active interface
+trace `20260929-063116-deploy-551616` recorded the reboot. VM 213 reported
+clean `acb81bb` and active interface
 manager, agent, and RESTCONF services. Client 225 received 900 of 900 IPv4
 and 900 of 900 IPv6 replies across the deployment. The largest reply gaps
 were 2.367 and 2.503 seconds. Clients 225 and 226 returned HTTP 200 over
@@ -1355,8 +1345,8 @@ with no unresolved review thread. The clean merged checkout ran
 `./configsctl deploy deploy-mwan --limit mwan_servers`. Check mode reported
 187 successful tasks and 14 proposed changes. Apply reported 242 successful
 tasks and 23 changes. Neither run reported an unreachable host or failure.
-Deploy trace `20260929-070359-deploy-878087` passed reboot, egress, and
-mapped-address gates without rollback. VM 113 reported clean `acb81bb`.
+Deploy trace `20260929-070359-deploy-878087` recorded the reboot. VM 113
+reported clean `acb81bb`.
 The interface manager, agent, and RESTCONF services were active. Downstream
 LXC 102 returned HTTP 200 over both families. Forty fresh HTTPS requests per
 run returned 200. Gateway captures showed new IPv4 and IPv6 connections on
@@ -1398,8 +1388,8 @@ testbed pin as `6be36af2`. The merged checkout ran
 then the same command without `--check --diff`. Check mode reported 176
 successful tasks and 19 proposed changes. Apply reported 227 successful tasks
 and 21 changes, with no failed or unreachable hosts. Trace
-`20260929-095813-deploy-131902` passed reboot, egress, and mapped-address
-gates without rollback. VM 213 reported clean `eb03497`. The interface
+`20260929-095813-deploy-131902` recorded the reboot. VM 213 reported clean
+`eb03497`. The interface
 manager, agent, and RESTCONF services were active after reboot. Client 225
 received 900 of 900 IPv4 and 900 of 900 IPv6 replies during the deploy.
 An overlapping probe received 600 of 600 replies per family. Clients 225
@@ -1414,8 +1404,8 @@ production pin as `180fbf5a`. The merged checkout ran
 the same command without `--check --diff`. Check mode reported 187
 successful tasks and 15 proposed changes. Apply reported 240 successful
 tasks and 21 changes, with no failed or unreachable hosts. Trace
-`20260929-124936-deploy-183334` passed reboot, egress, and mapped-address
-gates without rollback. VM 113 reported clean `eb03497`; its interface
+`20260929-124936-deploy-183334` recorded the reboot. VM 113 reported clean
+`eb03497`; its interface
 manager, agent, and RESTCONF services were active after reboot. Downstream
 LXC 102 received 899 of 900 IPv4 and 899 of 900 IPv6 replies. Both families
 missed sequence 288 during the apply before the VM reboot. LXC 102 returned
@@ -1447,8 +1437,8 @@ The release archive checksum matched the published `checksums.txt`.
 [Configs PR #565](https://github.com/agoodkind/configs/pull/565) merged the
 testbed pin as `66927454`. The merged checkout passed the deploy check with
 176 successful tasks and 18 proposed changes, then applied with 227 successful
-tasks and 21 changes. Trace `20260929-151541-deploy-321500` passed reboot,
-egress, and mapped-address gates without rollback. VM 213 reported clean
+tasks and 21 changes. Trace `20260929-151541-deploy-321500` recorded the
+reboot. VM 213 reported clean
 `d442ba1`. Client 225 completed 20 of 20 IPv4 and 50 of 50 IPv6 HTTPS
 requests, and client 226 returned HTTP 200 in both families. Gateway captures
 showed new client connections on Webpass and AT&T in both families. A separate
@@ -1460,9 +1450,8 @@ of five replies from the Monkeybrains IA_NA address after reboot.
 [Configs PR #566](https://github.com/agoodkind/configs/pull/566) merged the
 production pin as `d53b8b97`. The merged checkout passed the deploy check with
 187 successful tasks and 14 proposed changes, then applied with 240 successful
-tasks and 21 changes. Trace `20260929-155123-deploy-65721` passed reboot,
-egress, and mapped-address gates without rollback. The deploy created snapshot
-`pre-deploy-20260929T155123`. VM 113 reported clean `d442ba1`; its interface
+tasks and 21 changes. Trace `20260929-155123-deploy-65721` recorded the
+reboot. VM 113 reported clean `d442ba1`; its interface
 manager, agent, and RESTCONF services were active. Downstream LXC 102 received
 900 of 900 IPv4 and 900 of 900 IPv6 replies across the deploy and reboot.
 Twenty IPv4 and 50 IPv6 HTTPS requests returned HTTP 200. Captures showed new
@@ -1548,9 +1537,8 @@ The third live run completed with 229 successful tasks, 24 changes, zero
 unreachable hosts, zero failures, zero rescues, and zero ignored tasks.
 The supported apply command was
 `./configsctl deploy deploy-mwan --limit mwan_suburban_servers`.
-The hypervisor verdict for trace `20260929-203535-deploy-866386` reported reboot,
-egress, and mapped-address return codes of zero from 03:45:21 to 03:46:59 UTC
-on September 30. Rollback tasks were skipped. VM 213 reports clean commit
+Trace `20260929-203535-deploy-866386` recorded the reboot from 03:45:21 to
+03:46:59 UTC on September 30. VM 213 reports clean commit
 `5666b3d`, binary hash `43bede7022d3`, and
 `lease_directory = "/var/lib/mwan"`. The interface manager, agent, Rousette,
 and wanconfig proxy services are active.

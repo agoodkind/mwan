@@ -1,31 +1,5 @@
-// Command wanconfigstack builds the wanconfig management stack as Debian
-// packages (MWAN-431).
-//
-// It runs as root inside a stock Debian trixie container that the mwan
-// Makefile starts from its wanconfig-stack-bundle target. Six components,
-// pinned in that Makefile and passed in as flags, become Debian
-// packages that install on a gateway with apt and nothing else. The two
-// components with upstream Debian packaging (libyang, sysrepo) build through
-// their apkg deb templates into /usr under the upstream package names; the
-// sysrepo template compiles the upstream access policy in (group sysrepo,
-// umask 007). The build rewrites amd64 multiarch paths in the template
-// install files to the multiarch glob and otherwise uses the templates as
-// published. The four without (libyang-cpp, sysrepo-cpp,
-// nghttp2-asio, rousette) are cmake-installed into a DESTDIR stage under the
-// /opt/mwan-wanconfig prefix and packaged by the nfpm library, with a Depends
-// line read off their ELF files.
-//
-// Every package is installed into the container as it is built, so each
-// later component compiles against the packaged form of its predecessors,
-// which is exactly what the gateway sees. The runtime packages land in one
-// tar.gz bundle that the mwan release publishes next to the binaries.
-// Package identity is the upstream version from the pins; the release tag is
-// only delivery.
-//
-// External programs run only where no library exists: apt for the build
-// dependencies, apkg and its dpkg-buildpackage for the upstream templates,
-// and cmake. Git, ELF inspection, dpkg ownership, package assembly, and the
-// bundle are libraries.
+// Command wanconfigstack builds pinned Debian packages and verifies their
+// runtime bundle. Docker supplies the fixed build tools.
 package main
 
 import (
@@ -43,36 +17,23 @@ import (
 	"goodkind.io/mwan/internal/stackspec"
 )
 
-// packaging names how a component becomes a Debian package.
 type packaging int
 
 const (
-	// packagingApkg builds the upstream distro/pkg/deb template.
 	packagingApkg packaging = iota
-	// packagingNfpm stages a cmake install under stackPrefix and wraps it.
 	packagingNfpm
 )
 
-// component is one member of the stack. The table below is the whole
-// recipe; the build functions only interpret it.
 type component struct {
-	name string
-	url  string
-	// pinVar is the flag name the pin arrives under.
-	pinVar string
-	// commitVar is the flag name of the pin's immutable commit hash. The
-	// clone refuses a pin that resolves elsewhere.
-	commitVar string
-	how       packaging
-	// cmakeFlags are extra configure flags for nfpm components.
-	cmakeFlags []string
-	// description is the package description for nfpm components.
+	name        string
+	url         string
+	pinVar      string
+	commitVar   string
+	how         packaging
+	cmakeFlags  []string
 	description string
-	// loaderConf marks the one nfpm component that ships the ld.so.conf.d
-	// entry for the /opt tree; the others reach it through Depends.
-	loaderConf bool
-	// versionFromCMake derives the package version from the project()
-	// line instead of the pin, for a component pinned to a commit.
+	loaderConf  bool
+	// Commit pins need the upstream CMake version for Debian package identity.
 	versionFromCMake bool
 }
 
@@ -92,27 +53,22 @@ var components = []component{
 		how:       packagingApkg,
 	},
 	{
-		name:      "libyang-cpp",
-		url:       "https://github.com/CESNET/libyang-cpp.git",
-		pinVar:    "wanconfig_libyang_cpp_version",
-		commitVar: "wanconfig_libyang_cpp_commit",
-		how:       packagingNfpm,
-		cmakeFlags: []string{
-			"-DWITH_DOCS=OFF",
-		},
+		name:        "libyang-cpp",
+		url:         "https://github.com/CESNET/libyang-cpp.git",
+		pinVar:      "wanconfig_libyang_cpp_version",
+		commitVar:   "wanconfig_libyang_cpp_commit",
+		how:         packagingNfpm,
+		cmakeFlags:  []string{"-DWITH_DOCS=OFF"},
 		description: "C++ bindings for libyang (wanconfig management stack)",
 		loaderConf:  true,
 	},
 	{
-		name:      "sysrepo-cpp",
-		url:       "https://github.com/sysrepo/sysrepo-cpp.git",
-		pinVar:    "wanconfig_sysrepo_cpp_version",
-		commitVar: "wanconfig_sysrepo_cpp_commit",
-		how:       packagingNfpm,
-		cmakeFlags: []string{
-			"-DWITH_DOCS=OFF",
-			"-DWITH_EXAMPLES=OFF",
-		},
+		name:        "sysrepo-cpp",
+		url:         "https://github.com/sysrepo/sysrepo-cpp.git",
+		pinVar:      "wanconfig_sysrepo_cpp_version",
+		commitVar:   "wanconfig_sysrepo_cpp_commit",
+		how:         packagingNfpm,
+		cmakeFlags:  []string{"-DWITH_DOCS=OFF", "-DWITH_EXAMPLES=OFF"},
 		description: "C++ bindings for sysrepo (wanconfig management stack)",
 	},
 	{
@@ -125,68 +81,66 @@ var components = []component{
 		versionFromCMake: true,
 	},
 	{
-		name:      "rousette",
-		url:       "https://github.com/CESNET/rousette.git",
-		pinVar:    "wanconfig_rousette_version",
-		commitVar: "wanconfig_rousette_commit",
-		how:       packagingNfpm,
-		cmakeFlags: []string{
-			"-DWITH_DOCS=OFF",
-		},
+		name:        "rousette",
+		url:         "https://github.com/CESNET/rousette.git",
+		pinVar:      "wanconfig_rousette_version",
+		commitVar:   "wanconfig_rousette_commit",
+		how:         packagingNfpm,
+		cmakeFlags:  []string{"-DWITH_DOCS=OFF"},
 		description: "RESTCONF server over sysrepo (wanconfig management stack)",
 	},
 }
 
-var runtimePackages = stackspec.Names()
+var (
+	runtimePackages = stackspec.Names()
+	debianArchs     = map[string]string{"amd64": "amd64", "arm64": "arm64"}
+)
 
-// debianArchs maps the Go architecture the tool was built for to Debian's
-// name for it. The tool runs natively in the container, so they agree.
-var debianArchs = map[string]string{"amd64": "amd64", "arm64": "arm64"}
+var (
+	errUnsupportedArch  = errors.New("no Debian architecture mapping")
+	errExclusiveModes   = errors.New("-verify, -component, and -bundle-only are mutually exclusive")
+	errOutputRequired   = errors.New("-out is required when assembling a bundle")
+	errUnknownComponent = errors.New("unknown component")
+	errRequiredFlag     = errors.New("required flag is missing")
+	errCommitFormat     = errors.New("commit must be a full lowercase 40-hex hash")
+)
 
-var errUnsupportedArch = errors.New("no Debian architecture mapping")
+// Debian reserves /usr/local for administrators. The private prefix avoids
+// conflicts with distribution libraries under /usr.
+const (
+	stackPrefix    = stackspec.Prefix
+	loaderConfPath = "/etc/ld.so.conf.d/mwan-wanconfig.conf"
+	buildRoot      = "/build"
+)
 
-// stackPrefix is the tree the nfpm packages install into. Debian policy
-// reserves /usr/local for the local administrator, and /usr would collide
-// with any distribution libyang package, so the stack takes its own prefix.
-const stackPrefix = stackspec.Prefix
-
-// loaderConfPath makes the /opt tree's shared libraries resolvable.
-const loaderConfPath = "/etc/ld.so.conf.d/mwan-wanconfig.conf"
-
-// buildRoot is the scratch tree inside the container.
-const buildRoot = "/build"
-
-// builder carries the inputs and the resolved layout through one build.
 type builder struct {
-	log *slog.Logger
-	// pins maps pinVar to the pinned ref.
-	pins map[string]string
-	// outDir receives the bundle.
+	log    *slog.Logger
+	pins   map[string]string
 	outDir string
-	// arch is the Debian architecture of the container (amd64, arm64).
-	arch string
-	jobs int
-	// versions records the version of every package this build produced,
-	// by package name, so later packages pin their Depends on it exactly.
+	arch   string
+	jobs   int
+	// Later packages require exact versions of their packaged predecessors.
 	versions map[string]string
 }
 
-func (b *builder) srcDir(c component) string   { return filepath.Join(buildRoot, "src", c.name) }
-func (b *builder) stageDir(c component) string { return filepath.Join(buildRoot, "stage", c.name) }
-func (b *builder) pkgDir(c component) string   { return filepath.Join(buildRoot, "pkgs", c.name) }
-func (b *builder) pin(c component) string      { return b.pins[c.pinVar] }
-func (b *builder) commit(c component) string   { return b.pins[c.commitVar] }
+func (b *builder) srcDir(c component) string { return filepath.Join(buildRoot, "src", c.name) }
 
-// pinVersion is the pin as a Debian version: the tag without its v.
+func (b *builder) stageDir(
+	c component,
+) string {
+	return filepath.Join(buildRoot, "stage", c.name)
+}
+func (b *builder) pkgDir(c component) string     { return filepath.Join(buildRoot, "pkgs", c.name) }
+func (b *builder) pin(c component) string        { return b.pins[c.pinVar] }
+func (b *builder) commit(c component) string     { return b.pins[c.commitVar] }
 func (b *builder) pinVersion(c component) string { return strings.TrimPrefix(b.pin(c), "v") }
 
-// options are the tool's inputs. A verify path selects the verify mode,
-// which needs no pins; otherwise every pin and the output directory are
-// required.
 type options struct {
 	pins         map[string]string
 	outDir       string
 	verifyBundle string
+	component    string
+	bundleOnly   bool
 }
 
 func parseFlags(log *slog.Logger, args []string) (options, error) {
@@ -198,11 +152,25 @@ func parseFlags(log *slog.Logger, args []string) (options, error) {
 		pins[c.commitVar] = flags.String(c.commitVar, "", c.name+" pinned commit hash")
 	}
 
-	outDir := flags.String("out", "", "directory that receives the bundle")
+	outDir := flags.String(
+		"out",
+		"",
+		"directory that receives the bundle after building or verifying",
+	)
 	verifyBundle := flags.String(
 		"verify",
 		"",
 		"bundle to install and prove on this system instead of building",
+	)
+	selected := flags.String(
+		"component",
+		"",
+		"build one component against previously installed packages",
+	)
+	bundleOnly := flags.Bool(
+		"bundle-only",
+		false,
+		"assemble previously built packages without compiling",
 	)
 	if err := flags.Parse(args); err != nil {
 		if !errors.Is(err, flag.ErrHelp) {
@@ -212,61 +180,83 @@ func parseFlags(log *slog.Logger, args []string) (options, error) {
 		return options{}, fmt.Errorf("parse flags: %w", err)
 	}
 
-	opts := options{pins: map[string]string{}, outDir: *outDir, verifyBundle: *verifyBundle}
+	opts := options{
+		pins:         map[string]string{},
+		outDir:       *outDir,
+		verifyBundle: *verifyBundle,
+		component:    *selected,
+		bundleOnly:   *bundleOnly,
+	}
+	if (opts.verifyBundle != "" && (opts.component != "" || opts.bundleOnly)) ||
+		(opts.component != "" && opts.bundleOnly) {
+		return options{}, errExclusiveModes
+	}
+
 	if opts.verifyBundle != "" {
 		return opts, nil
 	}
 
-	missing := []string{}
+	if opts.component == "" && opts.outDir == "" {
+		return options{}, errOutputRequired
+	}
 
-	for name, value := range pins {
-		if *value == "" {
-			missing = append(missing, name)
+	if opts.bundleOnly {
+		return opts, nil
+	}
+
+	required := components
+	if opts.component != "" {
+		required = nil
+
+		for _, c := range components {
+			if c.name == opts.component {
+				required = append(required, c)
+			}
 		}
 
-		opts.pins[name] = *value
+		if len(required) == 0 {
+			return options{}, fmt.Errorf("%w: %q", errUnknownComponent, opts.component)
+		}
 	}
 
-	if opts.outDir == "" {
-		missing = append(missing, "out")
-	}
+	for _, entry := range required {
+		for _, name := range []string{entry.pinVar, entry.commitVar} {
+			value := *pins[name]
+			if value == "" {
+				return options{}, fmt.Errorf("%w: -%s", errRequiredFlag, name)
+			}
 
-	if len(missing) > 0 {
-		err := fmt.Errorf("every pin and -out is required; missing %v", missing)
-		log.Error("wanconfigstack: bad arguments", "err", err)
+			opts.pins[name] = value
+		}
 
-		return options{}, err
-	}
-
-	for _, c := range components {
-		if !commitPattern.MatchString(opts.pins[c.commitVar]) {
-			err := fmt.Errorf(
-				"%s must be a full lowercase 40-hex commit hash; got %q",
-				c.commitVar,
-				opts.pins[c.commitVar],
+		if !commitPattern.MatchString(opts.pins[entry.commitVar]) {
+			return options{}, fmt.Errorf(
+				"%w: %s got %q",
+				errCommitFormat,
+				entry.commitVar,
+				opts.pins[entry.commitVar],
 			)
-			log.Error("wanconfigstack: bad arguments", "err", err)
-
-			return options{}, err
 		}
 	}
 
 	return opts, nil
 }
 
-// commitPattern is the only form a pinned commit may take: a full hash, so
-// the checkout comparison in the clone can never pass on a prefix.
 var commitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 func (b *builder) build(ctx context.Context) error {
-	if err := b.installBuildTools(ctx); err != nil {
-		return err
-	}
-
 	for _, c := range components {
 		if err := b.buildComponent(ctx, c); err != nil {
 			return err
 		}
+	}
+
+	return b.assemble(ctx)
+}
+
+func (b *builder) assemble(ctx context.Context) error {
+	if err := os.MkdirAll(b.outDir, 0o755); err != nil {
+		return b.fail(ctx, "create output directory", err)
 	}
 
 	if err := b.downloadDistribution(ctx); err != nil {
@@ -276,7 +266,6 @@ func (b *builder) build(ctx context.Context) error {
 	return b.bundle(ctx)
 }
 
-// buildComponent takes one component from clone to installed package.
 func (b *builder) buildComponent(ctx context.Context, c component) error {
 	b.log.InfoContext(ctx, "wanconfigstack: component", "name", c.name, "pin", b.pin(c))
 	if err := b.clonePinned(ctx, c); err != nil {
@@ -298,10 +287,50 @@ func (b *builder) buildComponent(ctx context.Context, c component) error {
 	)
 }
 
+func (b *builder) execute(ctx context.Context, opts options) error {
+	if opts.verifyBundle != "" {
+		if err := b.verify(ctx, opts.verifyBundle); err != nil {
+			return err
+		}
+
+		if opts.outDir != "" {
+			return b.exportVerified(ctx, opts.verifyBundle)
+		}
+
+		return nil
+	}
+
+	if opts.bundleOnly {
+		return b.assemble(ctx)
+	}
+
+	if opts.component != "" {
+		if err := b.restoreVersions(ctx); err != nil {
+			return err
+		}
+
+		for _, c := range components {
+			if c.name == opts.component {
+				return b.buildComponent(ctx, c)
+			}
+		}
+
+		return b.fail(
+			ctx,
+			"select component",
+			errUnknownComponent,
+			slog.String("component", opts.component),
+		)
+	}
+
+	return b.build(ctx)
+}
+
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	opts, err := parseFlags(log, os.Args[1:])
 	if err != nil {
+		log.Error("wanconfigstack: invalid arguments", "err", err)
 		os.Exit(2)
 	}
 
@@ -325,14 +354,7 @@ func main() {
 		jobs:     runtime.NumCPU(),
 		versions: map[string]string{},
 	}
-	ctx := context.Background()
-	if opts.verifyBundle != "" {
-		err = b.verify(ctx, opts.verifyBundle)
-	} else {
-		err = b.build(ctx)
-	}
-
-	if err != nil {
+	if err := b.execute(context.Background(), opts); err != nil {
 		os.Exit(1)
 	}
 }

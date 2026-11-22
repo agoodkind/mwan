@@ -20,15 +20,16 @@ import (
 
 // DHCPConfig configures the async DHCPv4 client.
 type DHCPConfig struct {
-	Iface           string        // Interface to bind on (e.g. "mbrains")
-	InitialBackoff  time.Duration // First retry delay after a failure
-	MaxBackoff      time.Duration // Cap on retry backoff
-	DiscoverTimeout time.Duration // Per-attempt deadline for DISCOVER
-	RequestTimeout  time.Duration // Per-attempt deadline for REQUEST
-	RenewTimeout    time.Duration // Per-attempt deadline for RENEW
-	ClientID        []byte        // Complete DHCP option 61 payload
-	CachedLease     *LeaseInfo    // Optional saved assignment for INIT-REBOOT
-	RestartWindow   time.Duration // Delay before DISCOVER during recovery; zero uses one minute
+	Iface              string        // Iface identifies the link on which the client sends DHCPv4 packets.
+	InitialBackoff     time.Duration // InitialBackoff sets the delay before the first acquisition retry.
+	MaxBackoff         time.Duration // MaxBackoff limits delays between acquisition retries.
+	DiscoverTimeout    time.Duration // DiscoverTimeout limits each DISCOVER attempt.
+	RequestTimeout     time.Duration // RequestTimeout limits each REQUEST attempt.
+	RenewTimeout       time.Duration // RenewTimeout limits each RENEW attempt.
+	MinimumRenewalWait time.Duration // MinimumRenewalWait limits how often silent renewal attempts repeat.
+	ClientID           []byte        // ClientID contains the complete DHCP option 61 payload.
+	CachedLease        *LeaseInfo    // CachedLease supplies an assignment for INIT-REBOOT.
+	RestartWindow      time.Duration // RestartWindow delays a recovery DISCOVER; zero selects one minute.
 }
 
 const (
@@ -206,6 +207,10 @@ func startDHCPClient(
 
 	if cfg.RenewTimeout == 0 {
 		cfg.RenewTimeout = 10 * time.Second
+	}
+
+	if cfg.MinimumRenewalWait == 0 {
+		cfg.MinimumRenewalWait = dhcpMinimumRetransmitWait
 	}
 
 	if cfg.RestartWindow == 0 {
@@ -866,148 +871,6 @@ func requestClasslessRouteFirst(packet *dhcpv4.DHCPv4) {
 	packet.UpdateOption(dhcpv4.OptParameterRequestList(requested...))
 }
 
-// leaseToInfo extracts daemon-relevant fields from a DHCPv4 ACK.
-// Pure function for unit-testing.
-func leaseToInfo(
-	state LeaseState,
-	lease *nclient4.Lease,
-	acquired time.Time,
-	requestedAt time.Time,
-) LeaseInfo {
-	info := leaseState(state, acquired, nil)
-	if lease == nil || lease.ACK == nil {
-		return info
-	}
-
-	ack := lease.ACK
-	info.IP = ack.YourIPAddr
-	mask := ack.SubnetMask()
-	if mask != nil {
-		info.PrefixLen, _ = mask.Size()
-	}
-
-	if ack.Options.Has(dhcpv4.OptionClasslessStaticRoute) {
-		info.Routes, _ = classlessRoutes(ack)
-		for _, route := range info.Routes {
-			if ones, _ := route.Destination.Mask.Size(); ones == 0 {
-				info.Gateway = route.Gateway
-				break
-			}
-		}
-	} else if routers := ack.Router(); len(routers) > 0 {
-		info.Gateway = routers[0]
-		info.Routes = []LeaseRoute{
-			{
-				Destination: &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
-				Gateway:     routers[0],
-			},
-		}
-	}
-
-	info.Server = ack.ServerIdentifier()
-	for _, server := range ack.DNS() {
-		address, ok := netip.AddrFromSlice(server.To4())
-		if ok && !address.IsUnspecified() && !address.IsMulticast() &&
-			address != netip.MustParseAddr("255.255.255.255") {
-			info.DNS = append(info.DNS, address.Unmap())
-		}
-	}
-
-	info.LeaseTime = ack.IPAddressLeaseTime(0)
-	t1 := ack.IPAddressRenewalTime(0)
-	t2 := ack.IPAddressRebindingTime(0)
-	if t1 <= 0 || t1 >= info.LeaseTime {
-		t1 = info.LeaseTime / 2
-	}
-
-	if t2 <= t1 || t2 >= info.LeaseTime {
-		t2 = info.LeaseTime * 7 / 8
-	}
-
-	if t1 >= t2 {
-		t1 = info.LeaseTime / 2
-		t2 = info.LeaseTime * 7 / 8
-	}
-
-	info.RenewAt = requestedAt.Add(t1)
-	info.RebindAt = requestedAt.Add(t2)
-	info.ExpiresAt = requestedAt.Add(info.LeaseTime)
-
-	return info
-}
-
-func validateLease(lease *nclient4.Lease) error {
-	if lease == nil || lease.ACK == nil {
-		return errors.New("missing DHCP ACK")
-	}
-
-	ack := lease.ACK
-	address := ack.YourIPAddr.To4()
-	if address == nil || address.IsUnspecified() || address.IsMulticast() ||
-		address.Equal(net.IPv4bcast) {
-		slog.Warn("dhcp: invalid ACK address", "address", ack.YourIPAddr)
-		return fmt.Errorf("invalid assigned address %v", ack.YourIPAddr)
-	}
-
-	mask := ack.SubnetMask()
-	if mask == nil {
-		return errors.New("missing subnet mask")
-	}
-
-	if _, bits := mask.Size(); bits != net.IPv4len*8 {
-		return errors.New("invalid subnet mask")
-	}
-
-	server := ack.ServerIdentifier().To4()
-	if server == nil || server.IsUnspecified() || server.IsMulticast() ||
-		server.Equal(net.IPv4bcast) {
-		slog.Warn("dhcp: invalid ACK server identifier", "server", ack.ServerIdentifier())
-		return fmt.Errorf("invalid server identifier %v", ack.ServerIdentifier())
-	}
-
-	if ack.IPAddressLeaseTime(0) <= 0 {
-		return errors.New("missing or zero lease time")
-	}
-
-	if ack.Options.Has(dhcpv4.OptionClasslessStaticRoute) {
-		if _, err := classlessRoutes(ack); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func classlessRoutes(ack *dhcpv4.DHCPv4) ([]LeaseRoute, error) {
-	data := ack.Options.Get(dhcpv4.OptionClasslessStaticRoute)
-	if len(data) == 0 {
-		return nil, errors.New("empty classless route option")
-	}
-
-	var parsed dhcpv4.Routes
-	if err := parsed.FromBytes(data); err != nil {
-		slog.Warn("dhcp: invalid ACK classless routes", "err", err)
-		return nil, fmt.Errorf("invalid classless route option: %w", err)
-	}
-
-	routes := make([]LeaseRoute, 0, len(parsed))
-	for _, route := range parsed {
-		destination := &net.IPNet{
-			IP:   route.Dest.IP.Mask(route.Dest.Mask),
-			Mask: append(net.IPMask(nil), route.Dest.Mask...),
-		}
-		routes = append(
-			routes,
-			LeaseRoute{
-				Destination: destination,
-				Gateway:     append(net.IP(nil), route.Router...),
-			},
-		)
-	}
-
-	return routes, nil
-}
-
 func nextBackoff(cur, maxB time.Duration) time.Duration {
 	n := cur * 2
 	if n > maxB {
@@ -1017,19 +880,18 @@ func nextBackoff(cur, maxB time.Duration) time.Duration {
 	return n
 }
 
-// slogDHCPWriter forwards nclient4 text logs into slog at DEBUG.
 type slogDHCPWriter struct{ base *slog.Logger }
 
-// Write implements [io.Writer] for the standard [log.Logger] used by nclient4.
-func (w slogDHCPWriter) Write(bytes []byte) (int, error) {
-	w.base.Debug("dhcp: " + strings.TrimSpace(string(bytes)))
-	return len(bytes), nil
+// Write sends the client's text logs to slog at debug level.
+func (w slogDHCPWriter) Write(data []byte) (int, error) {
+	w.base.Debug("dhcp: " + strings.TrimSpace(string(data)))
+
+	return len(data), nil
 }
 
-// slogDHCPLogger adapts slog to the nclient4.Logger interface so DHCP
-// packet exchanges appear in our structured logs at DEBUG.
 type slogDHCPLogger struct {
 	*log.Logger
+
 	base *slog.Logger
 }
 
@@ -1040,7 +902,7 @@ func newSlogDHCPLogger(base *slog.Logger) slogDHCPLogger {
 	}
 }
 
-// PrintMessage implements nclient4.Logger.
+// PrintMessage implements [nclient4.Logger].
 func (l slogDHCPLogger) PrintMessage(prefix string, message *dhcpv4.DHCPv4) {
 	l.base.Debug(
 		"dhcp: packet",

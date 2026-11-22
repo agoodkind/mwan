@@ -310,7 +310,7 @@ func (c *DHCPClient) renewalWaitDeadline(
 				boundary = current.ExpiresAt
 			}
 
-			wait = max(boundary.Sub(now)/2, dhcpMinimumRetransmitWait)
+			wait = max(boundary.Sub(now)/2, c.cfg.MinimumRenewalWait)
 		}
 
 		deadline = now.Add(wait)

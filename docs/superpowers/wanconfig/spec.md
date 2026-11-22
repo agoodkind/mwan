@@ -13,7 +13,7 @@ The following motivation records the system before the provider and
 translation migrations. Its absence of a model and three-provider limit are
 historical constraints.
 
-The MWAN gateway VM terminates several internet provider links and steers
+The MWAN gateway terminates several internet provider links and steers
 traffic across them. It has no model. Each behavior was added where it was
 needed, so IPv4 and IPv6 reach the same goal by different mechanisms, owned
 by different components, sharing no vocabulary. Adding a provider takes about
@@ -41,8 +41,8 @@ modified by any part of this work.
 ## Decisions that bind every piece
 
 **Read-only.** The served model exposes configuration as loaded and live
-state. It accepts no writes, so the deploy path and its rollback keep their
-role and configuration still applies at daemon restart. The stack enforces
+state. It accepts no writes. The deploy path configures the gateway, and the
+gateway applies the configuration at daemon restart. The stack enforces
 this at the protocol layer: its access control (RFC 8341) denies every write
 by default, so a RESTCONF write method or a NETCONF edit receives the
 standard protocol error, and live state is served from the operational
@@ -121,10 +121,10 @@ checkable against the schema before it reaches the gateway.
 **Three, the provider set becomes data.** Inventory takes the model's shape,
 the daemon checks routing numbers instead of knowing them, each provider
 carries a tier and a weight that the daemon turns into the balancing rule, and
-the watchdog stops holding a provider list, and the daemon renders the
-network manager's unit files from the provider entry. Adding a provider
-becomes one inventory entry and a config deploy, with the binary unchanged
-and no file authored by hand.
+the daemon renders the network manager's unit files from the provider entry.
+An operator adds a provider with one inventory entry and a configuration
+deploy. The binary remains unchanged, and the operator writes no provider
+unit file by hand.
 [providers.md](providers.md)
 
 **Four, translation becomes typed instances.** Each family of each provider

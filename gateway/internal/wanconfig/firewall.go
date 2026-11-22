@@ -1,17 +1,5 @@
 package wanconfig
 
-import "goodkind.io/mwan/internal/config"
-
-const guestTypePath = interfacesPath + "/goodkind-mwan-steering:guest-type"
-
-func guestTypeItems(g Gateway) []Item {
-	if g.GuestType != config.GuestTypeLXC {
-		return nil
-	}
-
-	return []Item{{Path: guestTypePath, Value: string(g.GuestType)}}
-}
-
 func firewallItems(g Gateway) []Item {
 	cfg := g.Firewall
 	if !cfg.Enabled {

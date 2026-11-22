@@ -2,7 +2,6 @@ package netif
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -16,9 +15,10 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	internalclock "goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/installfile"
 	"goodkind.io/mwan/internal/interfaceintent"
 )
+
+const familyIPv4 = "ipv4"
 
 // OwnedStaticRouteProtocol identifies routes installed by the address module.
 const OwnedStaticRouteProtocol = 186
@@ -177,33 +177,16 @@ func validateScopedAddressRecords(objects []ownedStaticObject) error {
 }
 
 func (r *OwnedStaticReconciler) save() error {
-	data, err := json.Marshal(r.journal)
-	if err != nil {
-		slog.Warn("static ownership journal encode failed", "path", r.path, "err", err)
-		return fmt.Errorf("encode static ownership journal: %w", err)
+	const journal = "static ownership journal"
+	if err := writeOwnedJournal(r.path, journal, r.journal); err != nil {
+		return err
 	}
 
-	if _, err := installfile.Write(r.path, append(data, '\n'), 0o600); err != nil {
-		slog.Warn("static ownership journal write failed", "path", r.path, "err", err)
-		return fmt.Errorf("write static ownership journal: %w", err)
-	}
-
-	directory, err := os.Open(filepath.Dir(r.path))
-	if err != nil {
-		slog.Warn("static ownership journal directory open failed", "path", r.path, "err", err)
-		return fmt.Errorf("open static ownership directory: %w", err)
-	}
-	defer directory.Close()
-	if err := directory.Sync(); err != nil {
-		slog.Warn("static ownership journal directory sync failed", "path", r.path, "err", err)
-		return fmt.Errorf("sync static ownership directory: %w", err)
-	}
-
-	return nil
+	return syncOwnedDirectory(r.path, "static ownership", journal)
 }
 
 func staticFamily(family string) int {
-	if family == "ipv4" {
+	if family == familyIPv4 {
 		return unix.AF_INET
 	}
 
@@ -308,7 +291,7 @@ func (r *OwnedStaticReconciler) ReconcileFamily(
 }
 
 func defaultPrefix(family string) netip.Prefix {
-	if family == "ipv4" {
+	if family == familyIPv4 {
 		return netip.MustParsePrefix("0.0.0.0/0")
 	}
 
@@ -395,7 +378,7 @@ func (r *OwnedStaticReconciler) ReconcileFamilyRoutesWithLifetimesRetaining(
 	for _, assigned := range routes {
 		if !assigned.Destination.IsValid() || !assigned.Gateway.IsValid() ||
 			assigned.Destination.Addr().Is4() != assigned.Gateway.Is4() ||
-			assigned.Destination.Addr().Is4() != (family == "ipv4") {
+			assigned.Destination.Addr().Is4() != (family == familyIPv4) {
 			return fmt.Errorf(
 				"invalid owned %s route %s via %s",
 				family,
@@ -424,7 +407,7 @@ func (r *OwnedStaticReconciler) ReconcileFamilyRoutesWithLifetimesRetaining(
 		Gateway:      "",
 		Metric:       0,
 	}
-	if family == "ipv4" && len(settings.Addresses) != 0 {
+	if family == familyIPv4 && len(settings.Addresses) != 0 {
 		if err := r.ensurePromotion(base); err != nil {
 			return err
 		}
@@ -480,7 +463,7 @@ func normalizeOwnedRoutes(routes []OwnedRoute, family string) []OwnedRoute {
 	for index := range normalized {
 		if !normalized[index].Gateway.IsValid() {
 			normalized[index].Gateway = netip.IPv6Unspecified()
-			if family == "ipv4" {
+			if family == familyIPv4 {
 				normalized[index].Gateway = netip.IPv4Unspecified()
 			}
 		}
@@ -504,7 +487,7 @@ func (r *OwnedStaticReconciler) completeFamily(
 		return err
 	}
 
-	if base.Family == "ipv4" && noAddresses && !retention.All {
+	if base.Family == familyIPv4 && noAddresses && !retention.All {
 		return r.restorePromotion(base.ConnectionID)
 	}
 
@@ -831,289 +814,7 @@ func lifetimeDifference(left, right int) int {
 	return right - left
 }
 
-func sameStaticRoute(route netlink.Route, value ownedStaticObject) bool {
-	return routeMatchesDestination(route, value.Destination) && route.Table == unix.RT_TABLE_MAIN &&
-		route.Priority == value.Metric &&
-		route.Protocol == OwnedStaticRouteProtocol &&
-		route.LinkIndex == value.LinkIndex &&
-		route.Gw.Equal(ownedRouteGateway(value.Gateway))
-}
-
-func ownedRouteGateway(gateway string) net.IP {
-	if gateway == "0.0.0.0" || gateway == "::" {
-		return nil
-	}
-
-	return net.ParseIP(gateway)
-}
-
-func routeMatchesDestination(route netlink.Route, destination string) bool {
-	if destination == "" {
-		if route.Dst == nil {
-			return true
-		}
-
-		ones, _ := route.Dst.Mask.Size()
-
-		return ones == 0
-	}
-
-	return route.Dst != nil && route.Dst.String() == destination
-}
-
-func (r *OwnedStaticReconciler) recordedRoute(route netlink.Route, value ownedStaticObject) bool {
-	for _, old := range r.journal.Objects {
-		if old.ConnectionID != value.ConnectionID || old.Family != value.Family ||
-			old.Gateway == "" ||
-			old.LinkIndex != value.LinkIndex ||
-			old.LinkIdentity != value.LinkIdentity {
-			continue
-		}
-
-		if sameStaticRoute(route, old) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func (r *OwnedStaticReconciler) ensureRoute(value ownedStaticObject) error {
-	routes, err := netlink.RouteListFiltered(
-		staticFamily(value.Family),
-		&netlink.Route{Table: unix.RT_TABLE_MAIN},
-		netlink.RT_FILTER_TABLE,
-	)
-	if err != nil {
-		return fmt.Errorf("list main routes: %w", err)
-	}
-
-	found := false
-	replace := false
-
-	for _, route := range routes {
-		if !routeMatchesDestination(route, value.Destination) || route.Priority != value.Metric {
-			continue
-		}
-
-		if !r.recordedRoute(route, value) {
-			if value.Destination == "" {
-				return fmt.Errorf(
-					"default route metric %d conflicts with an unowned route",
-					value.Metric,
-				)
-			}
-
-			return fmt.Errorf(
-				"route %s metric %d conflicts with an unowned route",
-				value.Destination,
-				value.Metric,
-			)
-		}
-
-		if sameStaticRoute(route, value) {
-			found = true
-		} else {
-			replace = true
-		}
-	}
-
-	if found {
-		return nil
-	}
-
-	if !r.recorded(value) {
-		if err := r.reserve(value); err != nil {
-			return err
-		}
-	}
-
-	route := &netlink.Route{
-		LinkIndex: value.LinkIndex,
-		Table:     unix.RT_TABLE_MAIN,
-		Family:    staticFamily(value.Family),
-		Gw:        ownedRouteGateway(value.Gateway),
-		Priority:  value.Metric,
-		Protocol:  OwnedStaticRouteProtocol,
-	}
-	if value.Gateway == "0.0.0.0" {
-		route.Scope = netlink.SCOPE_LINK
-	}
-
-	if value.Destination != "" {
-		_, destination, parseErr := net.ParseCIDR(value.Destination)
-		if parseErr != nil {
-			return fmt.Errorf("parse owned route destination %s: %w", value.Destination, parseErr)
-		}
-
-		route.Dst = destination
-	}
-
-	var writeErr error
-	if replace {
-		writeErr = netlink.RouteReplace(route)
-	} else {
-		writeErr = netlink.RouteAdd(route)
-	}
-
-	if writeErr != nil {
-		slog.Warn(
-			"owned route write failed",
-			"destination",
-			value.Destination,
-			"gateway",
-			value.Gateway,
-			"metric",
-			value.Metric,
-			"err",
-			writeErr,
-		)
-
-		return fmt.Errorf("write owned route: %w", writeErr)
-	}
-
-	return nil
-}
-
-func (r *OwnedStaticReconciler) pruneFamily(
-	base ownedStaticObject,
-	desired map[string]bool,
-	retention RecordedRetention,
-) error {
-	old := append([]ownedStaticObject(nil), r.journal.Objects...)
-	for _, value := range old {
-		if value.Scope != base.Scope || value.ConnectionID != base.ConnectionID ||
-			value.Family != base.Family {
-			continue
-		}
-
-		matchesLink := value.LinkIndex == base.LinkIndex &&
-			value.LinkIdentity == base.LinkIdentity &&
-			value.LinkName == base.LinkName
-		if matchesLink &&
-			(desired[staticObjectKey(
-				value,
-			)] || retention.All || retainedPrefix(value, retention.Prefixes)) {
-			continue
-		}
-
-		if err := r.remove(value); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func retainedPrefix(value ownedStaticObject, prefixes map[netip.Prefix]bool) bool {
-	if value.Prefix == "" || len(prefixes) == 0 {
-		return false
-	}
-
-	prefix, err := netip.ParsePrefix(value.Prefix)
-
-	return err == nil && prefixes[prefix]
-}
-
-func (r *OwnedStaticReconciler) remove(value ownedStaticObject) error {
-	link, err := netlink.LinkByIndex(value.LinkIndex)
-	if IsLinkNotFound(err) {
-		return r.forget(value)
-	}
-
-	if err != nil {
-		slog.Warn("recorded link lookup failed", "connection_id", value.ConnectionID, "err", err)
-		return fmt.Errorf("find recorded link: %w", err)
-	}
-
-	if !LinkMatchesIdentity(link, value.LinkIndex, value.LinkIdentity) {
-		return r.forget(value)
-	}
-
-	if link.Attrs().Name != value.LinkName {
-		return fmt.Errorf("recorded link name changed for %s", value.ConnectionID)
-	}
-
-	if value.Prefix != "" {
-		if err := removeStaticAddress(link, value); err != nil {
-			return err
-		}
-	} else if err := removeStaticRoute(value); err != nil {
-		return err
-	}
-
-	return r.forget(value)
-}
-
-func removeStaticAddress(link netlink.Link, value ownedStaticObject) error {
-	prefix, err := netip.ParsePrefix(value.Prefix)
-	if err != nil {
-		slog.Warn("recorded prefix parse failed", "prefix", value.Prefix, "err", err)
-		return fmt.Errorf("parse recorded prefix: %w", err)
-	}
-
-	addresses, err := netlink.AddrList(link, staticFamily(value.Family))
-	if err != nil {
-		slog.Warn(
-			"recorded address listing failed",
-			"connection_id",
-			value.ConnectionID,
-			"err",
-			err,
-		)
-
-		return fmt.Errorf("list recorded addresses: %w", err)
-	}
-
-	for _, address := range addresses {
-		if !addressMatches(address, prefix) {
-			continue
-		}
-
-		if err := netlink.AddrDel(link, &address); err != nil {
-			slog.Warn("recorded address delete failed", "prefix", value.Prefix, "err", err)
-			return fmt.Errorf("delete recorded address: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func removeStaticRoute(value ownedStaticObject) error {
-	routes, err := netlink.RouteListFiltered(
-		staticFamily(value.Family),
-		&netlink.Route{Table: unix.RT_TABLE_MAIN},
-		netlink.RT_FILTER_TABLE,
-	)
-	if err != nil {
-		slog.Warn("recorded route listing failed", "connection_id", value.ConnectionID, "err", err)
-		return fmt.Errorf("list recorded routes: %w", err)
-	}
-
-	for _, route := range routes {
-		if !sameStaticRoute(route, value) {
-			continue
-		}
-
-		if err := netlink.RouteDel(&route); err != nil {
-			slog.Warn(
-				"recorded route delete failed",
-				"gateway",
-				value.Gateway,
-				"metric",
-				value.Metric,
-				"err",
-				err,
-			)
-
-			return fmt.Errorf("delete recorded route: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// PruneRemoved removes only recorded objects for deleted connections or families.
+// PruneRemoved removes owned routes for deleted connections or families.
 func (r *OwnedStaticReconciler) PruneRemoved(desired map[string]map[string]bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1143,7 +844,7 @@ func (r *OwnedStaticReconciler) PruneRemoved(desired map[string]map[string]bool)
 		found := false
 
 		for _, record := range r.journal.Promotion {
-			if desired[record.ConnectionID]["ipv4"] {
+			if desired[record.ConnectionID][familyIPv4] {
 				continue
 			}
 
@@ -1151,7 +852,7 @@ func (r *OwnedStaticReconciler) PruneRemoved(desired map[string]map[string]bool)
 				return &OwnedStaticPruneError{
 					ConnectionID: record.ConnectionID,
 					LinkName:     record.LinkName,
-					Family:       "ipv4",
+					Family:       familyIPv4,
 					Err:          err,
 				}
 			}
