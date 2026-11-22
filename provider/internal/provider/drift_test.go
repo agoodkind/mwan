@@ -99,9 +99,12 @@ func TestProviderRoleMatchesMwanInstall(t *testing.T) {
 	provider := newServer(t, buildCommit, "")
 
 	for _, role := range installspec.Roles() {
-		t.Run(string(role), func(t *testing.T) {
-			checkRoleMatchesInstall(t, provider, binary, role)
-		})
+		t.Run(
+			string(role),
+			func(t *testing.T) {
+				checkRoleMatchesInstall(t, provider, binary, role)
+			},
+		)
 	}
 }
 
@@ -117,15 +120,7 @@ func checkRoleMatchesInstall(
 		t.Fatalf("read mwan_role %s: %v", role, diagnostics[0].Detail)
 	}
 	stackDirs := seedStackModules(t, root, data.StackModules)
-	command := exec.Command(
-		binary,
-		"install",
-		"--apply",
-		"--role",
-		string(role),
-		"--root",
-		root,
-	)
+	command := exec.Command(binary, "install", "--apply", "--role", string(role), "--root", root)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("mwan install --role %s: %v\n%s", role, err, output)

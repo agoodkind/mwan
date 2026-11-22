@@ -125,33 +125,7 @@ func (d *roleDataSource) Schema(
 				Computed:    true,
 				Description: "The service commands execute the MWAN binary at this path.",
 			},
-			"units": schema.ListNestedAttribute{
-				Computed:    true,
-				Description: "The list includes role services and system services that read installed files. It uses instance names instead of service templates.",
-				NestedObject: schema.NestedAttributeObject{
-					Attributes: map[string]schema.Attribute{
-						"name": schema.StringAttribute{
-							Computed:    true,
-							Description: "The name identifies a systemd unit.",
-						},
-						"enabled": schema.BoolAttribute{
-							Computed:    true,
-							Description: "The value specifies the desired service enablement state.",
-						},
-						"active": schema.BoolAttribute{
-							Computed: true,
-							Description: "The value specifies the desired active state. It is false for a oneshot unit " +
-								"without RemainAfterExit.",
-						},
-						"files": schema.ListAttribute{
-							Computed:    true,
-							ElementType: types.StringType,
-							Description: "These installation paths configure the service: its unit or instance template " +
-								"and their drop-ins.",
-						},
-					},
-				},
-			},
+			"units": roleUnitsAttribute(),
 			"sysrepo_data": schema.ListNestedAttribute{
 				Computed: true,
 				Description: "The data source returns sysrepo imports in order for the wan role. " +
@@ -285,18 +259,7 @@ func (d *roleDataSource) Read(
 
 	model.BinaryPath = types.StringValue(installspec.BinaryPath)
 
-	model.Units = make([]unitModel, 0, len(units))
-	for _, unit := range units {
-		model.Units = append(
-			model.Units,
-			unitModel{
-				Name:    types.StringValue(unit.Name),
-				Enabled: types.BoolValue(unit.Enabled),
-				Active:  types.BoolValue(unit.Active),
-				Files:   unit.Files,
-			},
-		)
-	}
+	model.Units = roleUnitModels(units)
 
 	var policy []byte
 	if spec.Schema {
@@ -322,6 +285,54 @@ func (d *roleDataSource) Read(
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+}
+
+func roleUnitsAttribute() schema.ListNestedAttribute {
+	return schema.ListNestedAttribute{
+		Computed: true,
+		Description: "The list includes role services and system services that read installed files. " +
+			"It uses instance names instead of service templates.",
+		NestedObject: schema.NestedAttributeObject{
+			Attributes: map[string]schema.Attribute{
+				"name": schema.StringAttribute{
+					Computed:    true,
+					Description: "The name identifies a systemd unit.",
+				},
+				"enabled": schema.BoolAttribute{
+					Computed:    true,
+					Description: "The value specifies the desired service enablement state.",
+				},
+				"active": schema.BoolAttribute{
+					Computed: true,
+					Description: "The value specifies the desired active state. It is false for a oneshot unit " +
+						"without RemainAfterExit.",
+				},
+				"files": schema.ListAttribute{
+					Computed:    true,
+					ElementType: types.StringType,
+					Description: "These installation paths configure the service: its unit or instance template " +
+						"and their drop-ins.",
+				},
+			},
+		},
+	}
+}
+
+func roleUnitModels(units []installspec.Unit) []unitModel {
+	models := make([]unitModel, 0, len(units))
+	for _, unit := range units {
+		models = append(
+			models,
+			unitModel{
+				Name:    types.StringValue(unit.Name),
+				Enabled: types.BoolValue(unit.Enabled),
+				Active:  types.BoolValue(unit.Active),
+				Files:   unit.Files,
+			},
+		)
+	}
+
+	return models
 }
 
 func stackYangModulesAttribute() schema.ListNestedAttribute {
