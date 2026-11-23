@@ -1,0 +1,85 @@
+package commandline
+
+import (
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/netip"
+	"sort"
+
+	"goodkind.io/mwan/internal/config"
+)
+
+var (
+	errIPv4SourceNotIPv4 = errors.New("is not IPv4")
+	errIPv4SourceNoHost  = errors.New("has no second host address")
+)
+
+type debugWAN struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Iface   string `json:"interface"`
+	TableID int    `json:"table_id"`
+	FwMark  int    `json:"fw_mark"`
+}
+
+func debugWANs(cfg *config.Config) []debugWAN {
+	names := make([]string, 0, len(cfg.IfMgr.WAN))
+	for name := range cfg.IfMgr.WAN {
+		names = append(names, name)
+	}
+
+	sort.Strings(names)
+
+	wans := make([]debugWAN, 0, len(names))
+	for _, name := range names {
+		entry := cfg.IfMgr.WAN[name]
+		providerName := entry.ProviderName
+		if providerName == "" {
+			providerName = name
+		}
+
+		wans = append(
+			wans,
+			debugWAN{
+				ID:      name,
+				Name:    providerName,
+				Iface:   entry.Iface,
+				TableID: entry.TableID,
+				FwMark:  entry.FwMark,
+			},
+		)
+	}
+
+	return wans
+}
+
+func debugWrappedError(logger *slog.Logger, message string, err error) error {
+	logger.Warn(message, "err", err)
+
+	return fmt.Errorf("%s: %w", message, err)
+}
+
+func debugIPv4Source(logger *slog.Logger, rawPrefix string) (string, error) {
+	prefix, err := netip.ParsePrefix(rawPrefix)
+	if err != nil {
+		message := fmt.Sprintf("parse IPv4 source prefix %q", rawPrefix)
+
+		return "", debugWrappedError(logger, message, err)
+	}
+
+	if !prefix.Addr().Is4() {
+		logger.Warn("IPv4 source prefix is not IPv4", "prefix", rawPrefix)
+
+		return "", fmt.Errorf("IPv4 source prefix %q %w", rawPrefix, errIPv4SourceNotIPv4)
+	}
+
+	source := prefix.Masked().Addr().Next().Next()
+	if !source.IsValid() || !prefix.Contains(source) {
+		logger.Warn("IPv4 source prefix has no second host address", "prefix", rawPrefix)
+
+		return "", fmt.Errorf("IPv4 source prefix %q %w", rawPrefix, errIPv4SourceNoHost)
+	}
+
+	return source.String(), nil
+}

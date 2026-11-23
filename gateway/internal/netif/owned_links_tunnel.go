@@ -24,6 +24,8 @@ const (
 	sitInnerProtocol = unix.IPPROTO_IPV6
 )
 
+var errWrongTunnelIdentity = errors.New("wrong tunnel identity")
+
 var errTunnelEndpointsHeld = errors.New("another owned tunnel has the configured endpoints")
 
 func tunnelKernelType(protocol interfaceintent.TunnelProtocol) string {
@@ -47,7 +49,7 @@ func (record virtualRecord) kernelType() string {
 }
 
 func isOwnedVirtualType(linkType string) bool {
-	return linkType == "vlan" || linkType == "bridge" || linkType == sitLinkType ||
+	return linkType == "vlan" || linkType == virtualBridgeKind || linkType == sitLinkType ||
 		linkType == vxlanLinkType
 }
 
@@ -253,7 +255,8 @@ func (r *OwnedLinkReconciler) convergedVirtualLink(
 	underlay netlink.Link,
 ) (netlink.Link, bool, error) {
 	if connection.Link.Kind != interfaceintent.KindTunnel {
-		return r.virtualLink(connection, parent, underlay)
+		result, err := r.virtualLink(connection, parent, underlay)
+		return result.link, result.created, err
 	}
 
 	// The MTU check prevents device creation and updates when the MTU exceeds the underlay limit.
@@ -263,18 +266,18 @@ func (r *OwnedLinkReconciler) convergedVirtualLink(
 		return nil, false, err
 	}
 
-	link, created, err := r.virtualLink(connection, parent, underlay)
-	if err != nil || link == nil {
-		return link, created, err
+	result, err := r.virtualLink(connection, parent, underlay)
+	if err != nil || result.link == nil {
+		return result.link, result.created, err
 	}
 
-	converged, replaced, err := r.convergeTunnel(connection, link, underlay)
+	converged, replaced, err := r.convergeTunnel(connection, result.link, underlay)
 	if err != nil {
 		return nil, false, err
 	}
 
 	if converged.Attrs().MTU == mtu {
-		return converged, created || replaced, nil
+		return converged, result.created || replaced, nil
 	}
 
 	if err := netlink.LinkSetMTU(converged, mtu); err != nil {
@@ -293,7 +296,7 @@ func (r *OwnedLinkReconciler) convergedVirtualLink(
 
 	converged.Attrs().MTU = mtu
 
-	return converged, created || replaced, nil
+	return converged, result.created || replaced, nil
 }
 
 func recordTunnelIdentity(
@@ -320,9 +323,7 @@ func recordTunnelIdentity(
 	}
 }
 
-// validateTemporaryTunnel accepts a device with the reserved temporary name only when the underlay and
-// endpoints match the reservation. The link manager creates the temporary device with those values and
-// tags the device after creation.
+// The reservation fixes tunnel endpoints before the kernel creates the device.
 func validateTemporaryTunnel(
 	link netlink.Link,
 	connection interfaceintent.Connection,
@@ -334,9 +335,18 @@ func validateTemporaryTunnel(
 
 	if connection.Link.Tunnel.Protocol == interfaceintent.TunnelProtocolVXLAN {
 		if !matchesVXLANRecord(link, record) {
-			return fmt.Errorf(
-				"quarantined temporary link %s: wrong tunnel identity",
+			slog.Warn(
+				"temporary VXLAN identity does not match its reservation",
+				"interface",
 				link.Attrs().Name,
+				"connection_id",
+				connection.ID.String(),
+			)
+
+			return fmt.Errorf(
+				"quarantined temporary link %s: %w",
+				link.Attrs().Name,
+				errWrongTunnelIdentity,
 			)
 		}
 
@@ -347,7 +357,19 @@ func validateTemporaryTunnel(
 	if !ok || observed.ParentIndex != record.ParentIndex ||
 		tunnelEndpoint(observed.Remote).String() != record.TunnelRemote ||
 		tunnelEndpoint(observed.Local).String() != record.TunnelLocal {
-		return fmt.Errorf("quarantined temporary link %s: wrong tunnel identity", link.Attrs().Name)
+		slog.Warn(
+			"temporary tunnel identity does not match its reservation",
+			"interface",
+			link.Attrs().Name,
+			"connection_id",
+			connection.ID.String(),
+		)
+
+		return fmt.Errorf(
+			"quarantined temporary link %s: %w",
+			link.Attrs().Name,
+			errWrongTunnelIdentity,
+		)
 	}
 
 	return nil

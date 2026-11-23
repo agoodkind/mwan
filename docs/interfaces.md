@@ -155,7 +155,7 @@ running state, udev naming, generated configuration, and startup dependencies.
 Measure interruption and renumbering. Do not promise that existing sessions
 survive a transfer.
 
-Transfer management interfaces last with verified hypervisor console access.
+Transfer management interfaces last with verified console access.
 Retire networkd only after every required provider, internal, bridge, and
 management interface has a verified replacement. Remove obsolete renderers,
 lease readers, units, and service dependencies after replacement acceptance.
@@ -220,9 +220,9 @@ existing Ansible reconnect and rollback behavior.
 
 Prove both address families, new-connection load balancing, inbound mappings
 and reply paths, internal BGP, provider failure and recovery, restart, and
-reboot. Observe downstream guests without an OOB bypass during changes.
-Record exact revisions and interruption and recovery times. Gateway-local
-probes and OOB connectivity do not prove downstream forwarding.
+reboot. Observe downstream clients during changes. Record exact revisions and
+interruption and recovery times. Gateway-local probes do not prove downstream
+forwarding.
 
 Close the epic only after final testbed and production acceptance. Future ISP
 activation has its own schedule and evidence requirements.

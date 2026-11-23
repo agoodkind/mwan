@@ -15,16 +15,14 @@ recipient, sender, subject prefix, bind interface, minimum level, and
 cooldown. The `[notify]` section carries the repeat cadence: `repeat_every`
 is the global default, and `per_kind` overrides it per alert kind. A zero
 `repeat_every` means alerts fire once per transition and never repeat. When
-the `[notify]` section is empty, the older `[ifmgr.alerts]` cadence settings
-are honored as a fallback.
+the `[notify]` section is empty, `[ifmgr.alerts]` provides the fallback cadence.
 
 ```toml
 [notify]
 repeat_every = "1h"
 
 [notify.per_kind]
-"vsock-fallback"       = "30m"
-"ops-transport-failed" = "30m"
+"service-unavailable" = "30m"
 ```
 
 ## Rotate the SMTP2GO key

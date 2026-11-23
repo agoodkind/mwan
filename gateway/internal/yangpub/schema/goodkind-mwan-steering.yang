@@ -40,14 +40,16 @@ module goodkind-mwan-steering {
   description
     "Steering properties for the MWAN gateway that no published model
      covers. A member is an interface with steering properties, not a
-     parallel object, so this module augments the interface list and
-     adds the group's hash mode beside it. State nodes carry what is
-     true right now, served from the running daemon.
+     parallel object. This module augments the interface list and adds
+     the group's hash mode beside it. State nodes report the running
+     daemon's current values.
 
      The module also carries the gateway's network configuration: the
-     provider inventory each member rides, the health probe that
+     provider inventory for each member, the health probe that
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
+
+  revision 2026-11-21;
 
   revision 2026-11-15;
 
@@ -60,11 +62,7 @@ module goodkind-mwan-steering {
       "This revision adds BGP session graceful restart time and the
        prefixes of kernel routes that remain installed after the
        previous process exits. It adds the bgp-session family
-       leaf-list with a default of ipv6-unicast and restores the
-       bgp-session router-id leaf with status obsolete. External BGP
-       sessions use router_id in the [bgp] table of config.toml as
-       their BGP router ID. The network document loader rejects
-       documents that set bgp-session router-id.";
+       leaf-list with a default of ipv6-unicast.";
   }
   revision 2026-10-12;
   revision 2026-10-11;
@@ -150,12 +148,6 @@ module goodkind-mwan-steering {
        group-wide translation inputs, the internal link and network,
        and the probe timeout. Every addition is a new node: no node
        defined by an earlier revision changes name, type, or shape.";
-  }
-  revision 2026-08-29 {
-    description
-      "Add the daemon container carrying the settings no published
-       model covers: the rollback watchdog's thresholds and probe
-       targets, the out-of-band access policy, and the tunnel tap.";
   }
   revision 2026-08-28 {
     description
@@ -663,18 +655,6 @@ module goodkind-mwan-steering {
             range "1..max";
           }
         }
-        leaf router-id {
-          status obsolete;
-          type yang:dotted-quad;
-          description
-            "Revision 2026-10-12 and earlier used this leaf for the
-             BGP router ID of an external session. External BGP
-             sessions use router_id in the [bgp] table of config.toml
-             as their BGP router ID. The network document loader
-             rejects documents that set this leaf. The module
-             retains this obsolete leaf only to validate stored
-             configuration from earlier revisions.";
-        }
         leaf-list family {
           type enumeration {
             enum ipv6-unicast;
@@ -827,13 +807,12 @@ module goodkind-mwan-steering {
         enum hand-authored;
       }
       description
-        "Who writes this interface's unit files. An interface carrying a
-         wan container states one or the other: rendered means it carries a
-         link container the daemon writes files from, and hand-authored
-         means its files are in the repository and this model says nothing
-         about how the link comes up. An interface that states neither
-         fails the load, so an unwritten link container is caught rather
-         than read as an exemption.";
+        "This leaf selects how the daemon handles interface unit files.
+         A rendered WAN interface has a link container the daemon writes
+         files from. A hand-authored WAN interface has files in the
+         repository, and this model does not select its startup method.
+         Every WAN interface must set this leaf. The loader rejects an
+         interface without a value.";
     }
 
     leaf owner {
@@ -854,7 +833,7 @@ module goodkind-mwan-steering {
 
     container link {
       description
-        "What the device is, what it is named, and how it is created.";
+        "This container configures the device type, name, and creation method.";
 
       leaf mtu {
         type uint32 {
@@ -868,9 +847,9 @@ module goodkind-mwan-steering {
       }
       container match {
         description
-          "How the network manager recognizes the device. An interface
-           that carries a wan container sets exactly one of these leaves
-           or a vlan container; the daemon fails the load otherwise.";
+          "The network manager matches the device by its properties. A
+           WAN interface must set exactly one match leaf or the VLAN
+           container. The loader rejects an interface that sets neither.";
         leaf driver {
           type string;
           description
@@ -1123,9 +1102,9 @@ module goodkind-mwan-steering {
     leaf dhcp {
       type boolean;
       description
-        "Whether the network manager runs a DHCPv4 client here. An
-         interface carrying a wan container states it either way; the
-         daemon fails the load when it is absent.";
+        "This leaf enables or disables the DHCPv4 client. Every WAN
+         interface must set this leaf. The loader rejects an interface
+         without a value.";
     }
     container dhcpv4 {
       presence "Enable explicit DHCPv4 client settings.";
@@ -1197,16 +1176,16 @@ module goodkind-mwan-steering {
       config false;
       type inet:ipv6-prefix;
       description
-        "The IPv6 prefix currently delegated to this interface, as the
-         daemon's prefix tracking sees it. Absent when the provider
-         holds no delegation.";
+        "This leaf reports the IPv6 prefix that the daemon tracks for
+         this interface. The leaf is absent when the provider has not
+         delegated a prefix.";
     }
     leaf dhcp {
       type boolean;
       description
-        "Whether the network manager runs a DHCPv6 client here. An
-         interface carrying a wan container states it either way; the
-         daemon fails the load when it is absent.";
+        "This leaf enables or disables the DHCPv6 client. Every WAN
+         interface must set this leaf. The loader rejects an interface
+         without a value.";
     }
     container dhcpv6-client {
       presence "Enable explicit DHCPv6 client settings.";
@@ -1395,16 +1374,6 @@ module goodkind-mwan-steering {
   }
 
   augment "/if:interfaces" {
-    leaf guest-type {
-      type enumeration {
-        enum qemu;
-        enum lxc;
-      }
-      default "qemu";
-    }
-  }
-
-  augment "/if:interfaces" {
     description
       "Group-wide steering settings.";
     container steering-group {
@@ -1433,12 +1402,9 @@ module goodkind-mwan-steering {
       leaf-list reserved-tables {
         type uint32;
         description
-          "Routing tables the gateway holds for something other than a
-           provider: the tunnel table and the out-of-band table today. A
-           provider whose table is in this set is a configuration error, and
-           the gateway stops before it writes to the kernel. The kernel's own
-           tables are not listed here, because they are fixed rather than
-           configured.";
+          "Routing tables that providers cannot use. The gateway rejects
+           providers that use a table in this list. The gateway also rejects
+           Linux kernel tables independently of this list.";
       }
       container translation {
         description
@@ -1638,10 +1604,8 @@ module goodkind-mwan-steering {
     leaf outcome { type enumeration { enum pass; enum fail; enum unknown; } }
     leaf reason { type string; }
     leaf observed-at { type yang:date-and-time; }
-    leaf observer-kind { type enumeration { enum local; enum qemu; enum lxc; } }
+    leaf observer-kind { type enumeration { enum local; } }
     leaf machine-id { type string; }
-    leaf host-machine-id { type string; }
-    leaf vmid { type uint32; }
     leaf source { type inet:ip-address; }
     leaf destination { type inet:ip-address; }
     leaf next-hop { type inet:ip-address; }
@@ -1685,147 +1649,7 @@ module goodkind-mwan-steering {
       }
     }
     description
-      "The daemon settings no published model covers, published from
-       the configuration the daemon loaded at startup. A host whose
-       configuration does not carry a section publishes nothing under
-       it, so the tree never invents values another host owns.";
-    container watchdog {
-      description
-        "The rollback watchdog's thresholds and probe targets, as the
-         gateway's configuration carries them. The watchdog process
-         itself runs beside the hypervisor; these are the values it
-         acts on.";
-      leaf deploy-window-minutes {
-        type uint16;
-        description
-          "How long after a deploy the watchdog treats instability as
-           deploy-caused and eligible for rollback.";
-      }
-      leaf connectivity-timeout-seconds {
-        type uint16;
-        description
-          "How long a connectivity probe may run before it counts as
-           failed.";
-      }
-      leaf check-interval-healthy-seconds {
-        type uint16;
-        description
-          "Seconds between probe cycles while the gateway is healthy.";
-      }
-      leaf check-interval-degraded-seconds {
-        type uint16;
-        description
-          "Seconds between probe cycles while the gateway is degraded.";
-      }
-      leaf post-rollback-grace-seconds {
-        type uint16;
-        description
-          "How long after a rollback the watchdog holds off before
-           judging the gateway again.";
-      }
-      leaf alert-cooldown-seconds {
-        type uint16;
-        description
-          "Minimum seconds between repeated watchdog alerts.";
-      }
-      leaf deploy-grace-period-seconds {
-        type uint16;
-        description
-          "How long after a deploy the watchdog waits before probing.";
-      }
-      leaf max-rollback-attempts {
-        type uint8;
-        description
-          "How many rollbacks the watchdog attempts before freezing.";
-      }
-      leaf snapshot-healthy-threshold {
-        type uint16;
-        description
-          "How many consecutive healthy cycles qualify the running
-           state for a known-good snapshot.";
-      }
-      leaf max-known-good-snapshots {
-        type uint8;
-        description
-          "How many known-good snapshots the watchdog retains.";
-      }
-      container probe-targets {
-        description
-          "What the watchdog probes to judge the gateway.";
-        leaf-list ping {
-          type inet:ip-address;
-          description
-            "Addresses the watchdog pings, both families.";
-        }
-      }
-    }
-    container oob {
-      description
-        "The out-of-band access policy: how the host that carries the
-         OOB tunnel steers management traffic when the data path is
-         down.";
-      container ipv6 {
-        description
-          "The IPv6 half of the policy.";
-        leaf interface {
-          type string;
-          description
-            "The OOB tunnel interface.";
-        }
-        leaf address {
-          type inet:ipv6-address;
-          description
-            "The OOB address management traffic originates from.";
-        }
-        leaf table-id {
-          type uint32;
-          description
-            "The routing table the OOB policy rules select.";
-        }
-        leaf manage-slaac-rule {
-          type boolean;
-          description
-            "Whether the daemon manages the SLAAC source rule that
-             keeps OOB-sourced traffic on the OOB table.";
-        }
-        leaf slaac-rule-priority {
-          type uint32;
-          description
-            "The priority of that SLAAC source rule.";
-        }
-      }
-      container ipv4 {
-        description
-          "The IPv4 half of the policy.";
-        leaf interface {
-          type string;
-          description
-            "The OOB tunnel interface.";
-        }
-        leaf table-id {
-          type uint32;
-          description
-            "The routing table the OOB policy rules select.";
-        }
-      }
-    }
-    container tap {
-      description
-        "The tunnel tap: the daemon tails the named tunnel unit's
-         journal and re-emits its entries through the daemon's own
-         logging and alert pipeline.";
-      leaf unit {
-        type string;
-        description
-          "The systemd unit whose journal is tailed.";
-      }
-      leaf-list downgrade-pattern {
-        type string;
-        description
-          "Message patterns whose entries are downgraded below alert
-           level.";
-      }
-    }
+      "Operational data that the local daemon serves.";
   }
 
   notification health-transition {

@@ -1,10 +1,4 @@
-// Package notify is the single boundary every mwan email exits through.
-// It wraps the per-(kind, key) state-change semantics carved out of
-// internal/ifmgr (state map plus repeat cadence) with a typed Event
-// shape, and renders the email body via BuildEmailBody.
-// Constructors accept EmailConfig and Config without depending on
-// internal/config. An empty EmailConfig produces a Manager that writes
-// alerts only to the logger.
+// Package notify tracks active alerts and sends log messages and email.
 package notify
 
 import (
@@ -18,25 +12,18 @@ import (
 	"goodkind.io/send-email/mailer"
 )
 
-// EmailConfig uses compatible TOML tags so configuration loaders can
-// decode existing [email] sections directly into notification settings.
+// EmailConfig contains the recipient and mail transport settings for alerts.
 type EmailConfig struct {
 	SMTP2GOAPIKey string `toml:"smtp2go_api_key"`
 	AlertEmail    string `toml:"alert_email"`
 	From          string `toml:"from"`
 	SubjectPrefix string `toml:"subject_prefix"`
-	BindIface     string `toml:"bind_iface"`
 	MinLevel      string `toml:"min_level"`
 	Cooldown      string `toml:"cooldown"`
 	MsmtprcPath   string `toml:"msmtprc_path"`
 }
 
-// Event is the structured payload one Notify call carries through the
-// boundary. Kind is required and identifies the alert type; Key is the
-// optional sub-key (e.g. peer pubkey, vmid, iface). Now is supplied by
-// the caller so tests can drive a deterministic clock. IsRecovery flips
-// the Manager into the Resolve path; callers normally use Notify or
-// Resolve directly rather than building Event by hand.
+// Event records an alert or recovery for a keyed gateway resource.
 type Event struct {
 	Now        time.Time
 	Level      slog.Level
@@ -47,51 +34,38 @@ type Event struct {
 	IsRecovery bool
 }
 
-// Notifier is the interface every mwan caller depends on. Manager and
-// NullNotifier both satisfy it. Notify and Resolve own the state-change
-// suppression; Active reports whether an alert is currently in the
-// "fired but not resolved" state for callers that want to escalate.
+// Notifier tracks active alert state and sends configured notifications.
 type Notifier interface {
 	Notify(ctx context.Context, ev Event)
 	Resolve(ctx context.Context, kind, key, msg string, fields ...slog.Attr)
 	Active(kind, key string) bool
 }
 
-// Config controls the Manager's repeat cadence. RepeatEvery is the
-// global default applied to every (kind, key) unless overridden in
-// PerKind. Zero RepeatEvery means alerts fire once per transition and
-// never repeat. PerKind is keyed by alert kind (the Kind field on
-// Event), not by module name, so one module emitting multiple kinds
-// gets a separate cadence per kind.
+// Config controls reminder intervals for all alerts and specific alert kinds.
+// A zero repeat interval disables reminders.
 type Config struct {
 	RepeatEvery time.Duration
 	PerKind     map[string]time.Duration
 }
 
-// New returns a Manager that writes alerts only to the logger when
-// SMTP2GOAPIKey or AlertEmail is empty.
-//
-// serviceName is the X-Mailer-style identifier on outgoing messages,
-// typically the systemd unit name (e.g. "mwan-watchdog", "mwan-agent").
+// New configures and returns an alert manager. Email delivery starts when a
+// recipient and mail transport credentials exist. The email footer identifies
+// the service.
 func New(emailCfg EmailConfig, cfg Config, log *slog.Logger, serviceName string) (*Manager, error) {
 	var sink Sink
 	var sender *email.Sender
 	if (emailCfg.SMTP2GOAPIKey != "" || emailCfg.MsmtprcPath != "") && emailCfg.AlertEmail != "" {
 		var err error
-		sender, err = email.NewSenderFromConfig(
-			email.SenderConfig{
-				Mail: mailer.Config{
-					SMTP2GOAPIKey: emailCfg.SMTP2GOAPIKey,
-					MsmtprcPath:   emailCfg.MsmtprcPath,
-					BindInterface: emailCfg.BindIface,
-					Transport:     mailer.MethodAuto,
-				},
-				From:           emailCfg.From,
-				Caller:         serviceName,
-				AttemptTimeout: 15 * time.Second,
+		sender, err = email.NewSenderFromConfig(email.SenderConfig{
+			Mail: mailer.Config{
+				SMTP2GOAPIKey: emailCfg.SMTP2GOAPIKey,
+				MsmtprcPath:   emailCfg.MsmtprcPath,
+				Transport:     mailer.MethodAuto,
 			},
-			log,
-		)
+			From:           emailCfg.From,
+			Caller:         serviceName,
+			AttemptTimeout: 15 * time.Second,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("notify email: %w", err)
 		}
@@ -116,12 +90,9 @@ func New(emailCfg EmailConfig, cfg Config, log *slog.Logger, serviceName string)
 	return m, nil
 }
 
-// FromConfig is the constructor most call sites use. It mirrors the
-// old logging.EmailFromConfig shape: returns a Notifier that satisfies
-// the interface, falling back to NullNotifier when [email] is
-// unconfigured. Construction errors collapse to NullNotifier so the
-// caller never crashes on a missing alert path; the underlying error
-// is logged at boot time through the supplied logger.
+// FromConfig disables notifications without a logger or after initialization
+// fails.
+// It logs initialization errors before returning the null notifier.
 func FromConfig(emailCfg EmailConfig, cfg Config, log *slog.Logger, serviceName string) Notifier {
 	if log == nil {
 		return NullNotifier{}
@@ -136,6 +107,4 @@ func FromConfig(emailCfg EmailConfig, cfg Config, log *slog.Logger, serviceName 
 	return m
 }
 
-// parseMinLevel mirrors gklog.ParseLevel. Re-exported here so the email
-// sink stays decoupled from internal/logging.
 func parseMinLevel(s string) slog.Level { return gklog.ParseLevel(s) }

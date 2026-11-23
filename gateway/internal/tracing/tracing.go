@@ -23,9 +23,6 @@ const (
 	// ParentSpanIDKey names the span that was current when this one started.
 	// It is absent on the outermost span.
 	ParentSpanIDKey = "parent_span_id"
-	// RunIDKey names the identifier of one daemon run or one operator
-	// command, set once at the top and inherited by every span below it.
-	RunIDKey = "run_id"
 	// ComponentKey names the subsystem that owns the span.
 	ComponentKey = "component"
 	// OperationKey names the work the span performs.
@@ -33,8 +30,6 @@ const (
 	// EventKey names a point of interest inside an operation, for call paths
 	// that mark progress without starting a span.
 	EventKey = "event"
-	// AttemptKey counts retries of one operation.
-	AttemptKey = "attempt"
 )
 
 type contextKey struct{}
@@ -95,17 +90,6 @@ func WithTraceID(ctx context.Context, traceID string) context.Context {
 	return WithAttrs(ctx, slog.String(TraceIDKey, traceID))
 }
 
-// WithRunID stamps the run identifier once at the top of a run, so every span
-// below it reports which run it belongs to. An empty value leaves the context
-// unchanged.
-func WithRunID(ctx context.Context, runID string) context.Context {
-	if runID == "" {
-		return ctx
-	}
-
-	return WithAttrs(ctx, slog.String(RunIDKey, runID))
-}
-
 // WithOperation names the work in progress for call paths that annotate an
 // existing span rather than start one. An empty value leaves the context
 // unchanged.
@@ -125,12 +109,6 @@ func WithEvent(ctx context.Context, event string) context.Context {
 	}
 
 	return WithAttrs(ctx, slog.String(EventKey, event))
-}
-
-// WithAttempt records which retry of an operation is running. Unlike the
-// string helpers it has no empty case, so attempt zero is recorded.
-func WithAttempt(ctx context.Context, attempt int) context.Context {
-	return WithAttrs(ctx, slog.Int(AttemptKey, attempt))
 }
 
 // StartTrace begins a span and returns both the context to pass down and the
@@ -185,14 +163,12 @@ func AttrsFromContext(ctx context.Context) []slog.Attr {
 	}
 
 	keys := []string{
-		RunIDKey,
 		TraceIDKey,
 		SpanIDKey,
 		ParentSpanIDKey,
 		ComponentKey,
 		OperationKey,
 		EventKey,
-		AttemptKey,
 	}
 	out := make([]slog.Attr, 0, len(current.attrs))
 	seen := make(map[string]struct{}, len(current.attrs))

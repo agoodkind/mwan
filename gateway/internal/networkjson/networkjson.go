@@ -1,10 +1,9 @@
 // Package networkjson loads the gateway's network configuration: the provider
 // inventory, each provider's routing slots, translation prefix, static
 // mappings, health probe, and link identity, and the group-wide translation,
-// internal link, and probe timeout. The file is written in the model's own
-// JSON encoding and validated against the installed schema before any value is
-// read, so the file the daemon loads and the tree the management surface
-// serves describe one thing.
+// internal link, and probe timeout. The file uses the model's JSON encoding.
+// Validation against the installed schema runs before the loader reads values.
+// The daemon and the management surface share one network tree after load.
 //
 // Decode and semantic checks compile without cgo.
 // Use [networkload.Load] when native file loading requires libyang validation.
@@ -21,7 +20,6 @@ import (
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/vpp"
 	"goodkind.io/mwan/internal/yangpub/schema"
 )
 
@@ -32,17 +30,13 @@ const DefaultPath = "/etc/mwan/network.json"
 // files.
 const DefaultSchemaDir = schema.InstallDir
 
-// document mirrors the model's JSON encoding. Every scalar the daemon needs is
-// a pointer so the loader can reject an absent leaf.
-// GuestType is the deliberate exception. The guest-type leaf uses a plain string.
-// An absent guest-type means qemu, matching the YANG default.
+// document mirrors the model's JSON encoding. Each scalar the daemon needs is
+// a pointer. The loader rejects an absent leaf.
 type document struct {
 	Interfaces interfaces `json:"ietf-interfaces:interfaces"`
-	VPP        *vppWire   `json:"goodkind-mwan-vpp:vpp"`
 }
 
 type interfaces struct {
-	GuestType     string        `json:"goodkind-mwan-steering:guest-type"`
 	Interface     []ifaceEntry  `json:"interface"`
 	SteeringGroup steeringGroup `json:"goodkind-mwan-steering:steering-group"`
 }
@@ -274,11 +268,9 @@ type groupHealth struct {
 	ProbeTimeout *int `json:"probe-timeout"`
 }
 
-// Config is the network tree one file carries, in the shape the daemon's
-// configuration holds it.
+// Config is the network tree from one file, in the shape the daemon's
+// configuration struct stores.
 type Config struct {
-	VPP                   *vpp.Policy
-	GuestType             config.GuestType
 	Firewall              firewall.Config
 	PinnedConnectionID    string
 	InternalPrefix        string
@@ -321,10 +313,7 @@ var kernelReservedTables = []int{0, 253, 254, 255}
 // every module that reads one already treats an absent prefix as no
 // translation.
 func build(doc *document) (*Config, error) {
-	loaded, err := newWANNetworkConfig(doc)
-	if err != nil {
-		return nil, err
-	}
+	loaded := newWANNetworkConfig(doc)
 
 	group := doc.Interfaces.SteeringGroup
 
@@ -379,18 +368,7 @@ func build(doc *document) (*Config, error) {
 		return nil, err
 	}
 
-	active := loaded.Connections[:0]
-	for _, connection := range loaded.Connections {
-		if connection.Roles&interfaceintent.RoleProvider != 0 {
-			if _, accepted := loaded.WAN[connection.ID.String()]; !accepted {
-				continue
-			}
-		}
-
-		active = append(active, connection)
-	}
-
-	loaded.Connections = active
+	loaded.Connections = acceptedConnections(loaded.Connections, loaded.WAN)
 	if err := validateActiveDependencies(loaded.Connections); err != nil {
 		return nil, err
 	}
@@ -433,18 +411,29 @@ func build(doc *document) (*Config, error) {
 	return loaded, nil
 }
 
-func newWANNetworkConfig(doc *document) (*Config, error) {
-	guestType, err := resolveGuestType(doc.Interfaces.GuestType)
-	if err != nil {
-		return nil, err
+func acceptedConnections(
+	connections []interfaceintent.Connection,
+	providers map[string]config.IfMgrWANEntry,
+) []interfaceintent.Connection {
+	active := connections[:0]
+	for _, connection := range connections {
+		if connection.Roles&interfaceintent.RoleProvider != 0 {
+			if _, accepted := providers[connection.ID.String()]; !accepted {
+				continue
+			}
+		}
+
+		active = append(active, connection)
 	}
 
+	return active
+}
+
+func newWANNetworkConfig(doc *document) *Config {
 	group := doc.Interfaces.SteeringGroup
 	var zeroFirewall firewall.Config
 
 	return &Config{
-		VPP:                nil,
-		GuestType:          guestType,
 		Firewall:           zeroFirewall,
 		PinnedConnectionID: pinnedConnectionID(group.Firewall),
 		InternalPrefix:     group.Translation.InternalPrefix,
@@ -465,7 +454,7 @@ func newWANNetworkConfig(doc *document) (*Config, error) {
 		Connections:           nil,
 		Claims:                nil,
 		Rejected:              nil,
-	}, nil
+	}
 }
 
 func compileProviderProjections(
@@ -934,8 +923,6 @@ func buildHealth(label string, probe *health) (*config.IfMgrHealthWANSection, er
 // filled before this file owned them. The health and routes sections keep the
 // filesystem paths TOML still owns. Apply writes only the network values.
 func (c *Config) Apply(cfg *config.Config) {
-	cfg.IfMgr.VPPPolicy = c.VPP
-	cfg.IfMgr.GuestType = c.GuestType
 	cfg.IfMgr.Firewall = c.Firewall
 	cfg.IfMgr.PinnedConnectionID = c.PinnedConnectionID
 	cfg.IfMgr.InternalPrefix = c.InternalPrefix
@@ -967,8 +954,6 @@ func (c *Config) Apply(cfg *config.Config) {
 		cfg.IfMgr.Modules.Health = &config.IfMgrHealthSection{
 			ObservationSettingsFile: "",
 			StateFile:               "",
-			StatusPushCID:           0,
-			StatusPushPort:          0,
 			MaxStateAge:             "",
 			ProbeTimeoutMillis:      0,
 			WAN:                     nil,

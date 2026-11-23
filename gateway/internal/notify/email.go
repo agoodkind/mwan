@@ -7,14 +7,8 @@ import (
 	"strings"
 
 	"goodkind.io/mwan/internal/email"
-	"goodkind.io/send-email/mailer"
 )
 
-// emailSink delivers each rendered alert to a single recipient via the
-// email Sender. It applies the configured subject prefix, drops emits
-// below minLevel, and renders the body via BuildEmailBody so the alert
-// reads cleanly above the host-snapshot footer the send-email path
-// appends downstream.
 type emailSink struct {
 	sender        *email.Sender
 	to            string
@@ -23,10 +17,6 @@ type emailSink struct {
 	clock         clock
 }
 
-// newEmailSink constructs the sink the Manager hands records to.
-// Passing a nil sender from any caller is treated as "no email
-// delivery"; the Manager handles the nil-Sink path by logging via
-// journal only.
 func newEmailSink(sender *email.Sender, to, subjectPrefix string, minLevel slog.Level) Sink {
 	if sender == nil || strings.TrimSpace(to) == "" {
 		return nil
@@ -41,12 +31,6 @@ func newEmailSink(sender *email.Sender, to, subjectPrefix string, minLevel slog.
 	}
 }
 
-// Send delivers one record. Records below minLevel are dropped so a
-// daemon configured with min_level=ERROR does not ship every WARN to
-// the inbox. The subject is composed as "[prefix] LEVEL: message" or
-// "LEVEL: message" when no prefix is configured. The function name
-// matches the [io.Writer]-style Send shape so the wrapped-error rule
-// recognises it as a transport boundary.
 func (s *emailSink) Send(
 	ctx context.Context,
 	level slog.Level,
@@ -82,27 +66,6 @@ func (s *emailSink) Send(
 	return nil
 }
 
-func (s *emailSink) SendMessage(ctx context.Context, message mailer.Message) error {
-	if message.To == "" {
-		message.To = s.to
-	}
-
-	if s.subjectPrefix != "" && !strings.HasPrefix(message.Subject, s.subjectPrefix) {
-		message.Subject = s.subjectPrefix + " " + message.Subject
-	}
-
-	if err := s.sender.SendMessage(ctx, message); err != nil {
-		slog.WarnContext(ctx, "notify message delivery failed", "error", err, "to", message.To)
-		return fmt.Errorf("send email message: %w", err)
-	}
-
-	return nil
-}
-
-// buildSubject composes the email subject line as "[prefix] LEVEL:
-// message" or "LEVEL: message" if prefix is empty. The level token
-// matches the upper-case [slog.Level.String] output so subjects sort
-// the same way the original logging email_handler subjects did.
 func buildSubject(prefix string, level slog.Level, msg string) string {
 	lvl := strings.ToUpper(level.String())
 	prefix = strings.TrimSpace(prefix)

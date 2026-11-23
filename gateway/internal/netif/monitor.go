@@ -2,7 +2,6 @@ package netif
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -11,6 +10,13 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	"goodkind.io/mwan/internal/interfaceintent"
+)
+
+const (
+	monitorEventBufferSize = 64
+	monitorRetryInitial    = 100 * time.Millisecond
+	monitorRetryMaximum    = 5 * time.Second
+	monitorRetryMultiplier = 2
 )
 
 // EventKind classifies a kernel netlink event.
@@ -29,28 +35,31 @@ const (
 	EvAddrAdded
 	// EvAddrDeleted fires when an address is removed from the watched iface.
 	EvAddrDeleted
-	// EvLinkUp fires when the watched iface transitions to UP/LOWER_UP.
-	// Used by bridge_probe to detect link state independently of NDP timing.
+	// EvLinkUp fires when the watched interface transitions to UP or LOWER_UP.
 	EvLinkUp
 	// EvLinkDown fires when the watched iface goes administratively or
 	// operationally down.
 	EvLinkDown
-	// EvResync reports a complete kernel snapshot after observation loses continuity.
+	// EvResync reports a complete kernel snapshot after observation gaps.
 	EvResync
-	// EvObservationStale reports incomplete state until a successful resynchronization.
+	// EvObservationStale reports incomplete state before resynchronization.
 	EvObservationStale
 	// EvObservationFailed reports a subscription or snapshot failure.
 	EvObservationFailed
-	// EvUplinkReturned fires when a non-virtual watched bridge port comes back
-	// after going down. The bridge keeps carrier while a guest port stays up.
+	// EvUplinkReturned fires when a watched bridge port returns to operational
+	// state after going down.
 	EvUplinkReturned
 )
 
-// String returns the stable log-friendly name of the event kind.
+// String returns the stable log name for an event kind.
+//
+// Example:
+//
+//	EventKind(EvLinkUp).String() // "link-up"
 func (k EventKind) String() string {
 	switch k {
 	case EvUnknown:
-		return "unknown"
+		return HealthStateUnknown
 	case EvRouteAdded:
 		return "route-added"
 	case EvRouteDeleted:
@@ -73,10 +82,15 @@ func (k EventKind) String() string {
 		return "uplink-returned"
 	}
 
-	return "unknown"
+	return HealthStateUnknown
 }
 
-// Event is one parsed netlink event for a watched interface.
+// Event contains one parsed netlink update for a watched interface.
+// Its fields depend on Kind. Resync events include a complete Snapshot.
+//
+// Example:
+//
+//	Event{Kind: EvLinkUp, Iface: "wan0"}
 type Event struct {
 	Kind         EventKind
 	Family       string // "inet" or "inet6" for address and route events
@@ -108,7 +122,7 @@ type Event struct {
 	Snapshot *Snapshot
 }
 
-// Snapshot is the complete observed link, address, and route state after a gap.
+// Snapshot is the observed link, address, and route state after a gap.
 type Snapshot struct {
 	ConnectionID string
 	Iface        string
@@ -138,9 +152,9 @@ type RuleEvent struct {
 // Legacy callers match the configured interface name.
 type MonitorConfig struct {
 	Iface string
-	// ConnectionID associates legacy name matching with a stable configured identity.
+	// ConnectionID associates legacy name matching with configured identity.
 	ConnectionID string
-	// Connection enables stable configured identity matching. Nil retains legacy name matching.
+	// Connection enables stable identity matching. Nil uses interface names.
 	Connection *interfaceintent.Connection
 }
 
@@ -173,9 +187,16 @@ type Monitor struct {
 	uplinkDown   map[int]bool
 }
 
-// NewMonitor returns a started Monitor. Cancel ctx to stop it cleanly.
-// A missing link starts with index zero and an empty snapshot. Link creation
-// binds the monitor when the configured identity matches.
+// NewMonitor starts netlink subscriptions for cfg and returns the monitor.
+// Cancel ctx to stop subscriptions. A missing link stays unbound until it
+// appears, and callers must read Events to receive updates.
+//
+// Example:
+//
+//	ctx, cancel := context.WithCancel(context.Background())
+//	defer cancel()
+//	monitor := NewMonitor(ctx, log, MonitorConfig{Iface: "wan0"})
+//	_ = monitor.Events
 func NewMonitor(
 	ctx context.Context,
 	log *slog.Logger,
@@ -207,27 +228,35 @@ func NewMonitor(
 		mlog.DebugContext(ctx, "monitor: resolved iface index", "index", idx)
 	}
 
-	m := new(Monitor)
-	m.cancelled = ctx.Done()
-	m.cfg = cfg
-	m.log = mlog
-	m.Events = make(chan Event, 64)
-	m.done = make(chan struct{})
-	m.ifIndex = idx
-	m.actualIface = actualIface
-	m.stale = true
-	m.resync = make(chan struct{}, 1)
-	m.uplinkDown = make(map[int]bool)
+	monitor := new(Monitor)
+	monitor.cancelled = ctx.Done()
+	monitor.cfg = cfg
+	monitor.log = mlog
+	monitor.Events = make(chan Event, monitorEventBufferSize)
+	monitor.done = make(chan struct{})
+	monitor.ifIndex = idx
+	monitor.actualIface = actualIface
+	monitor.stale = true
+	monitor.resync = make(chan struct{}, 1)
+	monitor.uplinkDown = make(map[int]bool)
 
-	m.startWorker(ctx, "resync", m.resyncLoop)
-	m.startWorker(ctx, "subscribe-addr", m.subscribeAddr)
-	m.startWorker(ctx, "subscribe-route", m.subscribeRoute)
-	m.startWorker(ctx, "subscribe-link", m.subscribeLink)
-	m.startWorker(ctx, "shutdown-on-ctx", m.shutdownOnCtx)
+	monitor.startWorker(ctx, "resync", monitor.resyncLoop)
+	monitor.startWorker(ctx, "subscribe-addr", monitor.subscribeAddr)
+	monitor.startWorker(ctx, "subscribe-route", monitor.subscribeRoute)
+	monitor.startWorker(ctx, "subscribe-link", monitor.subscribeLink)
+	monitor.startWorker(ctx, "shutdown-on-ctx", monitor.shutdownOnCtx)
 
 	mlog.DebugContext(ctx, "monitor: subscriptions started")
 
-	return m
+	return monitor
+}
+
+// IfIndex reports the watched interface's kernel index or zero when absent.
+func (m *Monitor) IfIndex() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return m.ifIndex
 }
 
 func (m *Monitor) startWorker(
@@ -258,8 +287,7 @@ func (m *Monitor) startWorker(
 	}()
 }
 
-// shutdownOnCtx closes the done channel when ctx is cancelled. Centralised
-// so the three subscription goroutines all see one signal.
+// The monitor drains queued events before it closes its done channel.
 func (m *Monitor) shutdownOnCtx(ctx context.Context) {
 	<-ctx.Done()
 	m.dispatchMu.Lock()
@@ -287,213 +315,8 @@ func (m *Monitor) shutdownOnCtx(ctx context.Context) {
 	m.log.DebugContext(ctx, "monitor: ctx cancelled, done closed; subscribe goroutines will exit")
 }
 
-// subscribeAddr runs the netlink address subscription, translating each
-// AddrUpdate into an Event and forwarding to Events.
-func (m *Monitor) subscribeAddr(ctx context.Context) {
-	log := m.log.With("goroutine", "subscribe-addr")
-	log.DebugContext(ctx, "monitor: subscribe-addr starting")
-	backoff := 100 * time.Millisecond
-
-	for ctx.Err() == nil {
-		ch := make(chan netlink.AddrUpdate, 64)
-		failed := make(chan error, 1)
-		subDone := make(chan struct{})
-		err := netlink.AddrSubscribeWithOptions(
-			ch,
-			subDone,
-			netlink.AddrSubscribeOptions{
-				ErrorCallback: func(err error) {
-					m.setSubscriptionReady(0, false, "address subscription lost: "+err.Error())
-					select {
-					case failed <- err:
-					default:
-					}
-				},
-			},
-		)
-		if err != nil {
-			close(subDone)
-			log.WarnContext(ctx, "monitor: address subscription failed", "err", err)
-			m.setSubscriptionReady(0, false, "address subscription failed: "+err.Error())
-		} else {
-			backoff = 100 * time.Millisecond
-			m.setSubscriptionReady(0, true, "")
-
-			for active := true; active; {
-				select {
-				case <-m.done:
-					close(subDone)
-					return
-				case err := <-failed:
-					log.WarnContext(ctx, "monitor: address subscription lost", "err", err)
-					active = false
-				case upd, ok := <-ch:
-					if !ok {
-						active = false
-						continue
-					}
-
-					m.dispatchMu.Lock()
-					ev := m.addrUpdateToEvent(upd)
-					if ev.Kind != EvUnknown {
-						m.emit(ctx, ev)
-					}
-
-					m.dispatchMu.Unlock()
-				}
-			}
-
-			close(subDone)
-			m.setSubscriptionReady(0, false, "address subscription closed")
-		}
-
-		if !sleepMonitorRetry(ctx, backoff) {
-			return
-		}
-
-		backoff = min(backoff*2, 5*time.Second)
-	}
-}
-
-// subscribeRoute runs the netlink route subscription.
-func (m *Monitor) subscribeRoute(ctx context.Context) {
-	log := m.log.With("goroutine", "subscribe-route")
-	log.DebugContext(ctx, "monitor: subscribe-route starting")
-	backoff := 100 * time.Millisecond
-
-	for ctx.Err() == nil {
-		ch := make(chan netlink.RouteUpdate, 64)
-		failed := make(chan error, 1)
-		subDone := make(chan struct{})
-		err := netlink.RouteSubscribeWithOptions(
-			ch,
-			subDone,
-			netlink.RouteSubscribeOptions{
-				ErrorCallback: func(err error) {
-					m.setSubscriptionReady(1, false, "route subscription lost: "+err.Error())
-					select {
-					case failed <- err:
-					default:
-					}
-				},
-			},
-		)
-		if err != nil {
-			close(subDone)
-			log.WarnContext(ctx, "monitor: route subscription failed", "err", err)
-			m.setSubscriptionReady(1, false, "route subscription failed: "+err.Error())
-		} else {
-			backoff = 100 * time.Millisecond
-			m.setSubscriptionReady(1, true, "")
-
-			for active := true; active; {
-				select {
-				case <-m.done:
-					close(subDone)
-					return
-				case err := <-failed:
-					log.WarnContext(ctx, "monitor: route subscription lost", "err", err)
-					active = false
-				case upd, ok := <-ch:
-					if !ok {
-						active = false
-						continue
-					}
-
-					m.dispatchMu.Lock()
-					ev := m.routeUpdateToEvent(upd)
-					if ev.Kind != EvUnknown {
-						m.emit(ctx, ev)
-					}
-
-					m.dispatchMu.Unlock()
-				}
-			}
-
-			close(subDone)
-			m.setSubscriptionReady(1, false, "route subscription closed")
-		}
-
-		if !sleepMonitorRetry(ctx, backoff) {
-			return
-		}
-
-		backoff = min(backoff*2, 5*time.Second)
-	}
-}
-
-// subscribeLink runs the netlink link subscription. Translates LinkUpdate
-// into EvLinkUp / EvLinkDown when the OPERSTATE crosses the up/down
-// boundary on the watched iface.
-func (m *Monitor) subscribeLink(ctx context.Context) {
-	log := m.log.With("goroutine", "subscribe-link")
-	log.DebugContext(ctx, "monitor: subscribe-link starting")
-	backoff := 100 * time.Millisecond
-
-	for ctx.Err() == nil {
-		ch := make(chan netlink.LinkUpdate, 64)
-		failed := make(chan error, 1)
-		subDone := make(chan struct{})
-		err := netlink.LinkSubscribeWithOptions(
-			ch,
-			subDone,
-			netlink.LinkSubscribeOptions{
-				ErrorCallback: func(err error) {
-					m.setSubscriptionReady(2, false, "link subscription lost: "+err.Error())
-					select {
-					case failed <- err:
-					default:
-					}
-				},
-			},
-		)
-		if err != nil {
-			close(subDone)
-			log.WarnContext(ctx, "monitor: link subscription failed", "err", err)
-			m.setSubscriptionReady(2, false, "link subscription failed: "+err.Error())
-		} else {
-			backoff = 100 * time.Millisecond
-			m.setSubscriptionReady(2, true, "")
-
-			for active := true; active; {
-				select {
-				case <-m.done:
-					close(subDone)
-					return
-				case err := <-failed:
-					log.WarnContext(ctx, "monitor: link subscription lost", "err", err)
-					active = false
-				case upd, ok := <-ch:
-					if !ok {
-						active = false
-						continue
-					}
-
-					m.dispatchMu.Lock()
-					ev := m.linkUpdateToEvent(upd)
-					if ev.Kind != EvUnknown {
-						m.emit(ctx, ev)
-					}
-
-					m.dispatchMu.Unlock()
-				}
-			}
-
-			close(subDone)
-			m.setSubscriptionReady(2, false, "link subscription closed")
-		}
-
-		if !sleepMonitorRetry(ctx, backoff) {
-			return
-		}
-
-		backoff = min(backoff*2, 5*time.Second)
-	}
-}
-
-// emit reports deltas while subscriptions are current. Overflow schedules
-// a complete kernel snapshot before delta delivery resumes.
-func (m *Monitor) emit(ctx context.Context, ev Event) {
+// emit sends deltas and invalidates the snapshot when the queue fills.
+func (m *Monitor) emit(ctx context.Context, event Event) {
 	if ctx.Err() != nil {
 		return
 	}
@@ -506,20 +329,21 @@ func (m *Monitor) emit(ctx context.Context, ev Event) {
 
 	if m.stale {
 		m.dirty = true
+
 		return
 	}
 
 	select {
-	case m.Events <- ev:
+	case m.Events <- event:
 	case <-ctx.Done():
 	default:
 		m.log.WarnContext(
 			ctx,
 			"monitor: Events channel full; requesting snapshot",
 			"kind",
-			ev.Kind.String(),
+			event.Kind.String(),
 			"iface",
-			ev.Iface,
+			event.Iface,
 		)
 		m.markStaleLocked("event queue overflow")
 	}
@@ -552,19 +376,8 @@ func (m *Monitor) setSubscriptionReady(index int, ready bool, reason string) {
 	}
 }
 
-func sleepMonitorRetry(ctx context.Context, delay time.Duration) bool {
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return false
-	case <-timer.C:
-		return true
-	}
-}
-
 func (m *Monitor) resyncLoop(ctx context.Context) {
-	backoff := 100 * time.Millisecond
+	backoff := monitorRetryInitial
 
 	for {
 		select {
@@ -590,14 +403,15 @@ func (m *Monitor) resyncLoop(ctx context.Context) {
 				return
 			}
 
-			backoff = min(backoff*2, 5*time.Second)
+			backoff = min(backoff*monitorRetryMultiplier, monitorRetryMaximum)
 			m.stateMu.Lock()
 			m.markStaleLocked("kernel snapshot retry")
 			m.stateMu.Unlock()
+
 			continue
 		}
 
-		backoff = 100 * time.Millisecond
+		backoff = monitorRetryInitial
 		var event Event
 		event.Kind = EvResync
 		event.Iface = m.cfg.Iface
@@ -669,6 +483,7 @@ func (m *Monitor) snapshotRoutes(index int) ([]CurrentRoute, error) {
 		)
 		if err != nil {
 			m.log.Warn("monitor: route snapshot failed", "family", family, "err", err)
+
 			return nil, fmt.Errorf("list %d routes: %w", family, err)
 		}
 
@@ -689,39 +504,25 @@ func (m *Monitor) snapshotRoutes(index int) ([]CurrentRoute, error) {
 	return observed, nil
 }
 
-func routeUsesIndex(route netlink.Route, index int) bool {
-	if route.LinkIndex == index {
-		return true
-	}
-
-	for _, hop := range route.MultiPath {
-		if hop != nil && hop.LinkIndex == index {
-			return true
-		}
-	}
-
-	return false
-}
-
 // addrUpdateToEvent translates one AddrUpdate into our Event type. Returns
 // EvUnknown for events on other interfaces or with empty CIDR.
-func (m *Monitor) addrUpdateToEvent(u netlink.AddrUpdate) Event {
-	if !m.watchesIndex(u.LinkIndex) {
+func (m *Monitor) addrUpdateToEvent(update netlink.AddrUpdate) Event {
+	if !m.watchesIndex(update.LinkIndex) {
 		return unknownEvent()
 	}
 
-	cidr := u.LinkAddress.String()
+	cidr := update.LinkAddress.String()
 	if cidr == "<nil>" || cidr == "" {
 		return unknownEvent()
 	}
 
-	fam := "inet"
-	if u.LinkAddress.IP.To4() == nil {
-		fam = "inet6"
+	fam := tunnelEndpointRouteFamily
+	if update.LinkAddress.IP.To4() == nil {
+		fam = string(httpFamilyV6)
 	}
 
 	kind := EvAddrAdded
-	if !u.NewAddr {
+	if !update.NewAddr {
 		kind = EvAddrDeleted
 	}
 
@@ -730,33 +531,33 @@ func (m *Monitor) addrUpdateToEvent(u netlink.AddrUpdate) Event {
 	event.Family = fam
 	event.Iface = m.cfg.Iface
 	event.CIDR = cidr
-	event.Flags = u.Flags
-	event.Scope = u.Scope
-	event.PreferredLifetime = u.PreferedLft
-	event.ValidLifetime = u.ValidLft
-	event.Origin = "unknown"
+	event.Flags = update.Flags
+	event.Scope = update.Scope
+	event.PreferredLifetime = update.PreferedLft
+	event.ValidLifetime = update.ValidLft
+	event.Origin = HealthStateUnknown
 
 	return m.decorate(event)
 }
 
 // routeUpdateToEvent translates one route update on the watched interface.
-func (m *Monitor) routeUpdateToEvent(u netlink.RouteUpdate) Event {
-	r := u.Route
-	if !m.watchesRoute(r) {
+func (m *Monitor) routeUpdateToEvent(update netlink.RouteUpdate) Event {
+	route := update.Route
+	if !m.watchesRoute(route) {
 		return unknownEvent()
 	}
 
-	famConst := r.Family
+	famConst := route.Family
 	if famConst == 0 {
 		// Some netlink versions leave Family unset; infer from Dst/Gw.
 		switch {
-		case r.Gw != nil && r.Gw.To4() != nil:
+		case route.Gw != nil && route.Gw.To4() != nil:
 			famConst = unix.AF_INET
-		case r.Gw != nil:
+		case route.Gw != nil:
 			famConst = unix.AF_INET6
-		case r.Dst != nil && r.Dst.IP.To4() != nil:
+		case route.Dst != nil && route.Dst.IP.To4() != nil:
 			famConst = unix.AF_INET
-		case r.Dst != nil:
+		case route.Dst != nil:
 			famConst = unix.AF_INET6
 		}
 	}
@@ -765,13 +566,13 @@ func (m *Monitor) routeUpdateToEvent(u netlink.RouteUpdate) Event {
 		return unknownEvent()
 	}
 
-	fam := "inet6"
+	fam := string(httpFamilyV6)
 	if famConst == unix.AF_INET {
-		fam = "inet"
+		fam = tunnelEndpointRouteFamily
 	}
 
 	var kind EventKind
-	switch u.Type {
+	switch update.Type {
 	case unix.RTM_DELROUTE:
 		kind = EvRouteDeleted
 	case unix.RTM_NEWROUTE:
@@ -781,16 +582,16 @@ func (m *Monitor) routeUpdateToEvent(u netlink.RouteUpdate) Event {
 	}
 
 	via := ""
-	if r.Gw != nil {
-		via = r.Gw.String()
+	if route.Gw != nil {
+		via = route.Gw.String()
 	}
 
 	dest := "default"
-	if !isDefaultRoute(r, famConst) {
-		dest = r.Dst.String()
+	if !isDefaultRoute(route, famConst) {
+		dest = route.Dst.String()
 	}
 
-	hops := observedRouteNextHops(r)
+	hops := observedRouteNextHops(route)
 	dev := ""
 	if len(hops) > 0 {
 		dev = hops[0].Dev
@@ -806,52 +607,14 @@ func (m *Monitor) routeUpdateToEvent(u netlink.RouteUpdate) Event {
 	event.Dest = dest
 	event.Via = via
 	event.Dev = dev
-	event.TableID = r.Table
-	event.Protocol = int(r.Protocol)
-	event.Metric = r.Priority
-	event.Scope = int(r.Scope)
-	event.Type = r.Type
+	event.TableID = route.Table
+	event.Protocol = int(route.Protocol)
+	event.Metric = route.Priority
+	event.Scope = int(route.Scope)
+	event.Type = route.Type
 	event.NextHops = hops
 
 	return m.decorate(event)
-}
-
-func observedRouteNextHops(route netlink.Route) []RouteNextHop {
-	hops := make([]RouteNextHop, 0, len(route.MultiPath)+1)
-	if route.LinkIndex != 0 {
-		var hop RouteNextHop
-		hop.LinkIndex = route.LinkIndex
-		hop.Weight = 1
-		if route.Gw != nil {
-			hop.Via = route.Gw.String()
-		}
-
-		hops = append(hops, hop)
-	}
-
-	for _, next := range route.MultiPath {
-		if next == nil {
-			continue
-		}
-
-		var hop RouteNextHop
-		hop.LinkIndex = next.LinkIndex
-		hop.Weight = next.Hops + 1
-		if next.Gw != nil {
-			hop.Via = next.Gw.String()
-		}
-
-		hops = append(hops, hop)
-	}
-
-	for i := range hops {
-		link, err := netlink.LinkByIndex(hops[i].LinkIndex)
-		if err == nil && link.Attrs() != nil {
-			hops[i].Dev = link.Attrs().Name
-		}
-	}
-
-	return hops
 }
 
 func (m *Monitor) watchesRoute(route netlink.Route) bool {
@@ -885,7 +648,7 @@ func (m *Monitor) decorate(event Event) Event {
 // linkUpdateToEvent translates one LinkUpdate into our Event type, emitting
 // only when the watched iface transitions across up/down. The kernel sends
 // many LinkUpdates for unrelated state bits; we suppress noise.
-func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
+func (m *Monitor) linkUpdateToEvent(update netlink.LinkUpdate) Event {
 	m.mu.Lock()
 	previousIndex := m.ifIndex
 	previousIface := m.actualIface
@@ -893,14 +656,15 @@ func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
 		m.rebindConfiguredLocked()
 	} else {
 		m.rebindLegacyLocked(0)
-		if u.Header.Type == unix.RTM_NEWLINK && u.Attrs() != nil && u.Attrs().Name == m.cfg.Iface {
-			m.rebindLegacyLocked(int(u.Index))
+		if update.Header.Type == unix.RTM_NEWLINK && update.Attrs() != nil &&
+			update.Attrs().Name == m.cfg.Iface {
+			m.rebindLegacyLocked(int(update.Index))
 		}
 	}
 
-	matched := int(u.Index) == m.ifIndex && m.ifIndex != 0
-	if u.Header.Type == unix.RTM_DELLINK && int(u.Index) == previousIndex &&
-		(m.cfg.Connection != nil || u.Attrs() != nil && u.Attrs().Name == m.cfg.Iface) {
+	matched := int(update.Index) == m.ifIndex && m.ifIndex != 0
+	if update.Header.Type == unix.RTM_DELLINK && int(update.Index) == previousIndex &&
+		(m.cfg.Connection != nil || update.Attrs() != nil && update.Attrs().Name == m.cfg.Iface) {
 		matched = true
 		m.ifIndex = 0
 		m.actualIface = ""
@@ -918,7 +682,7 @@ func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
 	}
 
 	if !matched {
-		return m.uplinkReturnEvent(u, index, actualIface)
+		return m.uplinkReturnEvent(update, index, actualIface)
 	}
 
 	makeEvent := func(kind EventKind) Event {
@@ -935,14 +699,14 @@ func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
 
 		return event
 	}
-	switch u.Header.Type {
+	switch update.Header.Type {
 	case unix.RTM_NEWLINK:
 		// IFF_UP set means administratively up. We use OperState for "really up".
-		if u.Attrs() == nil {
+		if update.Attrs() == nil {
 			return unknownEvent()
 		}
 
-		switch u.Attrs().OperState {
+		switch update.Attrs().OperState {
 		case netlink.OperUp, netlink.OperUnknown:
 			return makeEvent(EvLinkUp)
 		case netlink.OperDown, netlink.OperLowerLayerDown, netlink.OperNotPresent:
@@ -955,29 +719,33 @@ func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
 	return unknownEvent()
 }
 
-// uplinkReturnEvent reports watched bridge ports down then up, except guest
-// veth and tuntap; it ignores kernel AF_BRIDGE copies without a link type.
+// uplinkReturnEvent reports watched bridge ports after they return to
+// operational state. It ignores veth and tuntap links and AF_BRIDGE copies.
 func (m *Monitor) uplinkReturnEvent(
-	u netlink.LinkUpdate,
+	update netlink.LinkUpdate,
 	bridgeIndex int,
 	actualIface string,
 ) Event {
-	attrs := u.Attrs()
-	if bridgeIndex == 0 || u.Header.Type != unix.RTM_NEWLINK || u.Family == unix.AF_BRIDGE ||
-		attrs == nil || attrs.MasterIndex != bridgeIndex {
+	attrs := update.Attrs()
+	invalidBridgeUpdate := bridgeIndex == 0 ||
+		update.Header.Type != unix.RTM_NEWLINK ||
+		update.Family == unix.AF_BRIDGE ||
+		attrs == nil ||
+		attrs.MasterIndex != bridgeIndex
+	if invalidBridgeUpdate {
 		return unknownEvent()
 	}
 
-	if linkType := u.Type(); linkType == "veth" || linkType == "tuntap" {
+	if linkType := update.Type(); linkType == "veth" || linkType == "tuntap" {
 		return unknownEvent()
 	}
 
 	switch attrs.OperState {
 	case netlink.OperDown, netlink.OperLowerLayerDown, netlink.OperNotPresent:
-		m.uplinkDown[int(u.Index)] = true
+		m.uplinkDown[int(update.Index)] = true
 	case netlink.OperUp, netlink.OperUnknown:
-		if m.uplinkDown[int(u.Index)] {
-			delete(m.uplinkDown, int(u.Index))
+		if m.uplinkDown[int(update.Index)] {
+			delete(m.uplinkDown, int(update.Index))
 			event := m.observationEvent(EvUplinkReturned, attrs.Name)
 			event.ActualIface = actualIface
 			event.IfIndex = bridgeIndex
@@ -1072,36 +840,3 @@ func (m *Monitor) rebindConfiguredLocked() {
 	m.ifIndex = link.Attrs().Index
 	m.actualIface = link.Attrs().Name
 }
-
-// IfIndex returns the netlink index of the watched interface (0 if unknown).
-// Exposed for diagnostic logging by callers.
-func (m *Monitor) IfIndex() int {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	return m.ifIndex
-}
-
-func unknownEvent() Event {
-	var event Event
-	event.Kind = EvUnknown
-
-	return event
-}
-
-// sleepOrCancel sleeps for d or until ctx is cancelled, whichever first.
-// Used by dhcp.go's backoff loop. Lives here (not in dhcp.go) so the
-// helper survives any future per-file rewrite without breaking the
-// async DHCP path's compile.
-func sleepOrCancel(ctx context.Context, d time.Duration) {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-	case <-t.C:
-	}
-}
-
-// Used to silence the unused-import linter on `errors` while we keep it
-// imported for potential typed error handling additions.
-var _ = errors.Is

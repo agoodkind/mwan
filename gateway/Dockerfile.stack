@@ -1,0 +1,79 @@
+# syntax=docker/dockerfile:1
+FROM golang:1.27.4-trixie AS tool
+WORKDIR /src/gateway
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local
+COPY gateway/go.mod gateway/go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY gateway/internal/stackspec/ ./internal/stackspec/
+COPY gateway/tools/wanconfigstack/*.go ./tools/wanconfigstack/
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -trimpath -o /usr/local/bin/wanconfigstack ./tools/wanconfigstack
+
+FROM debian:trixie AS build-tools
+ENV DEBIAN_FRONTEND=noninteractive
+# systemd-dev supplies the unit directory required by sysrepo-tools.
+# Upstream CMake projects also require git to derive their versions.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates build-essential cmake pkg-config git debhelper dpkg-dev \
+        fakeroot python3 python3-venv python3-pip systemd-dev libpcre2-dev \
+        libpam0g-dev libaudit-dev libhowardhinnant-date-dev libspdlog-dev \
+        libdocopt-dev libboost-system-dev libboost-thread-dev libssl-dev \
+        libnghttp2-dev libsystemd-dev \
+    && python3 -m venv /build/apkg-venv \
+    && /build/apkg-venv/bin/pip install --quiet apkg==1.0.0 \
+    && mkdir -p /build/src /build/stage /build/pkgs
+COPY --from=tool /usr/local/bin/wanconfigstack /usr/local/bin/wanconfigstack
+
+# Introduce each pin at its component stage to preserve earlier build layers.
+FROM build-tools AS libyang
+ARG WANCONFIG_LIBYANG_VERSION
+ARG WANCONFIG_LIBYANG_COMMIT
+RUN wanconfigstack -component libyang \
+    -wanconfig_libyang_version "${WANCONFIG_LIBYANG_VERSION}" \
+    -wanconfig_libyang_commit "${WANCONFIG_LIBYANG_COMMIT}"
+
+FROM libyang AS sysrepo
+ARG WANCONFIG_SYSREPO_VERSION
+ARG WANCONFIG_SYSREPO_COMMIT
+RUN wanconfigstack -component sysrepo \
+    -wanconfig_sysrepo_version "${WANCONFIG_SYSREPO_VERSION}" \
+    -wanconfig_sysrepo_commit "${WANCONFIG_SYSREPO_COMMIT}"
+
+FROM sysrepo AS libyang-cpp
+ARG WANCONFIG_LIBYANG_CPP_VERSION
+ARG WANCONFIG_LIBYANG_CPP_COMMIT
+RUN wanconfigstack -component libyang-cpp \
+    -wanconfig_libyang_cpp_version "${WANCONFIG_LIBYANG_CPP_VERSION}" \
+    -wanconfig_libyang_cpp_commit "${WANCONFIG_LIBYANG_CPP_COMMIT}"
+
+FROM libyang-cpp AS sysrepo-cpp
+ARG WANCONFIG_SYSREPO_CPP_VERSION
+ARG WANCONFIG_SYSREPO_CPP_COMMIT
+RUN wanconfigstack -component sysrepo-cpp \
+    -wanconfig_sysrepo_cpp_version "${WANCONFIG_SYSREPO_CPP_VERSION}" \
+    -wanconfig_sysrepo_cpp_commit "${WANCONFIG_SYSREPO_CPP_COMMIT}"
+
+FROM sysrepo-cpp AS nghttp2-asio
+ARG WANCONFIG_NGHTTP2_ASIO_VERSION
+ARG WANCONFIG_NGHTTP2_ASIO_COMMIT
+RUN wanconfigstack -component nghttp2-asio \
+    -wanconfig_nghttp2_asio_version "${WANCONFIG_NGHTTP2_ASIO_VERSION}" \
+    -wanconfig_nghttp2_asio_commit "${WANCONFIG_NGHTTP2_ASIO_COMMIT}"
+
+FROM nghttp2-asio AS rousette
+ARG WANCONFIG_ROUSETTE_VERSION
+ARG WANCONFIG_ROUSETTE_COMMIT
+RUN wanconfigstack -component rousette \
+    -wanconfig_rousette_version "${WANCONFIG_ROUSETTE_VERSION}" \
+    -wanconfig_rousette_commit "${WANCONFIG_ROUSETTE_COMMIT}"
+
+FROM rousette AS bundle
+RUN wanconfigstack -bundle-only -out /bundle
+
+# Runtime verification must execute on every export, outside cached RUN layers.
+FROM debian:trixie AS stack-runtime
+COPY --from=tool /usr/local/bin/wanconfigstack /usr/local/bin/wanconfigstack
+COPY --from=bundle /bundle/ /bundle/
+ENTRYPOINT ["/usr/local/bin/wanconfigstack"]

@@ -35,10 +35,23 @@ func openTunnelRouteJournal(t *testing.T, path string) *netif.OwnedStaticReconci
 	return journal
 }
 
+func addFixtureAddress(t *testing.T, iface string, address string) {
+	t.Helper()
+	link, err := netlink.LinkByName(iface)
+	if err != nil {
+		t.Fatalf("find interface %s: %v", iface, err)
+	}
+	parsedAddress, err := netlink.ParseAddr(address)
+	if err != nil {
+		t.Fatalf("parse address %s: %v", address, err)
+	}
+	if err := netlink.AddrReplace(link, parsedAddress); err != nil {
+		t.Fatalf("assign address %s to %s: %v", address, iface, err)
+	}
+}
+
 func addTunnelRouteProvider(
-	ctx context.Context,
 	t *testing.T,
-	fixture *tunnelRouteFixture,
 	iface string,
 	address string,
 	gateway string,
@@ -47,14 +60,7 @@ func addTunnelRouteProvider(
 ) {
 	t.Helper()
 	addDummyLink(t, iface)
-	if err := netif.ReconcileAddrs(
-		ctx,
-		fixture.module.Log,
-		iface,
-		[]netif.AddrSpec{{CIDR: address}},
-	); err != nil {
-		t.Fatalf("address %s: %v", iface, err)
-	}
+	addFixtureAddress(t, iface, address)
 	setTunnelRouteDefault(t, iface, gateway, metric, true)
 	setTunnelRouteNeighbour(t, iface, gateway, gatewayMAC)
 }
@@ -144,9 +150,7 @@ func newTunnelRouteFixture(ctx context.Context, t *testing.T) *tunnelRouteFixtur
 
 	addDummyLink(t, tunnelRouteInternal)
 	addTunnelRouteProvider(
-		ctx,
 		t,
-		fixture,
 		tunnelRouteUnderlay,
 		tunnelRouteLocal+"/24",
 		tunnelRouteGateway,
@@ -154,9 +158,7 @@ func newTunnelRouteFixture(ctx context.Context, t *testing.T) *tunnelRouteFixtur
 		tunnelRouteUnderMetric,
 	)
 	addTunnelRouteProvider(
-		ctx,
 		t,
-		fixture,
 		tunnelRouteOther,
 		"203.0.113.2/29",
 		tunnelRouteOtherGW,
@@ -193,14 +195,7 @@ func newTunnelRouteFixture(ctx context.Context, t *testing.T) *tunnelRouteFixtur
 		result.Status != netif.OwnedLinkReady {
 		t.Fatalf("tunnel link result = %+v (found=%t)", result, found)
 	}
-	if err := netif.ReconcileAddrs(
-		ctx,
-		fixture.module.Log,
-		tunnelRouteIface,
-		[]netif.AddrSpec{{CIDR: "2001:db8:6::2/64"}},
-	); err != nil {
-		t.Fatalf("tunnel address: %v", err)
-	}
+	addFixtureAddress(t, tunnelRouteIface, "2001:db8:6::2/64")
 	innerDefault := netif.RouteSpec{
 		Family:  familyV6,
 		Dest:    "default",

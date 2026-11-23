@@ -45,6 +45,21 @@ func New(cfg Config) (*slog.Logger, io.Closer) {
 	return wrapped, closer
 }
 
+// NewCommandLogger creates the text logger for the mwan command process.
+//
+// It writes records to the diagnostics stream and attaches the build version
+// to each record.
+//
+// Example:
+//
+//	logger, closer := logging.NewCommandLogger(os.Stderr, version.BuildVersionString())
+func NewCommandLogger(diagnostics io.Writer, buildVersion string) (*slog.Logger, io.Closer) {
+	return New(Config{
+		BuildVersion: buildVersion,
+		Handlers:     []slog.Handler{slog.NewTextHandler(diagnostics, nil)},
+	})
+}
+
 // A zero gklog.RotationConfig sets lumberjack's MaxBackups and MaxAge to 0.
 // lumberjack deletes rotated files only when either value exceeds 0.
 // maxRotatedLogFiles limits retention to 20 rotated files.

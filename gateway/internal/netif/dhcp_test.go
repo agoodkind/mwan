@@ -283,17 +283,3 @@ func TestDHCPRequestOptionsOnSerializedPackets(t *testing.T) {
 		t.Fatal("rebind packet is not broadcast")
 	}
 }
-
-func TestStripPrefix(t *testing.T) {
-	cases := map[string]string{
-		"3d06:bad:b01:ff::1/128": "3d06:bad:b01:ff::1",
-		"10.0.0.1/24":            "10.0.0.1",
-		"no-slash":               "no-slash",
-		"":                       "",
-	}
-	for in, want := range cases {
-		if got := StripPrefix(in); got != want {
-			t.Errorf("StripPrefix(%q)=%q want %q", in, got, want)
-		}
-	}
-}

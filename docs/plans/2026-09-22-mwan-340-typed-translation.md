@@ -86,8 +86,6 @@ requires it.
 - Modify `gateway/internal/networkjson/networkjson.go`.
 - Modify `gateway/internal/config/ifmgr_modules.go`.
 - Modify the valid documents under `gateway/yang/instances/`.
-- Preserve `gateway/cmd/mwan/testdata/goodkind-mwan-steering@2026-09-13.yang` as the
-  install-upgrade fixture.
 
 ### Model contract
 
@@ -124,14 +122,13 @@ message:
 
 Keep the existing loader boundary. A schema-invalid document fails entirely.
 A provider-local semantic error remains a provider rejection at runtime, and
-`mwan deploy-gate check-network` fails the deployment when any provider would
-be rejected.
+`mwan debug check-network` reports rejected providers.
 
 ### Public verification
 
-Extend `gateway/cmd/mwan/deploygate_checknetwork_test.go` with one accepted typed
-document and one rejected family or mode combination. Run the real child
-process command. Extend `gateway/cmd/mwan/wanconfig_roundtrip_test.go` so the normal
+Extend the built-binary `debug check-network` test with one accepted typed
+document and one rejected family or mode combination. Extend
+`gateway/cmd/mwan/wanconfig_roundtrip_test.go` so the normal
 loader, `Apply`, module projection, and publisher chain compares translation
 input instead of excluding every `/ietf-nat:nat/` leaf.
 
@@ -392,7 +389,7 @@ connection-mark restore. The daemon steering chain uses the same guard. This
 ensures a stale mark or pin cannot select a provider table for hairpin traffic.
 
 Add one Configs contract example that renders the testbed document and runs
-the released `mwan deploy-gate check-network` command against it. Do not add
+the released `mwan debug check-network` command against it. Do not add
 static template-content assertions or duplicate the schema rules in Ruby.
 
 Run:
@@ -457,11 +454,10 @@ Capture packets at the ISP simulator ingress. Traffic beyond the simulator
 does not prove which source address MWAN produced because the simulator also
 masquerades traffic.
 
-Run each load-balancing request as a separate `qm guest exec` call to the
-testbed router. Record packets on both simulator ingress links for the entire
-sample. Require one completed command and one distinct captured flow per
-request. Rerun that family's sample when any command result or capture is
-missing.
+Generate one load-balancing request at a time from the testbed router. Record
+packets on both simulator ingress links for the entire sample. Require one
+completed request and one distinct captured flow per request. Repeat a
+family's sample when any request result or capture is missing.
 
 Record these acceptance results:
 

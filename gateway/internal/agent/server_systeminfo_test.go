@@ -10,7 +10,7 @@ import (
 
 func TestGetSystemInfo_LiveHost(t *testing.T) {
 	t.Parallel()
-	srv := NewServer("/x", testLogger(t), nil, nil)
+	srv := NewServer(testLogger(t), nil)
 	cli := startTestServer(t, srv)
 	res, err := cli.GetSystemInfo(context.Background(), &mwanv1.GetSystemInfoRequest{})
 	if err != nil {

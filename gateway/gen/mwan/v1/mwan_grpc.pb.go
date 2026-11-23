@@ -33,7 +33,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// MWANAgent runs inside the MWAN VM on virtio-vsock (e.g. port 50051).
+// MWANAgent serves the local Linux gateway API.
 type MWANAgentClient interface {
 	GetHealth(ctx context.Context, in *GetHealthRequest, opts ...grpc.CallOption) (*GetHealthResponse, error)
 	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
@@ -146,7 +146,7 @@ func (c *mWANAgentClient) WithdrawRoutes(ctx context.Context, in *WithdrawRoutes
 // All implementations must embed UnimplementedMWANAgentServer
 // for forward compatibility.
 //
-// MWANAgent runs inside the MWAN VM on virtio-vsock (e.g. port 50051).
+// MWANAgent serves the local Linux gateway API.
 type MWANAgentServer interface {
 	GetHealth(context.Context, *GetHealthRequest) (*GetHealthResponse, error)
 	Ping(context.Context, *PingRequest) (*PingResponse, error)

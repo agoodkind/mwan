@@ -22,10 +22,10 @@ type Router = contract.Router
 // PublicIPPolicy optionally requires the current provider assignment.
 type PublicIPPolicy = contract.PublicIPPolicy
 
-// EndpointKind selects local, virtual machine, or container identity checks.
+// EndpointKind identifies where a probe runs.
 type EndpointKind = contract.EndpointKind
 
-// Endpoint requires the observer's independent machine identity.
+// Endpoint identifies the local probe machine.
 type Endpoint = contract.Endpoint
 
 // CheckSpec defines the path, reply, identity, and freshness acceptance contract.
@@ -89,10 +89,6 @@ const (
 	PublicIPCurrentAssignment = contract.PublicIPCurrentAssignment
 	// EndpointLocal executes on the verified local machine.
 	EndpointLocal = contract.EndpointLocal
-	// EndpointQEMU executes through the existing guest-agent transport.
-	EndpointQEMU = contract.EndpointQEMU
-	// EndpointLXC executes inside the configured container with fixed arguments.
-	EndpointLXC = contract.EndpointLXC
 	// AvailabilityComplete indicates that the target probe produced a verdict.
 	AvailabilityComplete = contract.AvailabilityComplete
 	// AvailabilityMissing indicates that required evidence is unavailable.

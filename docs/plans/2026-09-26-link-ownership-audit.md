@@ -192,10 +192,10 @@ consistent with completed MWAN-333.
 These probes establish limited downstream IPv6 availability. They do not
 prove IPv4, balancing, failover, the selected primary gateway, or migration
 acceptance. This audit ran no packet captures, injected failures, restarts,
-builds, or implementation tests. Agent Gate rejected nested `pct exec`
-access; direct guest SSH provided the limited observations instead. The
-successful sysctl query used `/usr/sbin/sysctl` after `/usr/bin/sysctl` was
-absent. Configuration hashes do not establish a Configs Git commit.
+builds, or implementation tests. Direct guest SSH supplied the limited
+observations. The successful sysctl query used `/usr/sbin/sysctl` after
+`/usr/bin/sysctl` was absent. Configuration hashes do not establish a
+Configs Git commit.
 
 ## Conversation and ticket evidence
 

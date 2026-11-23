@@ -129,24 +129,18 @@ const (
 	PublicIPCurrentAssignment PublicIPPolicy = "current_assignment"
 )
 
-// EndpointKind selects local, QEMU, or LXC execution.
+// EndpointKind identifies where a probe runs.
 type EndpointKind string
 
 const (
-	// EndpointLocal executes on the verified local machine.
+	// EndpointLocal runs the probe on the gateway.
 	EndpointLocal EndpointKind = "local"
-	// EndpointQEMU executes through the existing guest-agent transport.
-	EndpointQEMU EndpointKind = "qemu"
-	// EndpointLXC executes inside the configured container with fixed arguments.
-	EndpointLXC EndpointKind = "lxc"
 )
 
-// Endpoint requires the actual observer and hypervisor machine identities.
+// Endpoint identifies the local probe machine.
 type Endpoint struct {
-	Kind          EndpointKind `json:"kind"`
-	VMID          int          `json:"vmid,omitempty"`
-	MachineID     string       `json:"machine_id"`
-	HostMachineID string       `json:"host_machine_id,omitempty"`
+	Kind      EndpointKind `json:"kind"`
+	MachineID string       `json:"machine_id"`
 }
 
 // CheckSpec defines a positive reply and the required observer and path.

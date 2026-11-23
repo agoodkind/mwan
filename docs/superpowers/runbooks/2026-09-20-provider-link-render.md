@@ -287,19 +287,9 @@ Controller, 2026-09-20 12:56, from main bfb3fa02:
 `ok=211 changed=27 failed=0`. `Reload networkd` completed before
 `Restart mwan-ifmgr@wan`; both handlers succeeded. The VM rebooted after both.
 
-Gateway 113 after the reboot, read with `qm guest exec` on vault:
-
-```bash
-uptime -p
-systemctl is-system-running
-systemctl is-active mwan-ifmgr@wan
-mwan version
-cat /var/run/mwan-health.state
-ls /etc/systemd/network
-```
-
-`up 0 minutes`, `running`, `active`, `commit=16dd8f1`, all three providers
-healthy, twelve networkd files. AT&T's `20-att.link`, `20-att.network`,
+After reboot, gateway 113 reported `up 0 minutes`, `running`, and `active`.
+It ran commit `16dd8f1`; all three providers were healthy, and it had twelve
+networkd files. AT&T's `20-att.link`, `20-att.network`,
 `21-att-vlan.netdev` and `21-att-vlan.network` are the deploy's templates,
 unchanged. `20-enwebpass0.link`, `20-enwebpass0.network`, `20-enmbrains0.link`
 and `20-enmbrains0.network` are the daemon's renders.

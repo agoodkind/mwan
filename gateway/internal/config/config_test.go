@@ -3,113 +3,123 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"goodkind.io/mwan/internal/config"
 )
 
-const sharedFileText = `
-hostname = "gateway-test"
-mwan_vmid = "4100"
-
-[pve]
-node = "pve-test"
-
-[watchdog]
-service_name = "mwan-watchdog-test"
-connectivity_timeout_seconds = 45
-status_listen_port = 50060
-
-[failover]
-lxc_id = "203"
-agent_tcp_addr = "192.0.2.2:50052"
-
-[agent]
-vsock_port = 50071
-
-[bgp]
-enabled = false
-asn = 65001
-router_id = "192.0.2.3"
-
-[ifmgr]
-role = "wan"
-reconcile_interval = "30s"
-`
-
-const bothStatusSourcesText = `
-[watchdog]
-status_command = ["mwan", "gateway-status"]
-status_listen_port = 50060
-
-[bgp]
-enabled = false
-asn = 65001
-router_id = "192.0.2.3"
-
-[ifmgr]
-role = "wan"
-reconcile_interval = "30s"
-`
-
-func writeSharedFile(t *testing.T, text string) string {
+func writeConfig(t *testing.T, text string) string {
 	t.Helper()
 	configPath := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(configPath, []byte(text), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
+		t.Fatal(err)
 	}
 
 	return configPath
 }
 
-func TestLoadPathAcceptsBothWatchdogStatusSources(t *testing.T) {
-	t.Parallel()
-
-	configPath := writeSharedFile(t, bothStatusSourcesText)
-
+func TestLoadPathReadsAgentSocketAndTCPSettings(t *testing.T) {
+	configPath := writeConfig(
+		t,
+		"[agent]\nsocket_path = \"/run/mwan/agent.sock\"\ntcp_addr = \"127.0.0.1:50052\"\n",
+	)
 	cfg, err := config.LoadPath(configPath)
 	if err != nil {
-		t.Fatalf("load config with both watchdog status sources failed: %v", err)
+		t.Fatal(err)
 	}
 
-	if cfg.Path != configPath || cfg.IfMgr.Role != "wan" {
-		t.Errorf(
-			"config path or ifmgr role differs from expected values: %q %q",
-			cfg.Path,
-			cfg.IfMgr.Role,
-		)
+	if cfg.Agent.SocketPath != "/run/mwan/agent.sock" ||
+		cfg.Agent.TCPAddr != "127.0.0.1:50052" {
+		t.Fatalf("agent settings = %+v", cfg.Agent)
 	}
 }
 
-func TestLoadPathAcceptsHypervisorSections(t *testing.T) {
-	t.Parallel()
-
-	configPath := writeSharedFile(t, sharedFileText)
-
-	cfg, err := config.LoadPath(configPath)
+func TestLoadPathLeavesAgentSocketUnconfiguredByDefault(t *testing.T) {
+	cfg, err := config.LoadPath(writeConfig(t, ""))
 	if err != nil {
-		t.Fatalf("load config with hypervisor sections failed: %v", err)
+		t.Fatal(err)
 	}
 
-	if cfg.Hostname != "gateway-test" || cfg.MwanVMID != "4100" {
-		t.Errorf(
-			"hostname = %q mwan_vmid = %q, want gateway-test and 4100",
-			cfg.Hostname,
-			cfg.MwanVMID,
-		)
+	if cfg.Agent.SocketPath != "" {
+		t.Fatalf("agent socket path = %q", cfg.Agent.SocketPath)
+	}
+}
+
+func TestLoadPathUsesEmailDefaults(t *testing.T) {
+	t.Setenv("SMTP2GO_API_KEY", "")
+	cfg, err := config.LoadPath(writeConfig(t, ""))
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	agentLoaded := cfg.Agent.VsockPort == 50071 && cfg.Agent.TCPAddr == "[::]:50052"
-	bgpLoaded := cfg.BGP.ASN == 65001 && cfg.BGP.RouterID == "192.0.2.3"
-	ifmgrLoaded := cfg.IfMgr.Role == "wan" && cfg.IfMgr.ReconcileInterval == "30s"
-	if cfg.Path != configPath || !agentLoaded || !bgpLoaded || !ifmgrLoaded {
-		t.Errorf(
-			"config path or gateway settings differ from expected values: %q %+v %+v %q %q",
-			cfg.Path,
-			cfg.Agent,
-			cfg.BGP,
-			cfg.IfMgr.Role,
-			cfg.IfMgr.ReconcileInterval,
+	want := config.EmailConfig{MinLevel: "ERROR", Cooldown: "5m"}
+	if cfg.Email != want {
+		t.Fatalf("email settings = %+v, want %+v", cfg.Email, want)
+	}
+}
+
+func TestLoadPathOverridesEmailAPIKeyFromEnvironment(t *testing.T) {
+	t.Setenv("SMTP2GO_API_KEY", " key-from-environment ")
+	cfg, err := config.LoadPath(writeConfig(t, "[email]\nsmtp2go_api_key = \"file-key\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.Email.SMTP2GOAPIKey != "key-from-environment" {
+		t.Fatalf("email API key = %q", cfg.Email.SMTP2GOAPIKey)
+	}
+}
+
+func TestLoadPathNetworkdTimeout(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		text      string
+		want      time.Duration
+		wantError string
+	}{
+		{"default", "", 60 * time.Second, ""},
+		{"configured", "[ifmgr]\nnetworkd_timeout_seconds = 17\n", 17 * time.Second, ""},
+		{"zero", "[ifmgr]\nnetworkd_timeout_seconds = 0\n", 0, "must be greater than zero"},
+		{"negative", "[ifmgr]\nnetworkd_timeout_seconds = -1\n", 0, "must be greater than zero"},
+		{
+			"maximum duration",
+			"[ifmgr]\nnetworkd_timeout_seconds = 9223372036\n",
+			9223372036 * time.Second,
+			"",
+		},
+		{
+			"duration overflow",
+			"[ifmgr]\nnetworkd_timeout_seconds = 9223372037\n",
+			0,
+			"must not exceed 9223372036",
+		},
+	} {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				cfg, err := config.LoadPath(writeConfig(t, test.text))
+				if test.wantError != "" {
+					if err == nil ||
+						!strings.Contains(
+							err.Error(),
+							"[ifmgr] networkd_timeout_seconds "+test.wantError,
+						) {
+						t.Fatalf("LoadPath error = %v", err)
+					}
+
+					return
+				}
+
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if actual := cfg.IfMgr.NetworkdTimeout(); actual != test.want {
+					t.Fatalf("networkd timeout = %s, want %s", actual, test.want)
+				}
+			},
 		)
 	}
 }

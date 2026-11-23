@@ -20,13 +20,6 @@ routing tables and the protocols that fill them. What the daemon read at
 startup, not what a file on disk says, so the tree cannot drift from the
 running process.
 
-The whole daemon, not only the provider path. That includes the modules an
-operator reaches for during an incident and cannot currently see without a
-shell: the rollback watchdog's thresholds and its probe targets, the
-out-of-band access policy, and the tunnel tap. A module whose configuration
-is not in the tree is a module whose behavior has to be guessed at from
-logs.
-
 **Live state.** The delegation each provider currently holds. Each member's
 health and the probe results behind it. Which tier is active and which member
 is carrying traffic. Whether each translation instance is realized in the
@@ -42,8 +35,8 @@ provider is not carrying any, without opening a shell on the gateway.
 The mature management stack serves the tree. libyang reads the model,
 sysrepo holds the data, and the stack's own servers answer requests:
 RESTCONF for reading over ordinary web requests carrying JSON, with NETCONF
-available from the same stack. The same servers deliver change
-notifications on their event stream, described below.
+available from the same stack. The daemon publishes two YANG notifications
+through sysrepo, described below.
 
 The daemon registers as the provider of its own subtrees, so a read reaches
 into the daemon at request time rather than reading a copy that can drift.
@@ -64,11 +57,8 @@ it publishes from the typed configuration it is about to run with, not from
 the file. Editing the file on disk without restarting the daemon therefore
 changes nothing in the tree, which is the acceptance test.
 
-Publishing is gated on one configuration setting. A host whose rendered
-configuration does not turn it on never opens a connection to the datastore,
-so the hypervisors, the failover container, and production before its stack
-is installed do not attempt a publish they cannot complete. The gate is off
-unless stated.
+The `wanconfig.publish` setting gates publication. When the setting is false,
+the interface manager does not connect to the datastore.
 
 The publish replaces the subtrees the daemon owns in one transaction: the
 interface list with its per-family containers and steering properties, and
@@ -77,14 +67,9 @@ the same change that writes the current values, so a reader never sees the
 tree empty or half-replaced, and nothing from a retired configuration
 survives a restart.
 
-Only values the daemon holds are published. The daemon settings no
-published model covers publish under the local module's daemon container:
-the rollback watchdog's thresholds and probe targets, the out-of-band
-access policy, and the tunnel tap, each only when the daemon's loaded
-configuration carries that section, so the tree never invents values
-another host owns. Each steering member appears as
-an interface entry named by its link, marked as a member with its tier, its
-weight, and the name of the probe policy that decides its health. Its
+The daemon publishes values from its loaded configuration. Each steering
+member appears as an interface entry identified by its link, marked as a
+member with its tier, weight, and probe policy. Its
 address-family containers are present and enabled, because the daemon steers
 and probes both families on every member; the internal link appears the same
 way. Each member's link also carries its provider entry with every value the
@@ -167,42 +152,20 @@ The steering module gains the state nodes this needs, marked as
 non-configuration so the running datastore is untouched; yanglint gates
 the change like any model edit.
 
-## How changes are streamed
+## YANG notifications
 
-A subscriber is told when state changes rather than asking repeatedly,
-on the event stream the stack's servers already publish at the same
-management address the reads use. The steering module defines the two
-notifications the acceptance names: a health transition and a tier
-change, each carrying the value before and after, and the health
-transition naming the member by its interface like everything else in
-the tree.
+The daemon publishes `health-transition` and `tier-change` notifications
+through sysrepo. A health transition includes the member interface, the new
+health verdict, and the previous verdict. The health module reports a
+committed verdict change after applying hysteresis. A tier change includes
+the active tier and its previous value. The routing state observer reports a
+tier change when a completed update selects a different active tier after the
+initial state.
 
-The daemon sends each notification at the moment the change commits.
-A health transition streams after its hysteresis has been applied, so a
-subscriber never sees a raw probe result, and after the snapshot the
-tree serves has been updated, so a read that follows the notification
-sees the new state. A tier change streams when a routing pass installs
-a different active tier than the previous pass; the first pass after
-startup establishes the baseline and streams nothing.
-
-Delivery cannot reach back into the daemon. A writer hands the event to
-a bounded queue and moves on; one sender goroutine publishes each event
-without waiting for any subscriber, and a queue the datastore has let
-fill drops the event with a log line rather than delaying a reconcile
-pass. Subscriber lifecycle belongs to the stack's servers, so an
-abandoned subscription costs the daemon nothing. A dropped or lost
-notification loses only the event itself: the tree still carries the
-current state for any reader.
-
-A subscriber must reconnect when its connection drops, because the
-server closes an idle stream after about a minute. The embedded HTTP/2
-server rousette runs on drops a connection that carries no traffic for
-60 seconds, and rousette at its released version sends nothing to keep
-one open and offers no setting for the deadline. A recorder that sits
-through a quiet period therefore stops receiving without being told,
-and reconnecting is what closes that gap. Upstream sends a keep-alive
-every 55 seconds on its development branch, which would remove the
-need, but no released version carries that work.
+The notifier uses a bounded queue and limits each send to five seconds. A full
+queue drops the notification without blocking a reconcile pass. The protobuf
+`WatchEvents` RPC separately defines `ConfigChangedEvent` and
+`HealthTransitionEvent` payloads in `AgentEvent`.
 
 ## What must not change
 
@@ -223,7 +186,8 @@ Every value in the tree is read from the daemon's own state, not
 reconstructed from a file, and no value is served that the daemon does not
 actually hold.
 
-A subscription reports a health transition and a tier change as they happen.
+The notifier publishes health-transition and tier-change notifications when
+their state transitions occur.
 
 The data path is unchanged, verified by comparing the firewall ruleset,
 routes, and policy rules before and after.

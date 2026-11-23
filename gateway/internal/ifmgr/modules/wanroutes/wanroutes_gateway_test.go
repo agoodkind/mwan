@@ -79,20 +79,15 @@ func addDummyLink(t *testing.T, iface string) {
 	}
 }
 
-// buildProviderLinks creates the internal link and the present provider links,
-// and gives each provider link its addresses and main-table default routes, the
-// state a provider's DHCP or static configuration leaves behind.
+// buildProviderLinks creates the links, addresses, and default routes that the
+// provider configurations require.
 func buildProviderLinks(ctx context.Context, t *testing.T, module *Module) {
 	t.Helper()
 	addDummyLink(t, module.cfg.InternalIface)
 	for _, provider := range presentProviders {
 		addDummyLink(t, provider.iface)
-		specs := make([]netif.AddrSpec, 0, len(provider.addresses))
 		for _, address := range provider.addresses {
-			specs = append(specs, netif.AddrSpec{CIDR: address, Family: ""})
-		}
-		if err := netif.ReconcileAddrs(ctx, module.Log, provider.iface, specs); err != nil {
-			t.Fatalf("address %s: %v", provider.iface, err)
+			addFixtureAddress(t, provider.iface, address)
 		}
 		gateways := []struct{ family, via string }{
 			{familyV4, provider.gatewayV4},

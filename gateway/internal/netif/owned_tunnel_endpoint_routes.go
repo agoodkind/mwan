@@ -10,7 +10,7 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// TunnelEndpointRouteProtocol identifies a tunnel endpoint route in kernel route dumps and route events.
+// TunnelEndpointRouteProtocol identifies tunnel endpoint routes in the kernel.
 const TunnelEndpointRouteProtocol = 147
 
 const tunnelEndpointRouteFamily = "inet"
@@ -84,8 +84,12 @@ func kernelEndpointRoutes(
 	return matched, nil
 }
 
-// EnsureTunnelEndpointRoute records one IPv4 host route for a tunnel connection in the ownership journal
-// before writing the route to the kernel.
+// EnsureTunnelEndpointRoute journals one IPv4 host route before installing it.
+// It rejects routes that do not match the connection's tunnel endpoint.
+//
+// Example:
+//
+//	EnsureTunnelEndpointRoute(ctx, log, "connection-1", route)
 func (r *OwnedStaticReconciler) EnsureTunnelEndpointRoute(
 	ctx context.Context,
 	log *slog.Logger,
@@ -104,9 +108,11 @@ func (r *OwnedStaticReconciler) EnsureTunnelEndpointRoute(
 		)
 	}
 
-	link, err := linkByName(log, want.Dev)
+	link, err := netlink.LinkByName(want.Dev)
 	if err != nil {
-		return err
+		log.WarnContext(ctx, "tunnel endpoint link lookup failed", "device", want.Dev, "err", err)
+
+		return fmt.Errorf("link %q: %w", want.Dev, err)
 	}
 
 	record := ownedEndpointRoute{
@@ -215,7 +221,12 @@ func (r *OwnedStaticReconciler) deleteEndpointRoute(
 	return delTableRouteNetlink(ctx, log, stale)
 }
 
-// ReleaseTunnelEndpointRoutes removes every recorded route of a connection absent from keep.
+// ReleaseTunnelEndpointRoutes removes routes for connections absent from keep.
+// It returns joined errors when the kernel rejects one or more removals.
+//
+// Example:
+//
+//	ReleaseTunnelEndpointRoutes(ctx, log, activeConnections)
 func (r *OwnedStaticReconciler) ReleaseTunnelEndpointRoutes(
 	ctx context.Context,
 	log *slog.Logger,

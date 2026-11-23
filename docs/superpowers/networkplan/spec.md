@@ -1,14 +1,12 @@
 # Native network configuration planning contract
 
-OpenTofu must validate known network documents against the authoritative YANG schema and show configured route, policy-rule, and firewall changes by stable identity. Keep one network.json source document per gateway. Do not require an HCL rewrite or independently applied route resources.
-
-At baseline commit `37205aae3716c41c131f3d4cc24de7224a751918`, MWAN PR #202 has merged. Provider planning uses canonicalization and Go decoding. Apply and gateway startup use native network loading. Native provider validation and typed rule projections remain required work. This contract supersedes pure-Go provider packaging and permission for known schema errors to pass planning.
+The OpenTofu provider validates known network documents against the authoritative YANG schema. It projects configured route, policy rule, and firewall changes by stable identity from one source document per gateway.
 
 ## Validation authority
 
 Use direct cgo/libyang for provider validation on darwin/arm64, linux/amd64, and linux/arm64. Run the complete authoritative YANG validation and shared Go semantic validation whenever `content` is known. Reject null content. Defer unknown content through normal OpenTofu data-source evaluation; dependent attributes remain unknown until evaluation succeeds.
 
-Planning must make no guest, API, or network calls. Planning must write no deployment files. An isolated temporary schema directory is permitted when embedded module loading requires files. Delete that directory when the schema handle closes.
+Network planning validates content locally. It does not contact the gateway or write its configuration. The schema handle removes its temporary model directory when it closes.
 
 Use the existing embedded [schema](../../../gateway/internal/yangpub/schema), module inventory, and enabled features. Preserve `LYD_PARSE_STRICT`, `LYD_PARSE_NO_STATE`, `LYD_VALIDATE_PRESENT`, and `LYD_VALIDATE_NO_STATE`. Unknown nodes, invalid enums, invalid ranges, missing mandatory nodes in present containers, and state nodes must fail validation. Do not create another YANG validator or permit a `GO_MK_CGO_OPTIONAL` bypass.
 
@@ -20,7 +18,7 @@ Introduce a minimal libyang-only package without sysrepo, daemon services, Linux
 
 Share byte validation and decoding between provider evaluation and gateway loading. Validate and decode identical bytes. Preserve gateway path-qualified errors, logging, and existing provider-entry rejection behavior. Provider evaluation must convert every `Config.Rejected` entry into an error diagnostic with the interface and reason when available.
 
-Apply must validate staged canonical bytes before installation. Gateway startup must retain native validation. Valid original and canonical documents must produce equal semantic configurations. Standalone `Decode` behavior does not establish schema acceptance.
+Gateway startup validates its network document against the same models. Valid original and canonical documents must produce equal semantic configurations. Standalone `Decode` behavior does not establish schema acceptance.
 
 ## Canonical content and semantic order
 
@@ -30,7 +28,7 @@ Typed maps ignore system-ordered interface and route list ordering. Typed values
 
 Whitespace and object-member reordering must produce no canonical file change or typed-state change. System-ordered array reordering may produce a canonical file update while typed maps remain equal. Explicit defaults and equivalent IPv6 spelling may likewise change the canonical file without changing typed values.
 
-A canonical file update changes the file write ID and restarts both network consumers through Configs. Do not promise that every semantically equivalent array reordering avoids a restart. Typed map changes and canonical file changes may appear in the same plan.
+Typed map changes and canonical file changes may appear independently in the same plan.
 
 ## Existing configured projections
 
@@ -82,24 +80,13 @@ Project configured set definitions and configured members when the compiler uses
 
 ## Provider state and plan behavior
 
-The `mwan_network` data source returns canonical_content and all configured projections. Return guest_type from shared decoding with its shared default; apply no provider-specific guest-type rule.
+The `mwan_network` data source returns `canonical_content` and the configured projections.
 
-The `mwan_network_config` resource stores configured values in OpenTofu state. Preserve required interfaces, routes, and provider_defaults maps. Introduce schema version 1 with new optional maps defaulting to empty for compatibility. Upgrade version 0 state without changing existing route identities. The first state upgrade adds newly tracked rule maps. State additions alone do not prove new kernel rules. Do not force a document write or restart for a map-only state update when canonical content is unchanged. Use the recorded maps for subsequent typed comparisons. Preserve existing file/binary `write_id` behavior. Official Configs integration must supply every new projection.
+The `mwan_network_config` resource stores configured values in OpenTofu state. It requires the `interfaces`, `routes`, and `provider_defaults` maps. Schema version 1 includes optional rule maps with empty defaults. Upgrading version 0 state initializes these maps and preserves existing route identities. State additions alone do not establish that the kernel installed new rules.
 
 Use shared object types and conversion for both provider objects. Validate identity-derived keys, allowed values, numeric ranges, and chain-order references. Keep configured attributes independent of computed copies. Add no import support or replacement modifiers.
 
-Create and Update store planned values. Read preserves prior configured state without reading a guest or kernel. Delete removes state. OpenTofu performs ordinary typed map and list diffing; do not build another diff engine. Libyang tree-diff APIs are optional only for a required diagnostic and must match the pinned API.
-
-The following examples are illustrative and have not been executed. Public plan tests must establish exact rendering.
-
-```text
-routes["bgp0|ipv4|198.51.100.0/24"].gateway
-  "192.0.2.2" -> "192.0.2.3"
-policy_rules["att|ipv4|fwmark"].priority
-  100 -> 110
-firewall_rules["inet|mangle|prerouting|provider-mark|att"].mark
-  1 -> 2
-```
+Create and Update store planned values. Read preserves prior configured state without querying the gateway or kernel. Delete removes state. OpenTofu performs ordinary typed map and list diffing; do not build another diff engine. Libyang tree-diff APIs are optional only for a required diagnostic and must match the pinned API.
 
 Reordering firewall rules changes each chain's `rule_order` without changing rule keys.
 
@@ -115,21 +102,16 @@ Do not apply Linux full-static or libc assumptions to macOS. The provider must n
 
 Pin native source commits and reuse one authoritative version set across gateway and provider builds. Preserve gateway static libyang/sysrepo behavior. Preserve signed archives, checksums, attestations, and complete platform publication.
 
-Provider binaries, embedded schemas, and deployed mwan binaries must match the same release commit. Preserve release-tag commit matching and embedded role-schema output.
+Provider binaries, embedded schemas, and gateway binaries must match the same release commit. Preserve release tag matching and the embedded WAN installation files.
 
-## Configs installation and runtime boundary
+## Local gateway validation
 
-Preserve the existing [Configs integration](https://github.com/agoodkind/configs). Configs supplies a known per-gateway source document, installs canonical_content through pveguest_file, and records typed state only after the validated file write succeeds.
-
-Validate staged content with the deployed release's check-network and check-firewall commands. Reconcile exact CLI syntax to that release. The deploy-gate rename belongs to another workstream. A userspace plan cannot establish kernel namespace or nft acceptance.
-
-Preserve prerequisite ordering from host kernel-module support through container creation, binary and package installation, schema and role installation, staged validation, and unit startup. Verify required LXC capabilities and live isolated firewall execution.
-
-Both mwan-ifmgr@wan.service and mwan-agent.service restart from network write_id changes. Retain binary and package restart dependencies. Container configuration must not depend on mutable document content or force guest replacement.
-
-Retire each gateway's Ansible document writer before its first OpenTofu file adoption. pveguest_file detects installed-file drift. The configured-state resource detects no kernel drift. Live reload and live route mutation remain deferred; stable identities and prior state must support later updates without replacement.
-
-Failed staged validation deletes the staged file and preserves the installed file, sha256, write_id, and prior typed state. The next plan must show the pending configured changes. A validate-only update does not establish staged-content acceptance. A failed service restart uses existing rollback and watchdog recovery.
+Run `mwan debug check-network <network_json> <schema_dir>` to validate the
+document. Run `mwan debug check-firewall <network_json> <schema_dir>` to apply
+and inspect its firewall rules in an isolated network namespace. The
+firewall check requires permission to create a Linux network namespace and
+manage nftables rules. A provider plan cannot establish that the kernel will
+accept the generated rules.
 
 ## Acceptance
 
@@ -143,7 +125,6 @@ Reuse [network-min.json](../../../gateway/yang/instances/network-min.json) and [
 | Version 0 state upgrade | Existing routes retain keys; new maps initialize empty. |
 | Shared compiler and runtime rendering | Structured projection and rendered firewall use identical rules and order. |
 | Published-format package with filesystem mirror | tofu init and plan succeed without compiler access or separately installed native libraries. |
-| Failed staged content write | Installed file and typed state retain prior values. |
-| Live LXC content write | Both deployed checks succeed before startup; both consumers restart from write_id. |
+| Local gateway validation | The network check validates the document. The firewall check applies and reads the rules in an isolated namespace. |
 
-Clean-host package and live deployment results are required evidence, not existing results. Coordinate deployment windows and locks per environment. Separate QA, production, and PowerEdge deployments do not block each other. Completion requires reviewed shared semantics, signed commits, current ruleset compliance, and evidence for each acceptance boundary.
+Verify package behavior on every supported native platform. Check kernel firewall behavior separately from OpenTofu plan output.

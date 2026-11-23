@@ -4,18 +4,14 @@ package observation
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
 	"os"
-	"os/exec"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -23,10 +19,10 @@ import (
 
 	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/ops"
 	"goodkind.io/mwan/internal/wanstate"
-	"goodkind.io/mwan/internal/watchdogconfig"
 )
+
+var errProbeObserverMustBeLocal = errors.New("probe observer must be local")
 
 // PublicAssignment projects the current provider assignment and its acquisition lifetime.
 type PublicAssignment struct {
@@ -49,15 +45,13 @@ type PathIdentity struct {
 
 // RuntimeConfig supplies execution dependencies and protected credential file references.
 type RuntimeConfig struct {
-	MachineIDPath            string          `json:"machine_id_path"`
-	ProbeBinary              string          `json:"probe_binary"`
-	TransportOverheadSeconds int             `json:"transport_overhead_seconds"`
-	CloudflareAccountID      string          `json:"cloudflare_account_id,omitempty"`
-	CloudflareTokenFile      string          `json:"cloudflare_token_file,omitempty"`
-	Paths                    []PathIdentity  `json:"paths,omitempty"`
-	GuestOps                 *ops.RealOps    `json:"-"`
-	State                    *wanstate.Store `json:"-"`
-	Clock                    clock.Clock     `json:"-"`
+	MachineIDPath       string          `json:"machine_id_path"`
+	ProbeBinary         string          `json:"probe_binary"`
+	CloudflareAccountID string          `json:"cloudflare_account_id,omitempty"`
+	CloudflareTokenFile string          `json:"cloudflare_token_file,omitempty"`
+	Paths               []PathIdentity  `json:"paths,omitempty"`
+	State               *wanstate.Store `json:"-"`
+	Clock               clock.Clock     `json:"-"`
 }
 
 // Executor performs configured checks on their specified observers.
@@ -66,23 +60,14 @@ type Executor struct {
 	log    *slog.Logger
 }
 
-// NewExecutor uses the existing guest transport and current operational state.
+// NewExecutor uses the current operational state.
 func NewExecutor(cfg RuntimeConfig, log *slog.Logger) *Executor {
 	if log == nil {
 		log = slog.Default()
 	}
 
-	if cfg.GuestOps == nil {
-		var daemonConfig watchdogconfig.Config
-		cfg.GuestOps = ops.NewRealOps(&daemonConfig, log)
-	}
-
 	if cfg.Clock == nil {
 		cfg.Clock = clock.Real{}
-	}
-
-	if cfg.TransportOverheadSeconds <= 0 {
-		cfg.TransportOverheadSeconds = 5
 	}
 
 	return &Executor{config: cfg, log: log}
@@ -108,15 +93,8 @@ func Validate(spec CheckSpec) error {
 
 	switch spec.Observer.Kind {
 	case EndpointLocal:
-		if spec.Observer.VMID != 0 || spec.Observer.HostMachineID != "" {
-			return errors.New("local observer cannot specify a guest or host")
-		}
-	case EndpointQEMU, EndpointLXC:
-		if spec.Observer.VMID <= 0 || spec.Observer.HostMachineID == "" {
-			return errors.New("remote observer requires VMID and host machine ID")
-		}
 	default:
-		return errors.New("unsupported observer kind")
+		return errProbeObserverMustBeLocal
 	}
 
 	switch spec.Dimension {
@@ -233,10 +211,6 @@ func (executor *Executor) Run(ctx context.Context, spec CheckSpec) Result {
 	}
 
 	machineID := strings.TrimSpace(string(identity))
-	if spec.Observer.Kind != EndpointLocal {
-		return executor.remote(ctx, spec, result, machineID)
-	}
-
 	result.Observer.MachineID = machineID
 	if machineID != spec.Observer.MachineID {
 		result.Reason = "observer machine identity does not match"
@@ -299,116 +273,6 @@ func verifyRequiredPath(spec CheckSpec, result Result) Result {
 	}
 
 	return result
-}
-
-func (executor *Executor) remote(
-	ctx context.Context,
-	spec CheckSpec,
-	result Result,
-	machineID string,
-) Result {
-	executor.log.InfoContext(
-		ctx,
-		"remote observation",
-		"check_id",
-		spec.ID,
-		"observer_kind",
-		spec.Observer.Kind,
-		"vmid",
-		spec.Observer.VMID,
-	)
-	if machineID != spec.Observer.HostMachineID || executor.config.ProbeBinary == "" {
-		result.Reason = "observer host identity or probe executable is unavailable"
-		return result
-	}
-
-	localSpec := spec
-	localSpec.Observer = Endpoint{
-		Kind:          EndpointLocal,
-		MachineID:     spec.Observer.MachineID,
-		VMID:          0,
-		HostMachineID: "",
-	}
-	encoded, err := json.Marshal(localSpec)
-	if err != nil {
-		result.Reason = "encode observer request"
-		return result
-	}
-
-	paths, err := json.Marshal(executor.paths())
-	if err != nil || len(paths) > 64*1024 || len(encoded) > 64*1024 {
-		result.Reason = "observer metadata exceeds its encoding limit"
-		return result
-	}
-
-	commandContext, cancel := context.WithTimeout(
-		ctx,
-		(time.Duration(
-			spec.TimeoutSeconds,
-		)+time.Duration(executor.config.TransportOverheadSeconds))*time.Second,
-	)
-	defer cancel()
-	var output []byte
-	if spec.Observer.Kind == EndpointLXC {
-		command := exec.CommandContext(commandContext, "pct")
-		command.Args = append(
-			command.Args,
-			"exec",
-			strconv.Itoa(spec.Observer.VMID),
-			"--",
-			executor.config.ProbeBinary,
-			"observe",
-			"--check",
-			string(encoded),
-			"--paths",
-			string(paths),
-		)
-		output, err = command.Output()
-	} else {
-		var reply ops.GuestExecResult
-		reply, err = executor.config.GuestOps.GuestExec(
-			commandContext,
-			strconv.Itoa(spec.Observer.VMID),
-			executor.config.ProbeBinary,
-			"observe",
-			"--check",
-			string(encoded),
-			"--paths",
-			string(paths),
-		)
-		output = []byte(reply.Stdout)
-		if err == nil && reply.ExitCode != 0 {
-			err = fmt.Errorf("observer exited with status %d", reply.ExitCode)
-		}
-	}
-
-	if err != nil {
-		result.Reason = "remote observer execution failed"
-		return result
-	}
-
-	var remote Result
-	if err := json.Unmarshal(output, &remote); err != nil {
-		result.Reason = "remote observer returned invalid result JSON"
-		return result
-	}
-
-	if remote.CheckID != spec.ID || remote.Observer != localSpec.Observer ||
-		remote.Family != spec.Family ||
-		remote.Operation != spec.Operation ||
-		remote.Dimension != spec.Dimension {
-		result.Reason = "remote result does not match the observer request"
-		return result
-	}
-
-	remote.Observer = spec.Observer
-	age := executor.config.Clock.Now().Sub(remote.ObservedAt)
-	if remote.ObservedAt.IsZero() || age < 0 ||
-		age > time.Duration(spec.MaxAgeSeconds)*time.Second {
-		remote.Availability, remote.Outcome, remote.Reason = AvailabilityStale, OutcomeUnknown, "remote observation timestamp is outside its required lifetime"
-	}
-
-	return remote
 }
 
 func family(spec CheckSpec) string {

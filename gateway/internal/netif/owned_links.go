@@ -2,19 +2,14 @@ package netif
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/vishvananda/netlink"
-	"goodkind.io/mwan/internal/installfile"
 	"goodkind.io/mwan/internal/interfaceintent"
 )
 
@@ -166,29 +161,12 @@ func NewOwnedLinkReconciler(statePath string) (*OwnedLinkReconciler, error) {
 
 // save writes the journal and syncs its directory.
 func (r *OwnedLinkReconciler) save() error {
-	data, err := json.Marshal(r.state)
-	if err != nil {
-		slog.Warn("owned link state encode failed", "path", r.statePath, "err", err)
-		return fmt.Errorf("encode owned link state: %w", err)
+	const state = "owned link state"
+	if err := writeOwnedJournal(r.statePath, state, r.state); err != nil {
+		return err
 	}
 
-	if _, err := installfile.Write(r.statePath, append(data, '\n'), 0o600); err != nil {
-		slog.Warn("owned link state write failed", "path", r.statePath, "err", err)
-		return fmt.Errorf("write owned link state: %w", err)
-	}
-
-	directory, err := os.Open(filepath.Dir(r.statePath))
-	if err != nil {
-		slog.Warn("owned link state directory open failed", "path", r.statePath, "err", err)
-		return fmt.Errorf("open owned link state directory: %w", err)
-	}
-	defer directory.Close()
-	if err := directory.Sync(); err != nil {
-		slog.Warn("owned link state directory sync failed", "path", r.statePath, "err", err)
-		return fmt.Errorf("sync owned link state directory: %w", err)
-	}
-
-	return nil
+	return syncOwnedDirectory(r.statePath, state, state)
 }
 
 func aliasFor(id string) string { return ownedAliasPrefix + id }
@@ -430,7 +408,7 @@ func (r *OwnedLinkReconciler) reconcileMembership(
 		return false
 	}
 
-	if master.Type() != "bridge" {
+	if master.Type() != virtualBridgeKind {
 		result.Status, result.Err = OwnedLinkFailed, fmt.Errorf(
 			"%s is not a bridge",
 			result.Dependency,
@@ -503,7 +481,7 @@ func (r *OwnedLinkReconciler) dependency(
 	}
 
 	if connection.Link != nil && connection.Link.Kind == interfaceintent.KindBridge &&
-		link.Type() != "bridge" {
+		link.Type() != virtualBridgeKind {
 		failed := newOwnedLinkResult("", name, OwnedLinkFailed)
 		failed.Err = fmt.Errorf("%s is not a bridge", connection.Name)
 
@@ -535,7 +513,7 @@ func physicalLink(connection interfaceintent.Connection) (netlink.Link, error) {
 	var found netlink.Link
 
 	for _, link := range links {
-		if link.Type() == "bridge" || link.Type() == "vlan" ||
+		if link.Type() == virtualBridgeKind || link.Type() == "vlan" ||
 			len(link.Attrs().PermHWAddr) == 0 ||
 			!strings.EqualFold(link.Attrs().PermHWAddr.String(), match.HardwareAddress) {
 			continue
@@ -569,8 +547,8 @@ func (r *OwnedLinkReconciler) matchesParentRecord(record virtualRecord, parent n
 		return false
 	}
 
-	if record.ParentKind == "bridge" {
-		if record.ParentBoot != r.bootID || parent.Type() != "bridge" ||
+	if record.ParentKind == virtualBridgeKind {
+		if record.ParentBoot != r.bootID || parent.Type() != virtualBridgeKind ||
 			parent.Attrs().Alias != record.Parent {
 			return false
 		}
@@ -618,500 +596,6 @@ func (r *OwnedLinkReconciler) matchesRecordedVirtual(link netlink.Link, record v
 	}
 
 	return r.matchesParentRecord(record, parent)
-}
-
-func validateVirtual(
-	link netlink.Link,
-	connection interfaceintent.Connection,
-	parent netlink.Link,
-	alias string,
-) error {
-	if alias == "" || link.Attrs().Alias != alias {
-		return fmt.Errorf("%s has a different ownership tag", link.Attrs().Name)
-	}
-
-	if connection.Link.Kind == interfaceintent.KindTunnel {
-		return validateTunnelLink(link, connection)
-	}
-
-	if connection.Link.Kind == interfaceintent.KindBridge {
-		if link.Type() != "bridge" {
-			return fmt.Errorf("%s is not a bridge", link.Attrs().Name)
-		}
-
-		return nil
-	}
-
-	vlan, ok := link.(*netlink.Vlan)
-	if !ok || vlan.VlanId != int(connection.Link.VLAN.ID) ||
-		vlan.VlanProtocol != netlink.VLAN_PROTOCOL_8021Q ||
-		link.Attrs().ParentIndex != parent.Attrs().Index {
-		return fmt.Errorf("%s has incompatible VLAN identity", link.Attrs().Name)
-	}
-
-	return nil
-}
-
-func validateTemporaryLink(
-	link netlink.Link,
-	connection interfaceintent.Connection,
-	parent netlink.Link,
-	record virtualRecord,
-) error {
-	if record.Alias == "" || link.Attrs().Alias != "" && link.Attrs().Alias != record.Alias {
-		return fmt.Errorf("quarantined temporary link %s: foreign alias", link.Attrs().Name)
-	}
-
-	if connection.Link.Kind == interfaceintent.KindTunnel {
-		return validateTemporaryTunnel(link, connection, record)
-	}
-
-	if connection.Link.Kind == interfaceintent.KindBridge {
-		if link.Type() != "bridge" {
-			return fmt.Errorf("quarantined temporary link %s: wrong kind", link.Attrs().Name)
-		}
-
-		return nil
-	}
-
-	vlan, ok := link.(*netlink.Vlan)
-	if !ok || vlan.VlanId != int(connection.Link.VLAN.ID) ||
-		vlan.VlanProtocol != netlink.VLAN_PROTOCOL_8021Q ||
-		link.Attrs().ParentIndex != parent.Attrs().Index {
-		return fmt.Errorf("quarantined temporary link %s: wrong VLAN identity", link.Attrs().Name)
-	}
-
-	return nil
-}
-
-// The VLAN call to virtualLink uses the VLAN parent and a nil underlay.
-// The tunnel call to virtualLink uses the underlay and a nil VLAN parent.
-func (r *OwnedLinkReconciler) virtualLink(
-	connection interfaceintent.Connection,
-	parent netlink.Link,
-	underlay netlink.Link,
-) (netlink.Link, bool, error) {
-	if connection.Link.Kind != interfaceintent.KindBridge &&
-		connection.Link.Kind != interfaceintent.KindVLAN &&
-		connection.Link.Kind != interfaceintent.KindTunnel {
-		return nil, false, fmt.Errorf("unsupported link kind %s", connection.Link.Kind)
-	}
-
-	id := connection.ID.String()
-	record := r.state.Virtuals[id]
-	links, err := netlink.LinkList()
-	if err != nil {
-		slog.Warn("virtual link listing failed", "connection_id", id, "err", err)
-		return nil, false, fmt.Errorf("list virtual links: %w", err)
-	}
-
-	var found netlink.Link
-
-	for _, link := range links {
-		if isAliasForConnection(link.Attrs().Alias, id) {
-			if found != nil {
-				return nil, false, fmt.Errorf("connection %s has multiple tagged links", id)
-			}
-
-			found = link
-		}
-
-		if link.Attrs().Name == connection.Name &&
-			(record.Alias == "" || link.Attrs().Alias != record.Alias) {
-			return nil, false, fmt.Errorf("name %s is occupied by an unowned link", connection.Name)
-		}
-	}
-
-	// A reboot removes every virtual link. A reservation from an older boot has no link to recover.
-	if record, ok := r.state.Virtuals[id]; ok && found == nil && !record.Complete &&
-		record.BootID == r.bootID {
-		return r.recoverVirtual(connection, parent, record)
-	}
-
-	if err := r.validateVXLANReceiverAvailability(connection, found, underlay, links); err != nil {
-		return nil, false, err
-	}
-
-	if found != nil {
-		return r.adoptVirtualLink(found, connection, parent)
-	}
-
-	if _, ok := r.state.Virtuals[id]; ok {
-		delete(r.state.Virtuals, id)
-		if err := r.save(); err != nil {
-			return nil, false, err
-		}
-	}
-
-	record, err = r.reserveVirtual(connection, parent, underlay, links)
-	if err != nil {
-		return nil, false, err
-	}
-
-	requested, err := requestedVirtualLink(connection, record.TempName, parent, underlay)
-	if err != nil {
-		return r.handleVirtualAddError(connection, parent, record, err)
-	}
-
-	if err := netlink.LinkAdd(requested); err != nil {
-		return r.handleVirtualAddError(connection, parent, record, err)
-	}
-
-	return r.recoverVirtual(connection, parent, record)
-}
-
-func (r *OwnedLinkReconciler) reserveVirtual(
-	connection interfaceintent.Connection,
-	parent netlink.Link,
-	underlay netlink.Link,
-	links []netlink.Link,
-) (virtualRecord, error) {
-	id := connection.ID.String()
-	var nonce [6]byte
-	if _, err := rand.Read(nonce[:]); err != nil {
-		slog.Warn("temporary link name reservation failed", "connection_id", id, "err", err)
-		return virtualRecord{}, fmt.Errorf("reserve temporary link name: %w", err)
-	}
-
-	record := virtualRecord{
-		BootID:         r.bootID,
-		ConnectionID:   id,
-		Alias:          aliasFor(id) + ":" + hex.EncodeToString(nonce[:]),
-		TempName:       "mw-" + hex.EncodeToString(nonce[:]),
-		Name:           connection.Name,
-		Kind:           string(connection.Link.Kind),
-		VLANID:         0,
-		Parent:         "",
-		ParentMAC:      "",
-		ParentBoot:     "",
-		ParentKind:     "",
-		ParentName:     "",
-		ParentIndex:    0,
-		LinkIndex:      0,
-		Complete:       false,
-		Quarantined:    false,
-		TunnelProtocol: "",
-		TunnelRemote:   "",
-		TunnelLocal:    "",
-		TunnelTTL:      0,
-		VXLAN:          nil,
-	}
-	recordTunnelIdentity(&record, connection.Link.Tunnel, underlay)
-	if parent != nil {
-		record.VLANID = connection.Link.VLAN.ID
-		record.Parent, record.ParentMAC = parentRecord(parent)
-		record.ParentBoot, record.ParentKind, record.ParentName = r.bootID, parent.Type(), parent.Attrs().Name
-		record.ParentIndex = parent.Attrs().Index
-	}
-
-	for _, link := range links {
-		if link.Attrs().Name == record.TempName {
-			return virtualRecord{}, fmt.Errorf("temporary name %s is occupied", record.TempName)
-		}
-	}
-
-	r.state.Virtuals[id] = record
-	if err := r.save(); err != nil {
-		delete(r.state.Virtuals, id)
-		return virtualRecord{}, err
-	}
-
-	return record, nil
-}
-
-func (r *OwnedLinkReconciler) handleVirtualAddError(
-	connection interfaceintent.Connection,
-	parent netlink.Link,
-	record virtualRecord,
-	addErr error,
-) (netlink.Link, bool, error) {
-	slog.Warn(
-		"owned virtual link creation failed",
-		"connection_id",
-		record.ConnectionID,
-		"temporary_name",
-		record.TempName,
-		"kind",
-		record.Kind,
-		"err",
-		addErr,
-	)
-	temporary, lookupErr := netlink.LinkByName(record.TempName)
-	if IsLinkNotFound(lookupErr) {
-		delete(r.state.Virtuals, record.ConnectionID)
-		if saveErr := r.save(); saveErr != nil {
-			return nil, false, errors.Join(addErr, saveErr)
-		}
-
-		return nil, false, fmt.Errorf("create %s: %w", record.TempName, addErr)
-	}
-
-	if lookupErr != nil {
-		return nil, false, errors.Join(addErr, lookupErr)
-	}
-
-	if identityErr := validateTemporaryLink(
-		temporary,
-		connection,
-		parent,
-		record,
-	); identityErr != nil {
-		record.Quarantined = true
-		r.state.Virtuals[record.ConnectionID] = record
-		if saveErr := r.save(); saveErr != nil {
-			return nil, false, errors.Join(addErr, identityErr, saveErr)
-		}
-
-		return nil, false, errors.Join(addErr, identityErr)
-	}
-
-	return r.recoverVirtual(connection, parent, record)
-}
-
-func (r *OwnedLinkReconciler) adoptVirtualLink(
-	found netlink.Link,
-	connection interfaceintent.Connection,
-	parent netlink.Link,
-) (netlink.Link, bool, error) {
-	id := connection.ID.String()
-	recorded, ok := r.state.Virtuals[id]
-	if !ok || recorded.ConnectionID != id || recorded.Alias == "" ||
-		found.Attrs().Alias != recorded.Alias {
-		return nil, false, fmt.Errorf(
-			"tagged link %s lacks a matching ownership record",
-			found.Attrs().Name,
-		)
-	}
-
-	if !recorded.Complete &&
-		found.Attrs().Name == recorded.TempName {
-		return r.recoverVirtual(connection, parent, recorded)
-	}
-
-	if !recorded.Complete && found.Attrs().Name == recorded.Name {
-		if recorded.Quarantined || recorded.BootID != r.bootID ||
-			recorded.Kind != string(connection.Link.Kind) ||
-			recorded.Name != connection.Name ||
-			parent != nil && !r.matchesParentRecord(recorded, parent) ||
-			connection.Link.Kind == interfaceintent.KindVLAN &&
-				recorded.VLANID != connection.Link.VLAN.ID {
-			return nil, false, fmt.Errorf(
-				"renamed link %s differs from its reservation",
-				found.Attrs().Name,
-			)
-		}
-
-		if !r.matchesVXLANReservation(found, recorded) {
-			return nil, false, fmt.Errorf(
-				"renamed link %s differs from its VXLAN reservation",
-				found.Attrs().Name,
-			)
-		}
-
-		if err := validateVirtual(found, connection, parent, recorded.Alias); err != nil {
-			return nil, false, err
-		}
-
-		recorded.LinkIndex = found.Attrs().Index
-		recorded.Complete = true
-		r.state.Virtuals[id] = recorded
-		if err := r.save(); err != nil {
-			return nil, false, err
-		}
-
-		return found, false, nil
-	}
-
-	if !r.matchesRecordedVirtual(found, recorded) {
-		return nil, false, fmt.Errorf(
-			"tagged link %s differs from its ownership record",
-			found.Attrs().Name,
-		)
-	}
-
-	if err := validateVirtual(found, connection, parent, recorded.Alias); err != nil {
-		return nil, false, err
-	}
-
-	record := virtualRecord{
-		BootID:         r.bootID,
-		ConnectionID:   id,
-		Alias:          recorded.Alias,
-		TempName:       recorded.TempName,
-		Name:           connection.Name,
-		Kind:           string(connection.Link.Kind),
-		VLANID:         0,
-		Parent:         "",
-		ParentMAC:      "",
-		ParentBoot:     "",
-		ParentKind:     "",
-		ParentName:     "",
-		ParentIndex:    0,
-		LinkIndex:      found.Attrs().Index,
-		Complete:       true,
-		Quarantined:    false,
-		TunnelProtocol: recorded.TunnelProtocol,
-		TunnelRemote:   "",
-		TunnelLocal:    "",
-		TunnelTTL:      recorded.TunnelTTL,
-		VXLAN:          recorded.VXLAN,
-	}
-	if recorded.VXLAN != nil {
-		record.TunnelRemote, record.TunnelLocal = recorded.TunnelRemote, recorded.TunnelLocal
-		record.Parent, record.ParentMAC = recorded.Parent, recorded.ParentMAC
-		record.ParentBoot, record.ParentKind, record.ParentName = recorded.ParentBoot, recorded.ParentKind, recorded.ParentName
-		record.ParentIndex = recorded.ParentIndex
-	}
-
-	if parent != nil {
-		record.VLANID = connection.Link.VLAN.ID
-		record.Parent, record.ParentMAC = parentRecord(parent)
-		record.ParentBoot, record.ParentKind, record.ParentName = r.bootID, parent.Type(), parent.Attrs().Name
-		record.ParentIndex = parent.Attrs().Index
-	}
-
-	r.state.Virtuals[id] = record
-	if err := r.save(); err != nil {
-		return nil, false, err
-	}
-
-	if found.Attrs().Name != connection.Name {
-		if err := netlink.LinkSetName(found, connection.Name); err != nil {
-			slog.Warn(
-				"owned virtual link rename failed",
-				"connection_id",
-				id,
-				"current_name",
-				found.Attrs().Name,
-				"desired_name",
-				connection.Name,
-				"err",
-				err,
-			)
-
-			return nil, false, fmt.Errorf("rename owned link %s: %w", found.Attrs().Name, err)
-		}
-
-		var err error
-		found, err = netlink.LinkByName(connection.Name)
-		if err != nil {
-			return nil, false, fmt.Errorf("refresh renamed link %s: %w", connection.Name, err)
-		}
-
-		if err := validateVirtual(found, connection, parent, record.Alias); err != nil {
-			return nil, false, err
-		}
-	}
-
-	return found, false, nil
-}
-
-func (r *OwnedLinkReconciler) recoverVirtual(
-	connection interfaceintent.Connection,
-	parent netlink.Link,
-	record virtualRecord,
-) (netlink.Link, bool, error) {
-	if record.Quarantined || record.Alias == "" || record.BootID != r.bootID ||
-		record.ConnectionID != connection.ID.String() ||
-		record.Name != connection.Name ||
-		record.Kind != string(connection.Link.Kind) {
-		return nil, false, fmt.Errorf(
-			"quarantined temporary link %s: journal identity differs",
-			record.TempName,
-		)
-	}
-
-	if parent != nil && !r.matchesParentRecord(record, parent) {
-		return nil, false, fmt.Errorf(
-			"quarantined temporary link %s: parent identity differs",
-			record.TempName,
-		)
-	}
-
-	if connection.Link.Kind == interfaceintent.KindVLAN &&
-		record.VLANID != connection.Link.VLAN.ID {
-		return nil, false, fmt.Errorf(
-			"quarantined temporary link %s: VLAN tag differs",
-			record.TempName,
-		)
-	}
-
-	if record.VXLAN != nil && !r.matchesVXLANUnderlay(record) {
-		return nil, false, fmt.Errorf(
-			"quarantined temporary link %s: underlay identity differs",
-			record.TempName,
-		)
-	}
-
-	link, err := netlink.LinkByName(record.TempName)
-	if IsLinkNotFound(err) {
-		delete(r.state.Virtuals, connection.ID.String())
-		if err := r.save(); err != nil {
-			return nil, false, err
-		}
-
-		return nil, false, fmt.Errorf(
-			"reserved temporary link %s is absent; retry reconciliation",
-			record.TempName,
-		)
-	}
-
-	if err != nil {
-		return nil, false, fmt.Errorf("find reserved link %s: %w", record.TempName, err)
-	}
-
-	if err := validateTemporaryLink(link, connection, parent, record); err != nil {
-		return nil, false, err
-	}
-
-	if link.Attrs().Alias == "" {
-		if err := netlink.LinkSetAlias(link, record.Alias); err != nil {
-			return nil, false, fmt.Errorf("tag reserved link %s: %w", record.TempName, err)
-		}
-	}
-
-	link, err = netlink.LinkByName(record.TempName)
-	if err != nil {
-		return nil, false, fmt.Errorf("verify reserved link alias: %w", err)
-	}
-
-	if link.Attrs().Alias != record.Alias {
-		return nil, false, fmt.Errorf("reserved link %s has incorrect alias", record.TempName)
-	}
-
-	if err := netlink.LinkSetName(link, connection.Name); err != nil {
-		slog.Warn(
-			"temporary owned link rename failed",
-			"connection_id",
-			connection.ID.String(),
-			"temporary_name",
-			record.TempName,
-			"desired_name",
-			connection.Name,
-			"err",
-			err,
-		)
-
-		return nil, false, fmt.Errorf("rename temporary link: %w", err)
-	}
-
-	link, err = netlink.LinkByName(connection.Name)
-	if err != nil {
-		return nil, false, fmt.Errorf("refresh renamed link: %w", err)
-	}
-
-	if err := validateVirtual(link, connection, parent, record.Alias); err != nil {
-		return nil, false, err
-	}
-
-	record.Complete = true
-	record.LinkIndex = link.Attrs().Index
-	r.state.Virtuals[connection.ID.String()] = record
-	if err := r.save(); err != nil {
-		return nil, true, err
-	}
-
-	return link, true, nil
 }
 
 func (r *OwnedLinkReconciler) attach(id string, slave netlink.Link, master netlink.Link) error {

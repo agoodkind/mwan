@@ -257,14 +257,6 @@ func TestRoleWANListsFilesUnitsAndModules(t *testing.T) {
 		)
 	}
 
-	if trace := units["mwan-trace-boot.service"]; !trace.Enabled || trace.Active {
-		t.Errorf(
-			"mwan-trace-boot.service enabled=%v active=%v, want enabled and not active",
-			trace.Enabled,
-			trace.Active,
-		)
-	}
-
 	if len(role.SysrepoData) != 2 || role.SysrepoData[0].Datastore != "startup" ||
 		role.SysrepoData[1].Datastore != "running" ||
 		role.SysrepoData[0].Module != "ietf-netconf-acm" {
@@ -324,82 +316,6 @@ func TestRoleWANListsFilesUnitsAndModules(t *testing.T) {
 	}
 	if !reflect.DeepEqual(role.StackModules, wantStackModules) {
 		t.Errorf("stack_yang_modules = %+v, want %+v", role.StackModules, wantStackModules)
-	}
-}
-
-func TestRoleHostHasNoYangModules(t *testing.T) {
-	t.Parallel()
-	provider := newServer(t, buildCommit, "")
-
-	role, diagnostics := provider.readRole(t, "host")
-
-	if len(diagnostics) > 0 {
-		t.Fatalf("read failed: %s", diagnosticText(diagnostics))
-	}
-
-	if len(role.Modules) != 0 || len(role.SysrepoData) != 0 {
-		t.Errorf(
-			"host role lists %d YANG modules and %d sysrepo imports, want none",
-			len(role.Modules),
-			len(role.SysrepoData),
-		)
-	}
-
-	if len(role.StackModules) != 0 {
-		t.Errorf("stack_yang_modules = %+v, want none", role.StackModules)
-	}
-
-	if len(role.Files) != 1 || role.Files[0].Path != "/etc/systemd/system/mwan-ifmgr.service" {
-		t.Errorf("host role files = %v, want the single interface manager unit", role.Files)
-	}
-}
-
-func TestRoleLXCGuestKeepsOnlyNamespacedSysctls(t *testing.T) {
-	t.Parallel()
-	provider := newServer(t, buildCommit, "")
-
-	role, diagnostics := provider.readRoleForGuest(t, "wan", "lxc")
-
-	if len(diagnostics) > 0 {
-		t.Fatalf("read failed: %s", diagnosticText(diagnostics))
-	}
-
-	const sysctlPath = "/etc/sysctl.d/99-quiet-console.conf"
-
-	for _, file := range role.Files {
-		if file.Path != sysctlPath {
-			continue
-		}
-
-		if !strings.Contains(file.Content, "net.netfilter.nf_conntrack_log_invalid = 0") {
-			t.Errorf("the lxc sysctl file dropped the conntrack setting:\n%s", file.Content)
-		}
-
-		for line := range strings.SplitSeq(file.Content, "\n") {
-			trimmed := strings.TrimSpace(line)
-			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-				continue
-			}
-
-			if !strings.HasPrefix(trimmed, "net.") {
-				t.Errorf("the lxc sysctl file lists a key outside net.: %q", trimmed)
-			}
-		}
-
-		return
-	}
-
-	t.Fatalf("the wan role for lxc lists no %s", sysctlPath)
-}
-
-func TestRoleRejectsAnUnknownGuestType(t *testing.T) {
-	t.Parallel()
-	provider := newServer(t, buildCommit, "")
-
-	_, diagnostics := provider.readRoleForGuest(t, "wan", "docker")
-
-	if len(diagnostics) == 0 {
-		t.Fatal("an unknown guest type was accepted")
 	}
 }
 

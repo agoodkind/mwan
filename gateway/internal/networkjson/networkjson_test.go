@@ -122,7 +122,7 @@ const validDocument = `{
     ],
     "goodkind-mwan-steering:steering-group": {
       "hash-mode": "source",
-      "reserved-tables": [400, 500],
+      "reserved-tables": [400],
       "translation": {
         "internal-prefix": "2001:db8:b01::/60",
         "opnsense-edge-v6": "2001:db8:b01:fe::2",
@@ -714,8 +714,8 @@ func TestLoadCarriesSteeringAndTheGroupSettings(t *testing.T) {
 		t.Fatalf("hash mode = %q, want source", got)
 	}
 
-	if !reflect.DeepEqual(loaded.ReservedTables, []int{400, 500}) {
-		t.Fatalf("reserved tables = %v, want [400 500]", loaded.ReservedTables)
+	if !reflect.DeepEqual(loaded.ReservedTables, []int{400}) {
+		t.Fatalf("reserved tables = %v, want [400]", loaded.ReservedTables)
 	}
 }
 
@@ -918,9 +918,7 @@ func TestLoadRejectsADuplicateForcedDSCP(t *testing.T) {
 func TestLoadRejectsAProviderOnAReservedTable(t *testing.T) {
 	t.Parallel()
 
-	// The tunnel holds table 400 and the out-of-band path holds 500. A provider
-	// on either would install a default route the tunnel's own rules then
-	// select, which is an outage nobody would attribute to an inventory edit.
+	// A provider using table 400 could replace the tunnel's default route.
 	body := strings.Replace(validDocument, `"table-id": 100,`, `"table-id": 400,`, 1)
 	_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err == nil {
@@ -935,11 +933,10 @@ func TestLoadRejectsAProviderOnAReservedTable(t *testing.T) {
 func TestLoadRejectsAProviderOnAKernelTable(t *testing.T) {
 	t.Parallel()
 
-	// The kernel's own tables are reserved whether or not inventory says so,
-	// because they are not inventory values. Table 254 is main: a provider
-	// there would replace the host's own default route.
+	// Table 254 is the kernel's main routing table. A provider using this
+	// table could replace the gateway's default route.
 	body := strings.Replace(validDocument, `"table-id": 100,`, `"table-id": 254,`, 1)
-	body = strings.Replace(body, `"reserved-tables": [400, 500],`, ``, 1)
+	body = strings.Replace(body, `"reserved-tables": [400],`, ``, 1)
 	_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err == nil {
 		t.Fatal("Load accepted a provider on a kernel table")
@@ -953,16 +950,15 @@ func TestLoadRejectsAProviderOnAKernelTable(t *testing.T) {
 func TestLoadAcceptsAGroupWithNoReservedTables(t *testing.T) {
 	t.Parallel()
 
-	// An empty leaf-list renders as an absent key, so a gateway that reserves
-	// nothing beyond the kernel's own tables must load.
-	body := strings.Replace(validDocument, `"reserved-tables": [400, 500],`, ``, 1)
+	// YANG omits the key for an empty leaf-list.
+	body := strings.Replace(validDocument, `"reserved-tables": [400],`, ``, 1)
 	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load rejected a group with no reserved tables: %v", err)
 	}
 
 	if len(loaded.ReservedTables) != 0 {
-		t.Fatalf("reserved tables = %v, want none", loaded.ReservedTables)
+		t.Fatalf("reserved tables = %v, want []", loaded.ReservedTables)
 	}
 }
 

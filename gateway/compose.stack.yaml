@@ -1,0 +1,41 @@
+x-stack: &stack
+  platform: linux/${WANCONFIG_STACK_ARCH:?Set WANCONFIG_STACK_ARCH to amd64 or arm64}
+  build:
+    context: ..
+    dockerfile: gateway/Dockerfile.stack
+    target: stack-runtime
+    args:
+      WANCONFIG_LIBYANG_VERSION: ${WANCONFIG_LIBYANG_VERSION:?Export the stack pins from build/wanconfig.mk}
+      WANCONFIG_LIBYANG_COMMIT: ${WANCONFIG_LIBYANG_COMMIT:?Export the stack pins from build/wanconfig.mk}
+      WANCONFIG_SYSREPO_VERSION: ${WANCONFIG_SYSREPO_VERSION:?Export the stack pins from build/wanconfig.mk}
+      WANCONFIG_SYSREPO_COMMIT: ${WANCONFIG_SYSREPO_COMMIT:?Export the stack pins from build/wanconfig.mk}
+      WANCONFIG_LIBYANG_CPP_VERSION: ${WANCONFIG_LIBYANG_CPP_VERSION:?Export the stack pins from build/wanconfig.mk}
+      WANCONFIG_LIBYANG_CPP_COMMIT: ${WANCONFIG_LIBYANG_CPP_COMMIT:?Export the stack pins from build/wanconfig.mk}
+      WANCONFIG_SYSREPO_CPP_VERSION: ${WANCONFIG_SYSREPO_CPP_VERSION:?Export the stack pins from build/wanconfig.mk}
+      WANCONFIG_SYSREPO_CPP_COMMIT: ${WANCONFIG_SYSREPO_CPP_COMMIT:?Export the stack pins from build/wanconfig.mk}
+      WANCONFIG_NGHTTP2_ASIO_VERSION: ${WANCONFIG_NGHTTP2_ASIO_VERSION:?Export the stack pins from build/wanconfig.mk}
+      WANCONFIG_NGHTTP2_ASIO_COMMIT: ${WANCONFIG_NGHTTP2_ASIO_COMMIT:?Export the stack pins from build/wanconfig.mk}
+      WANCONFIG_ROUSETTE_VERSION: ${WANCONFIG_ROUSETTE_VERSION:?Export the stack pins from build/wanconfig.mk}
+      WANCONFIG_ROUSETTE_COMMIT: ${WANCONFIG_ROUSETTE_COMMIT:?Export the stack pins from build/wanconfig.mk}
+
+services:
+  stack-build:
+    <<: *stack
+    command:
+      - -verify
+      - /bundle/wanconfig-stack_linux_${WANCONFIG_STACK_ARCH}.tar.gz
+      - -out
+      - /out
+    volumes:
+      - type: bind
+        source: ./dist
+        target: /out
+        bind:
+          create_host_path: true
+
+  stack-verify:
+    <<: *stack
+    profiles: [verify]
+    command:
+      - -verify
+      - /bundle/wanconfig-stack_linux_${WANCONFIG_STACK_ARCH}.tar.gz

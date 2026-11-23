@@ -127,6 +127,51 @@ func (b *builder) unpackBundle(ctx context.Context, bundlePath string, root stri
 	return nil
 }
 
+// Export only after the clean runtime environment accepts the bundle.
+// Rename a complete copy rather than exposing a partial release archive.
+func (b *builder) exportVerified(ctx context.Context, bundlePath string) error {
+	if err := os.MkdirAll(b.outDir, 0o755); err != nil {
+		return b.fail(ctx, "create export directory", err)
+	}
+
+	input, err := os.Open(bundlePath)
+	if err != nil {
+		return b.fail(ctx, "open verified bundle", err)
+	}
+
+	defer func() { _ = input.Close() }()
+	output, err := os.CreateTemp(b.outDir, ".wanconfig-stack-*")
+	if err != nil {
+		return b.fail(ctx, "create bundle export", err)
+	}
+
+	defer func() { _ = os.Remove(output.Name()) }()
+	if _, err := io.Copy(output, input); err != nil {
+		_ = output.Close()
+
+		return b.fail(ctx, "copy verified bundle", err)
+	}
+
+	if err := output.Chmod(0o644); err != nil {
+		_ = output.Close()
+
+		return b.fail(ctx, "set bundle permissions", err)
+	}
+
+	if err := output.Close(); err != nil {
+		return b.fail(ctx, "close bundle export", err)
+	}
+
+	target := filepath.Join(b.outDir, filepath.Base(bundlePath))
+	if err := os.Rename(output.Name(), target); err != nil {
+		return b.fail(ctx, "publish verified bundle", err)
+	}
+
+	b.log.InfoContext(ctx, "wanconfigstack: verified bundle exported", "path", target)
+
+	return nil
+}
+
 func (b *builder) writeUnpacked(ctx context.Context, target string, content io.Reader) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return b.fail(ctx, "create unpack dir", err, slog.String("path", target))

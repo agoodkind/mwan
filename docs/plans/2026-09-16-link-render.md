@@ -6,7 +6,7 @@
 
 > **Historical.** The gateway Go module moved to agoodkind/mwan in configs commit 6f18c39d. The `mwan/go`, `mwan/yang` and `third_party/yang` paths on this page refer to the tree as it was.
 
-> **Completed.** MWAN-492 and MWAN-491 run on both gateways in release `202609210222-10-0b079b8`. [The MWAN-506 completion plan](2026-09-21-mwan-506-completion.md) finishes the provider-local failure contract introduced during this work.
+> **Completed.** MWAN-492 and MWAN-491 run on both gateways in release `202609210222-10-0b079b8`.
 
 **Goal:** The gateway daemon writes every provider link's systemd-networkd unit files from the network configuration it already loads, so a provider is one inventory entry and a deploy with no file authored by hand.
 

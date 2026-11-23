@@ -4,7 +4,7 @@ package mwan.v1;
 
 option go_package = "goodkind.io/mwan/gen/mwan/v1;mwanv1";
 
-// MWANAgent runs inside the MWAN VM on virtio-vsock (e.g. port 50051).
+// MWANAgent serves the local Linux gateway API.
 service MWANAgent {
   rpc GetHealth(GetHealthRequest) returns (GetHealthResponse);
   rpc Ping(PingRequest) returns (PingResponse);
@@ -49,11 +49,11 @@ message PingResponse {
 message GetConfigStateRequest {}
 
 message GetConfigStateResponse {
+  reserved 2;
+  reserved "last_deploy_epoch";
   string config_hash     = 1;
-  int64  last_deploy_epoch = 2;
   int64  last_change_epoch = 3;
   // Per-file hashes in sha256sum(1) format: "<hash>  <path>\n" per file.
-  // The watchdog diffs consecutive values to report which files changed.
   string config_manifest = 4;
 }
 
@@ -76,7 +76,6 @@ message AgentEvent {
   oneof event {
     ConfigChangedEvent config_changed = 2;
     HealthTransitionEvent health_transition = 3;
-    SuppressRollbackEvent suppress_rollback = 4;
   }
 }
 
@@ -89,11 +88,6 @@ message HealthTransitionEvent {
   string interface_name = 1;
   string old_state = 2;
   string new_state = 3;
-}
-
-message SuppressRollbackEvent {
-  int32 duration_seconds = 1;
-  string reason = 2;
 }
 
 // BGP status and control

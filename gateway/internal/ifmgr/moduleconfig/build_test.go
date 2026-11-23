@@ -1,7 +1,6 @@
 package moduleconfig
 
 import (
-	"errors"
 	"net/netip"
 	"reflect"
 	"strings"
@@ -19,130 +18,7 @@ import (
 	"goodkind.io/mwan/internal/networkjson"
 )
 
-func TestBuildPolicyRuleUIDRangeUsesStaticRange(t *testing.T) {
-	t.Parallel()
-
-	rule := config.IfMgrPolicyRuleSection{UIDRange: "997-997"}
-	got, err := buildPolicyRuleUIDRange(
-		rule,
-		func(string) (string, error) {
-			return "", errors.New("lookup should not run")
-		},
-	)
-	if err != nil {
-		t.Fatalf("buildPolicyRuleUIDRange returned error: %v", err)
-	}
-
-	if got != "997-997" {
-		t.Fatalf("buildPolicyRuleUIDRange returned %q, want %q", got, "997-997")
-	}
-}
-
-func TestBuildPolicyRuleUIDRangeUsesUser(t *testing.T) {
-	t.Parallel()
-
-	rule := config.IfMgrPolicyRuleSection{UIDUser: "cloudflared-oob"}
-	got, err := buildPolicyRuleUIDRange(
-		rule,
-		func(username string) (string, error) {
-			if username != "cloudflared-oob" {
-				t.Fatalf("lookup username = %q, want %q", username, "cloudflared-oob")
-			}
-
-			return "997", nil
-		},
-	)
-	if err != nil {
-		t.Fatalf("buildPolicyRuleUIDRange returned error: %v", err)
-	}
-
-	if got != "997-997" {
-		t.Fatalf("buildPolicyRuleUIDRange returned %q, want %q", got, "997-997")
-	}
-}
-
-func TestBuildPolicyRuleUIDRangeRejectsConflictingSelectors(t *testing.T) {
-	t.Parallel()
-
-	rule := config.IfMgrPolicyRuleSection{
-		UIDRange: "997-997",
-		UIDUser:  "cloudflared-oob",
-	}
-	_, err := buildPolicyRuleUIDRange(
-		rule,
-		func(string) (string, error) {
-			return "997", nil
-		},
-	)
-	if err == nil {
-		t.Fatal("buildPolicyRuleUIDRange returned nil error")
-	}
-}
-
-func TestBuildPolicyRuleUIDRangeRejectsInvalidUID(t *testing.T) {
-	t.Parallel()
-
-	rule := config.IfMgrPolicyRuleSection{UIDUser: "cloudflared-oob"}
-	_, err := buildPolicyRuleUIDRange(
-		rule,
-		func(string) (string, error) {
-			return "not-a-number", nil
-		},
-	)
-	if err == nil {
-		t.Fatal("buildPolicyRuleUIDRange returned nil error")
-	}
-}
-
-func TestBuildHostIPv6PolicyConfig(t *testing.T) {
-	t.Parallel()
-
-	cfg, err := buildHostIPv6PolicyConfig(&config.IfMgrHostIPv6PolicySection{
-		MissingIfaceGracePeriod: "3m",
-		Interface: []config.IfMgrHostIPv6PolicyIfaceSection{
-			{
-				Name:             "vmbr0",
-				AcceptRA:         2,
-				AutoConf:         true,
-				AcceptRADefRtr:   true,
-				SolicitRA:        true,
-				CleanupRADefault: false,
-			},
-			{
-				Name:             "vmbr4",
-				AcceptRA:         0,
-				AutoConf:         false,
-				AcceptRADefRtr:   false,
-				SolicitRA:        false,
-				CleanupRADefault: true,
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("buildHostIPv6PolicyConfig returned error: %v", err)
-	}
-
-	if got := cfg.MissingIfaceGracePeriod; got != 3*time.Minute {
-		t.Fatalf("MissingIfaceGracePeriod = %s, want %s", got, 3*time.Minute)
-	}
-
-	if len(cfg.Policies) != 2 {
-		t.Fatalf("policy count = %d, want 2", len(cfg.Policies))
-	}
-
-	if got := cfg.Policies[0].Name; got != "vmbr0" {
-		t.Fatalf("first policy iface = %q, want %q", got, "vmbr0")
-	}
-
-	if got := cfg.Policies[1].CleanupRADefault; !got {
-		t.Fatal("second policy should clean denied RA defaults")
-	}
-}
-
-// sharedWANForTest is the [ifmgr] shared per-WAN foundation both module builders
-// read: the WAN map ([ifmgr.wan.<name>]) with each WAN's full config (iface plus
-// the routing slots wan.routes owns), plus the shared edge addresses and internal
-// prefix on [ifmgr] itself. One home per WAN; modules read the fields they need.
+// sharedWANForTest supplies providers and shared network settings to builder tests.
 func sharedWANForTest() config.IfMgrSection {
 	return config.IfMgrSection{
 		InternalPrefix: "3d06:bad:b01::/60",
@@ -195,9 +71,6 @@ func ifmgrForTest(mods config.IfMgrModulesSection) config.IfMgrSection {
 	return s
 }
 
-// TestBuildWANRefs pins that the generic per-WAN builder turns the shared
-// [ifmgr.wan] map into the sorted per-WAN list (identity plus routing fields)
-// and the shared prefixes every module builder reuses.
 func TestBuildWANRefs(t *testing.T) {
 	t.Parallel()
 
@@ -264,8 +137,7 @@ func TestBuildWANRoutesConfig(t *testing.T) {
 		t.Fatalf("buildWANRoutesConfig returned error: %v", err)
 	}
 
-	// The per-WAN routing data comes from the shared [ifmgr.wan.<name>] map
-	// (sharedWANForTest), not a wan.routes-local list.
+	// WAN route configuration reads provider routing data from the shared WAN map.
 	want := wanroutes.Config{
 		InternalIface:   "vmbr250",
 		OpnsenseEdgeV6:  "3d06:bad:b01:201::1",
@@ -331,57 +203,6 @@ func TestBuildWANRoutesConfigNilSection(t *testing.T) {
 	}
 }
 
-func modulesWithUnresolvableUIDRule() config.IfMgrModulesSection {
-	return config.IfMgrModulesSection{
-		PolicyRules: &config.IfMgrPolicyRulesSection{
-			Rule: []config.IfMgrPolicyRuleSection{
-				{
-					Family:   "inet6",
-					Priority: 5,
-					UIDUser:  "mwan-test-no-such-user",
-					Table:    "oob",
-					TableID:  500,
-				},
-			},
-		},
-		WAN: &config.IfMgrModulesWANSection{
-			Routes: &config.IfMgrWANRoutesSection{InternalIface: "enmwanbr0"},
-		},
-	}
-}
-
-func TestBuildIfMgrModuleConfigsWANRoleSkipsPolicyRules(t *testing.T) {
-	t.Parallel()
-
-	set, err := Build(ifmgrForTest(modulesWithUnresolvableUIDRule()), "wan")
-	if err != nil {
-		t.Fatalf("Build(wan) returned error: %v", err)
-	}
-
-	if _, ok := set["policy_rules"]; ok {
-		t.Fatal("wan role must not build a policy_rules config")
-	}
-
-	if _, ok := set["wan.routes"]; !ok {
-		t.Fatal("wan role must build a wan.routes config")
-	}
-}
-
-func TestBuildIfMgrModuleConfigsOOBRoleBuildsPolicyRules(t *testing.T) {
-	t.Parallel()
-
-	_, err := Build(ifmgrForTest(modulesWithUnresolvableUIDRule()), "oob")
-	if err == nil {
-		t.Fatal("oob role must build policy_rules and surface the uid lookup failure")
-	}
-
-	if !strings.Contains(err.Error(), "policy_rules") {
-		t.Fatalf("oob build error = %q, want it to mention policy_rules", err)
-	}
-}
-
-// TestBuildIfMgrModuleConfigsUnknownRole confirms an unknown role is rejected
-// rather than silently producing an empty config set.
 func TestBuildIfMgrModuleConfigsUnknownRole(t *testing.T) {
 	t.Parallel()
 
@@ -484,9 +305,7 @@ func TestBuildHealthConfig(t *testing.T) {
 	}
 }
 
-// enabledHealthWANSection returns a fully specified, valid enabled health WAN
-// section so filter and threshold tests do not trip the enabled-WAN policy
-// validation in buildHealthConfig.
+// enabledHealthWANSection returns settings that pass HealthConfig validation.
 func enabledHealthWANSection(intervalSeconds int) config.IfMgrHealthWANSection {
 	return config.IfMgrHealthWANSection{
 		Enabled:              true,
@@ -657,7 +476,7 @@ func TestBuildHealthConfigAcceptsSingleFamilyProvider(t *testing.T) {
 	}
 }
 
-// A nil target family makes the health module use its module-wide target list.
+// The health module uses its module-wide IPv6 targets when the provider list is nil.
 func TestBuildHealthConfigKeepsAnOmittedTargetFamilyNil(t *testing.T) {
 	t.Parallel()
 
@@ -698,8 +517,6 @@ func TestBuildHealthConfigNilSection(t *testing.T) {
 	}
 }
 
-// TestBuildIfMgrModuleConfigsWANRoleBuildsAll confirms the wan role yields the
-// health, wan.routes, and npt module configs from one shared config.
 func TestBuildIfMgrModuleConfigsWANRoleBuildsAll(t *testing.T) {
 	t.Parallel()
 
@@ -783,12 +600,14 @@ func TestBuildSteeringConfig(t *testing.T) {
 	}
 }
 
-// TestBuildIfMgrModuleConfigsWANRoleBuildsSteering pins that the wan role builds
-// the steering config, so a gateway that runs the role programs the balancer.
 func TestBuildIfMgrModuleConfigsWANRoleBuildsSteering(t *testing.T) {
 	t.Parallel()
 
-	ifmgrCfg := ifmgrForTest(modulesWithUnresolvableUIDRule())
+	ifmgrCfg := ifmgrForTest(config.IfMgrModulesSection{
+		WAN: &config.IfMgrModulesWANSection{
+			Routes: &config.IfMgrWANRoutesSection{InternalIface: "enmwanbr0"},
+		},
+	})
 	ifmgrCfg.HashMode = "random"
 	set, err := Build(ifmgrCfg, "wan")
 	if err != nil {
@@ -867,8 +686,7 @@ ping_count = 99
 		)
 	}
 
-	// The two runtime paths the network file deliberately does not carry must
-	// survive.
+	// TOML retains the health and route state paths.
 	if cfg.IfMgr.Modules.Health.StateFile != "/run/mwan-health.state" {
 		t.Fatalf("health state_file did not parse: %q", cfg.IfMgr.Modules.Health.StateFile)
 	}
@@ -987,9 +805,8 @@ ping_count = 99
 	}
 }
 
-// TestGatewayLoadWithoutNetworkTOML is the end state: the gateway's config.toml
-// has no network section at all, and the wan role still builds every module
-// config from the network file plus the two state-file paths TOML keeps.
+// TestGatewayLoadWithoutNetworkTOML checks module configuration from network data
+// while TOML supplies the health and route state paths.
 func TestGatewayLoadWithoutNetworkTOML(t *testing.T) {
 	t.Parallel()
 

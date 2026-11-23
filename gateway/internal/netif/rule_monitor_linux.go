@@ -137,11 +137,11 @@ func UnmarshalRuleDeletion(log *slog.Logger, message syscall.NetlinkMessage) (Ru
 		return empty, fmt.Errorf("policy-rule header has %d bytes", len(message.Data))
 	}
 
-	family := "inet"
+	family := tunnelEndpointRouteFamily
 	switch message.Data[0] {
 	case unix.AF_INET:
 	case unix.AF_INET6:
-		family = "inet6"
+		family = string(httpFamilyV6)
 	default:
 		return empty, nil
 	}
@@ -211,7 +211,9 @@ func ruleAttributeInt(value []byte) (int, error) {
 
 func ruleSource(family string, bits byte, value []byte) (string, error) {
 	address, ok := netip.AddrFromSlice(value)
-	if !ok || (family == "inet" && !address.Is4()) || (family == "inet6" && !address.Is6()) {
+	if !ok ||
+		(family == tunnelEndpointRouteFamily && !address.Is4()) ||
+		(family == string(httpFamilyV6) && !address.Is6()) {
 		return "", fmt.Errorf("invalid %s policy-rule source", family)
 	}
 

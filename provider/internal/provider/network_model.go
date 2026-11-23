@@ -51,7 +51,6 @@ const (
 		"Key encoding replaces % with %25 and | with %7C inside each value. " +
 		"The key_type value specifies the nftables element type. The elements set contains the plan's prefixes. " +
 		"The elements set does not preserve prefix order."
-	guestTypeDescription = "The guest_type attribute contains the decoded guest type."
 )
 
 type networkMaps struct {

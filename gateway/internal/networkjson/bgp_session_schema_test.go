@@ -119,12 +119,6 @@ func requireSchemaFailure(t *testing.T, document string, want string) {
 	}
 }
 
-func TestLoadRejectsBGPSessionRouterID(t *testing.T) {
-	_, data := readInstance(t, "network-bgp-tunnel.json")
-	document := withTunnelSessionMembers(t, string(data), `"router-id": "192.0.2.130",`)
-	requireSchemaFailure(t, document, `Obsolete schema node "router-id" instantiated in data.`)
-}
-
 func TestLoadRejectsBGPSessionWithoutValidFamily(t *testing.T) {
 	_, data := readInstance(t, "network-bgp-tunnel.json")
 	document := withTunnelSessionMembers(t, string(data), `"family": ["ipv4-unicast"],`)

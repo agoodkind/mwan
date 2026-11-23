@@ -217,7 +217,7 @@ func (module *Module) loadDHCPv6Recovery(
 
 	log.WarnContext(ctx, "addresses: DHCPv6 saved lease rejected", "connection_id", id, "err", err)
 	if module.deleteRecoveryLease(ctx, id, netif.LeaseProtocolDHCPv6) {
-		module.recordLeasePersistence(id, "ipv6", "rejected", err.Error())
+		module.recordLeasePersistence(id, ipv6FamilyName, "rejected", err.Error())
 	}
 
 	return nil, true
@@ -554,9 +554,9 @@ func (module *Module) handleDHCPv6Event(
 				"err",
 				err,
 			)
-			module.recordLeasePersistence(id, "ipv6", "failed", err.Error())
+			module.recordLeasePersistence(id, ipv6FamilyName, "failed", err.Error())
 		} else {
-			module.recordLeasePersistence(id, "ipv6", "saved", "")
+			module.recordLeasePersistence(id, ipv6FamilyName, "saved", "")
 		}
 	}
 
@@ -640,7 +640,7 @@ func (module *Module) delegationAssignments(
 		iaid := lease.IAID
 		assignment := interfaceintent.Assignment{
 			ConnectionID:   connection.ID,
-			Family:         "ipv6",
+			Family:         ipv6FamilyName,
 			Kind:           interfaceintent.AssignmentDHCPv6IAPD,
 			Source:         "dhcpv6",
 			Purpose:        "",
@@ -690,7 +690,7 @@ func (module *Module) localDHCPv6Assignments(
 			assignments,
 			interfaceintent.Assignment{
 				ConnectionID:   connection.ID,
-				Family:         "ipv6",
+				Family:         ipv6FamilyName,
 				Kind:           interfaceintent.AssignmentDHCPv6IANA,
 				Source:         "dhcpv6",
 				Purpose:        interfaceintent.PurposeLocal,
@@ -781,7 +781,7 @@ func (module *Module) familyDelegations(
 	connection interfaceintent.Connection,
 	family string,
 ) []interfaceintent.Assignment {
-	if family != "ipv6" {
+	if family != ipv6FamilyName {
 		return nil
 	}
 

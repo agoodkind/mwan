@@ -11,9 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/installspec"
-	"goodkind.io/mwan/internal/watchdogconfig"
 	moduleschema "goodkind.io/mwan/internal/yangpub/schema"
 )
 
@@ -23,7 +21,6 @@ type roleDataSource struct{}
 
 type roleModel struct {
 	Role             types.String           `tfsdk:"role"`
-	GuestType        types.String           `tfsdk:"guest_type"`
 	BinaryPath       types.String           `tfsdk:"binary_path"`
 	Files            []roleFileModel        `tfsdk:"files"`
 	Units            []unitModel            `tfsdk:"units"`
@@ -90,17 +87,6 @@ func roleNames() []string {
 	return names
 }
 
-func guestTypeNames() []string {
-	guests := watchdogconfig.GuestTypes()
-
-	names := make([]string, 0, len(guests))
-	for _, guest := range guests {
-		names = append(names, string(guest))
-	}
-
-	return names
-}
-
 func (d *roleDataSource) Schema(
 	_ context.Context,
 	_ datasource.SchemaRequest,
@@ -112,17 +98,8 @@ func (d *roleDataSource) Schema(
 		Attributes: map[string]schema.Attribute{
 			"role": schema.StringAttribute{
 				Required:    true,
-				Description: "Select wan, failover, host, or router.",
+				Description: "Select the wan role.",
 				Validators:  []validator.String{stringvalidator.OneOf(roleNames()...)},
-			},
-			"guest_type": schema.StringAttribute{
-				Optional:   true,
-				Validators: []validator.String{stringvalidator.OneOf(guestTypeNames()...)},
-				Description: "guest_type accepts qemu or lxc. A null guest_type means qemu. " +
-					"For lxc, the data source returns only settings with the net. prefix and " +
-					"the comment lines directly above each setting from each sysctl file. " +
-					"The data source omits files without such settings. " +
-					"guest_type must match the guest-type leaf in the gateway's network.json.",
 			},
 			"files": schema.ListNestedAttribute{
 				Computed:    true,
@@ -148,33 +125,7 @@ func (d *roleDataSource) Schema(
 				Computed:    true,
 				Description: "The service commands execute the MWAN binary at this path.",
 			},
-			"units": schema.ListNestedAttribute{
-				Computed:    true,
-				Description: "The list includes role services and system services that read installed files. It uses instance names instead of service templates.",
-				NestedObject: schema.NestedAttributeObject{
-					Attributes: map[string]schema.Attribute{
-						"name": schema.StringAttribute{
-							Computed:    true,
-							Description: "The name identifies a systemd unit.",
-						},
-						"enabled": schema.BoolAttribute{
-							Computed:    true,
-							Description: "The value specifies the desired service enablement state.",
-						},
-						"active": schema.BoolAttribute{
-							Computed: true,
-							Description: "The value specifies the desired active state. It is false for a oneshot unit " +
-								"without RemainAfterExit.",
-						},
-						"files": schema.ListAttribute{
-							Computed:    true,
-							ElementType: types.StringType,
-							Description: "These installation paths configure the service: its unit or instance template " +
-								"and their drop-ins.",
-						},
-					},
-				},
-			},
+			"units": roleUnitsAttribute(),
 			"sysrepo_data": schema.ListNestedAttribute{
 				Computed: true,
 				Description: "The data source returns sysrepo imports in order for the wan role. " +
@@ -256,34 +207,19 @@ func (d *roleDataSource) Read(
 		return
 	}
 
-	guest := config.GuestTypeQEMU
-	if !model.GuestType.IsNull() {
-		parsedGuest, parseErr := watchdogconfig.ParseGuestType(model.GuestType.ValueString())
-		if parseErr != nil {
-			resp.Diagnostics.AddError("Invalid guest type", parseErr.Error())
-			return
-		}
-
-		guest = parsedGuest
-	}
-
 	model.Files = make([]roleFileModel, 0, len(spec.Files))
 	for _, file := range spec.Files {
-		content, install, err := file.Content(guest)
+		content, err := installspec.Read(file.Embedded)
 		if err != nil {
 			resp.Diagnostics.AddError("Cannot read an embedded file", err.Error())
 			return
-		}
-
-		if !install {
-			continue
 		}
 
 		model.Files = append(model.Files, newRoleFile(file.Dest, content))
 	}
 
 	model.YangModules = make([]yangModuleModel, 0, len(moduleschema.Modules()))
-	if spec.Schema || spec.ValidationSchema {
+	if spec.Schema {
 		for _, module := range moduleschema.Modules() {
 			content, err := moduleschema.Read(module.File)
 			if err != nil {
@@ -292,19 +228,6 @@ func (d *roleDataSource) Read(
 			}
 
 			path := filepath.Join(moduleschema.InstallDir, module.File)
-			if !spec.Schema {
-				model.Files = append(
-					model.Files,
-					roleFileModel{
-						Path:    types.StringValue(path),
-						Content: types.StringValue(string(content)),
-						Mode: types.StringValue(
-							fmt.Sprintf(fileModeFormat, moduleschema.FileMode.Perm()),
-						),
-					},
-				)
-				continue
-			}
 
 			features := module.Features
 			if features == nil {
@@ -336,18 +259,7 @@ func (d *roleDataSource) Read(
 
 	model.BinaryPath = types.StringValue(installspec.BinaryPath)
 
-	model.Units = make([]unitModel, 0, len(units))
-	for _, unit := range units {
-		model.Units = append(
-			model.Units,
-			unitModel{
-				Name:    types.StringValue(unit.Name),
-				Enabled: types.BoolValue(unit.Enabled),
-				Active:  types.BoolValue(unit.Active),
-				Files:   unit.Files,
-			},
-		)
-	}
+	model.Units = roleUnitModels(units)
 
 	var policy []byte
 	if spec.Schema {
@@ -373,6 +285,54 @@ func (d *roleDataSource) Read(
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+}
+
+func roleUnitsAttribute() schema.ListNestedAttribute {
+	return schema.ListNestedAttribute{
+		Computed: true,
+		Description: "The list includes role services and system services that read installed files. " +
+			"It uses instance names instead of service templates.",
+		NestedObject: schema.NestedAttributeObject{
+			Attributes: map[string]schema.Attribute{
+				"name": schema.StringAttribute{
+					Computed:    true,
+					Description: "The name identifies a systemd unit.",
+				},
+				"enabled": schema.BoolAttribute{
+					Computed:    true,
+					Description: "The value specifies the desired service enablement state.",
+				},
+				"active": schema.BoolAttribute{
+					Computed: true,
+					Description: "The value specifies the desired active state. It is false for a oneshot unit " +
+						"without RemainAfterExit.",
+				},
+				"files": schema.ListAttribute{
+					Computed:    true,
+					ElementType: types.StringType,
+					Description: "These installation paths configure the service: its unit or instance template " +
+						"and their drop-ins.",
+				},
+			},
+		},
+	}
+}
+
+func roleUnitModels(units []installspec.Unit) []unitModel {
+	models := make([]unitModel, 0, len(units))
+	for _, unit := range units {
+		models = append(
+			models,
+			unitModel{
+				Name:    types.StringValue(unit.Name),
+				Enabled: types.BoolValue(unit.Enabled),
+				Active:  types.BoolValue(unit.Active),
+				Files:   unit.Files,
+			},
+		)
+	}
+
+	return models
 }
 
 func stackYangModulesAttribute() schema.ListNestedAttribute {

@@ -65,7 +65,7 @@ func ReconcileRules(
 	for _, r := range desired {
 		fam := r.Family
 		if fam == "" {
-			fam = "inet6"
+			fam = string(httpFamilyV6)
 		}
 
 		byFamily[fam] = append(byFamily[fam], r)
@@ -498,7 +498,7 @@ func parseSelector(family, s string) (*net.IPNet, error) {
 	}
 
 	bits := 128
-	if family == "inet" {
+	if family == tunnelEndpointRouteFamily {
 		bits = 32
 		ip = ip.To4()
 		if ip == nil {

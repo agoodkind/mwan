@@ -214,10 +214,10 @@ func (r *OwnedLinkReconciler) replaceTunnel(
 		return nil, false, errors.Join(updateErr, err)
 	}
 
-	replacement, _, err := r.virtualLink(connection, nil, underlay)
+	replacement, err := r.virtualLink(connection, nil, underlay)
 	if err != nil {
 		return nil, false, errors.Join(updateErr, err)
 	}
 
-	return replacement, true, nil
+	return replacement.link, true, nil
 }

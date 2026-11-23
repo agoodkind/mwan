@@ -1,0 +1,120 @@
+services:
+  binary:
+    extends:
+      file: compose.build.yaml
+      service: binary
+
+  test:
+    extends:
+      file: compose.build.yaml
+      service: build
+    command: [go, test, -count=1, -vet=off, ./...]
+
+  check-yang:
+    extends:
+      service: test
+    command: [make, check-yang]
+
+  yang-validate:
+    extends:
+      service: test
+    command: [make, yang-validate]
+
+  yang-validate-instances:
+    extends:
+      service: test
+    command: [make, yang-validate-instances]
+
+  provider-drift:
+    extends:
+      file: compose.build.yaml
+      service: build
+    image: mwan-provider-drift:${WANCONFIG_DOCKER_ARCH}
+    build:
+      target: drift
+    working_dir: /src/provider
+    environment:
+      GOWORK: /tmp/go.work
+      MWAN_BINARY: /src/gateway/bin/mwan-wanconfig-linux-${WANCONFIG_DOCKER_ARCH}
+    depends_on:
+      binary:
+        condition: service_completed_successfully
+    command:
+      - go
+      - test
+      - -v
+      - -count=1
+      - -tags
+      - drift
+      - -run
+      - TestProviderRoleMatchesMwanInstall
+      - ./internal/provider
+
+  firewall:
+    extends:
+      service: test
+    privileged: true
+    command:
+      - go
+      - test
+      - -v
+      - -count=1
+      - -tags
+      - firewall
+      - ./internal/commandline
+
+  netns:
+    extends:
+      file: compose.build.yaml
+      service: build
+    image: mwan-network-tests:${WANCONFIG_DOCKER_ARCH}
+    build:
+      target: network-tests
+    privileged: true
+    environment:
+      CGO_ENABLED: "0"
+    command:
+      - go
+      - test
+      - -v
+      - -count=1
+      - -tags
+      - netns
+      - ./internal/ifmgr/modules/wanroutes/...
+      - ./internal/ifmgr/modules/npt/...
+      - ./internal/ifmgr/modules/steering/...
+      - ./internal/ifmgr/modules/firewall/...
+      - ./internal/ifmgr/modules/links/...
+      - ./internal/netif/...
+      - ./internal/bgp/...
+      - ./internal/ifmgr/modules/bgpsessions/...
+
+  protocol-namespace:
+    extends:
+      service: netns
+    environment:
+      CGO_ENABLED: "1"
+      MWAN_PROTOCOL_ACCEPTANCE: "1"
+      GOFLAGS: -buildvcs=false
+    command:
+      - go
+      - test
+      - -v
+      - -count=1
+      - -timeout=30m
+      - -tags
+      - protocol
+      - ./internal/commandline
+
+volumes:
+  gomod:
+    name: mwan-gomod-${WANCONFIG_CACHE_ID:?Supply the checkout cache ID}-${WANCONFIG_DOCKER_ARCH}
+  cache:
+    name: mwan-build-${WANCONFIG_CACHE_ID:?Supply the checkout cache ID}-${WANCONFIG_DOCKER_ARCH}
+  gomk:
+    name: mwan-gomk-${WANCONFIG_CACHE_ID:?Supply the checkout cache ID}-${WANCONFIG_DOCKER_ARCH}
+
+networks:
+  default:
+    enable_ipv4: true
+    enable_ipv6: true

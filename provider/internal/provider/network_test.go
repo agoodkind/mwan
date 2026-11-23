@@ -482,7 +482,7 @@ func TestNetworkIgnoresWhitespaceAndMemberOrder(t *testing.T) {
 		state := server.mustReadNetwork(t, reformatted)
 
 		for _, name := range append(
-			[]string{"canonical_content", "guest_type"},
+			[]string{"canonical_content"},
 			networkMapNames()...,
 		) {
 			if got, want := attribute(t, state, name), attribute(t, original, name); !got.Equal(

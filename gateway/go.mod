@@ -2,7 +2,7 @@ module goodkind.io/mwan
 
 go 1.27.1
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 require (
 	github.com/BurntSushi/toml v1.6.0
@@ -11,25 +11,20 @@ require (
 	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/godbus/dbus/v5 v5.2.4
-	github.com/gofrs/flock v0.13.1
 	github.com/google/nftables v0.3.0
 	github.com/google/renameio/v2 v2.0.2
-	github.com/google/uuid v1.6.0
 	github.com/gopacket/gopacket v1.7.4
 	github.com/goreleaser/nfpm/v2 v2.48.0
 	github.com/insomniacslk/dhcp v0.0.0-20260719225207-c76316d4aa82
 	github.com/mdlayher/ndp v1.1.0
 	github.com/mdlayher/netlink v1.9.0 // v1.11.2 blocks conntrack replies; see https://github.com/mdlayher/netlink/pull/315.
 	github.com/mdlayher/packet v1.2.0
-	github.com/mdlayher/vsock v1.3.0
 	github.com/osrg/gobgp/v4 v4.10.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/ti-mo/conntrack v0.6.0
-	github.com/ti-mo/netfilter v0.5.3
 	github.com/vishvananda/netlink v1.3.2-0.20250829225123-b032ea08ecfd
 	github.com/vishvananda/netns v0.0.5
-	go.fd.io/govpp v0.14.0-alpha.0.20261019084134-c02eb51f8588
 	golang.org/x/net v0.61.0
 	golang.org/x/sys v0.49.0
 	goodkind.io/gklog v0.4.5
@@ -55,14 +50,15 @@ require (
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
-	github.com/ftrvxmtrx/fd v0.0.0-20150925145434-c6d800382fff // indirect
 	github.com/gaissmai/bart v0.30.0 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.9.2 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
+	github.com/gofrs/flock v0.13.1 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/goreleaser/chglog v0.7.4 // indirect
 	github.com/goreleaser/fileglob v1.4.1 // indirect
 	github.com/huandu/xstrings v1.6.3 // indirect
@@ -73,7 +69,6 @@ require (
 	github.com/kevinburke/ssh_config v1.6.0 // indirect
 	github.com/kjk/lzma v0.0.0-20161016003348-3fd93898850d // indirect
 	github.com/klauspost/compress v1.20.3 // indirect
-	github.com/lunixbochs/struc v0.0.0-20200521075829-a4cb8d33dbbe // indirect
 	github.com/mdlayher/socket v0.8.0 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
@@ -86,12 +81,12 @@ require (
 	github.com/segmentio/fasthash v1.0.3 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/shopspring/decimal v1.6.0 // indirect
-	github.com/sirupsen/logrus v1.10.2 // indirect
 	github.com/skeema/knownhosts v1.3.3 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/viper v1.21.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
+	github.com/ti-mo/netfilter v0.5.3 // indirect
 	github.com/tidwall/gjson v1.20.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.2 // indirect

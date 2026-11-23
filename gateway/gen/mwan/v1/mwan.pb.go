@@ -368,10 +368,8 @@ func (*GetConfigStateRequest) Descriptor() ([]byte, []int) {
 type GetConfigStateResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	ConfigHash      string                 `protobuf:"bytes,1,opt,name=config_hash,json=configHash,proto3" json:"config_hash,omitempty"`
-	LastDeployEpoch int64                  `protobuf:"varint,2,opt,name=last_deploy_epoch,json=lastDeployEpoch,proto3" json:"last_deploy_epoch,omitempty"`
 	LastChangeEpoch int64                  `protobuf:"varint,3,opt,name=last_change_epoch,json=lastChangeEpoch,proto3" json:"last_change_epoch,omitempty"`
 	// Per-file hashes in sha256sum(1) format: "<hash>  <path>\n" per file.
-	// The watchdog diffs consecutive values to report which files changed.
 	ConfigManifest string `protobuf:"bytes,4,opt,name=config_manifest,json=configManifest,proto3" json:"config_manifest,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
@@ -412,13 +410,6 @@ func (x *GetConfigStateResponse) GetConfigHash() string {
 		return x.ConfigHash
 	}
 	return ""
-}
-
-func (x *GetConfigStateResponse) GetLastDeployEpoch() int64 {
-	if x != nil {
-		return x.LastDeployEpoch
-	}
-	return 0
 }
 
 func (x *GetConfigStateResponse) GetLastChangeEpoch() int64 {
@@ -606,7 +597,6 @@ type AgentEvent struct {
 	//
 	//	*AgentEvent_ConfigChanged
 	//	*AgentEvent_HealthTransition
-	//	*AgentEvent_SuppressRollback
 	Event         isAgentEvent_Event `protobuf_oneof:"event"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -674,15 +664,6 @@ func (x *AgentEvent) GetHealthTransition() *HealthTransitionEvent {
 	return nil
 }
 
-func (x *AgentEvent) GetSuppressRollback() *SuppressRollbackEvent {
-	if x != nil {
-		if x, ok := x.Event.(*AgentEvent_SuppressRollback); ok {
-			return x.SuppressRollback
-		}
-	}
-	return nil
-}
-
 type isAgentEvent_Event interface {
 	isAgentEvent_Event()
 }
@@ -695,15 +676,9 @@ type AgentEvent_HealthTransition struct {
 	HealthTransition *HealthTransitionEvent `protobuf:"bytes,3,opt,name=health_transition,json=healthTransition,proto3,oneof"`
 }
 
-type AgentEvent_SuppressRollback struct {
-	SuppressRollback *SuppressRollbackEvent `protobuf:"bytes,4,opt,name=suppress_rollback,json=suppressRollback,proto3,oneof"`
-}
-
 func (*AgentEvent_ConfigChanged) isAgentEvent_Event() {}
 
 func (*AgentEvent_HealthTransition) isAgentEvent_Event() {}
-
-func (*AgentEvent_SuppressRollback) isAgentEvent_Event() {}
 
 type ConfigChangedEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -817,58 +792,6 @@ func (x *HealthTransitionEvent) GetNewState() string {
 	return ""
 }
 
-type SuppressRollbackEvent struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	DurationSeconds int32                  `protobuf:"varint,1,opt,name=duration_seconds,json=durationSeconds,proto3" json:"duration_seconds,omitempty"`
-	Reason          string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *SuppressRollbackEvent) Reset() {
-	*x = SuppressRollbackEvent{}
-	mi := &file_mwan_v1_mwan_proto_msgTypes[13]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SuppressRollbackEvent) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SuppressRollbackEvent) ProtoMessage() {}
-
-func (x *SuppressRollbackEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_mwan_v1_mwan_proto_msgTypes[13]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SuppressRollbackEvent.ProtoReflect.Descriptor instead.
-func (*SuppressRollbackEvent) Descriptor() ([]byte, []int) {
-	return file_mwan_v1_mwan_proto_rawDescGZIP(), []int{13}
-}
-
-func (x *SuppressRollbackEvent) GetDurationSeconds() int32 {
-	if x != nil {
-		return x.DurationSeconds
-	}
-	return 0
-}
-
-func (x *SuppressRollbackEvent) GetReason() string {
-	if x != nil {
-		return x.Reason
-	}
-	return ""
-}
-
 type GetBGPStatusRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -877,7 +800,7 @@ type GetBGPStatusRequest struct {
 
 func (x *GetBGPStatusRequest) Reset() {
 	*x = GetBGPStatusRequest{}
-	mi := &file_mwan_v1_mwan_proto_msgTypes[14]
+	mi := &file_mwan_v1_mwan_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -889,7 +812,7 @@ func (x *GetBGPStatusRequest) String() string {
 func (*GetBGPStatusRequest) ProtoMessage() {}
 
 func (x *GetBGPStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mwan_v1_mwan_proto_msgTypes[14]
+	mi := &file_mwan_v1_mwan_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -902,7 +825,7 @@ func (x *GetBGPStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBGPStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetBGPStatusRequest) Descriptor() ([]byte, []int) {
-	return file_mwan_v1_mwan_proto_rawDescGZIP(), []int{14}
+	return file_mwan_v1_mwan_proto_rawDescGZIP(), []int{13}
 }
 
 type GetBGPStatusResponse struct {
@@ -918,7 +841,7 @@ type GetBGPStatusResponse struct {
 
 func (x *GetBGPStatusResponse) Reset() {
 	*x = GetBGPStatusResponse{}
-	mi := &file_mwan_v1_mwan_proto_msgTypes[15]
+	mi := &file_mwan_v1_mwan_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -930,7 +853,7 @@ func (x *GetBGPStatusResponse) String() string {
 func (*GetBGPStatusResponse) ProtoMessage() {}
 
 func (x *GetBGPStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mwan_v1_mwan_proto_msgTypes[15]
+	mi := &file_mwan_v1_mwan_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -943,7 +866,7 @@ func (x *GetBGPStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBGPStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetBGPStatusResponse) Descriptor() ([]byte, []int) {
-	return file_mwan_v1_mwan_proto_rawDescGZIP(), []int{15}
+	return file_mwan_v1_mwan_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetBGPStatusResponse) GetAnnouncing() bool {
@@ -994,7 +917,7 @@ type BGPPeerStatus struct {
 
 func (x *BGPPeerStatus) Reset() {
 	*x = BGPPeerStatus{}
-	mi := &file_mwan_v1_mwan_proto_msgTypes[16]
+	mi := &file_mwan_v1_mwan_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1006,7 +929,7 @@ func (x *BGPPeerStatus) String() string {
 func (*BGPPeerStatus) ProtoMessage() {}
 
 func (x *BGPPeerStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_mwan_v1_mwan_proto_msgTypes[16]
+	mi := &file_mwan_v1_mwan_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1019,7 +942,7 @@ func (x *BGPPeerStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BGPPeerStatus.ProtoReflect.Descriptor instead.
 func (*BGPPeerStatus) Descriptor() ([]byte, []int) {
-	return file_mwan_v1_mwan_proto_rawDescGZIP(), []int{16}
+	return file_mwan_v1_mwan_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *BGPPeerStatus) GetAddress() string {
@@ -1065,7 +988,7 @@ type AnnounceRoutesRequest struct {
 
 func (x *AnnounceRoutesRequest) Reset() {
 	*x = AnnounceRoutesRequest{}
-	mi := &file_mwan_v1_mwan_proto_msgTypes[17]
+	mi := &file_mwan_v1_mwan_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1077,7 +1000,7 @@ func (x *AnnounceRoutesRequest) String() string {
 func (*AnnounceRoutesRequest) ProtoMessage() {}
 
 func (x *AnnounceRoutesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mwan_v1_mwan_proto_msgTypes[17]
+	mi := &file_mwan_v1_mwan_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1090,7 +1013,7 @@ func (x *AnnounceRoutesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnnounceRoutesRequest.ProtoReflect.Descriptor instead.
 func (*AnnounceRoutesRequest) Descriptor() ([]byte, []int) {
-	return file_mwan_v1_mwan_proto_rawDescGZIP(), []int{17}
+	return file_mwan_v1_mwan_proto_rawDescGZIP(), []int{16}
 }
 
 type AnnounceRoutesResponse struct {
@@ -1103,7 +1026,7 @@ type AnnounceRoutesResponse struct {
 
 func (x *AnnounceRoutesResponse) Reset() {
 	*x = AnnounceRoutesResponse{}
-	mi := &file_mwan_v1_mwan_proto_msgTypes[18]
+	mi := &file_mwan_v1_mwan_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1115,7 +1038,7 @@ func (x *AnnounceRoutesResponse) String() string {
 func (*AnnounceRoutesResponse) ProtoMessage() {}
 
 func (x *AnnounceRoutesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mwan_v1_mwan_proto_msgTypes[18]
+	mi := &file_mwan_v1_mwan_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1128,7 +1051,7 @@ func (x *AnnounceRoutesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnnounceRoutesResponse.ProtoReflect.Descriptor instead.
 func (*AnnounceRoutesResponse) Descriptor() ([]byte, []int) {
-	return file_mwan_v1_mwan_proto_rawDescGZIP(), []int{18}
+	return file_mwan_v1_mwan_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *AnnounceRoutesResponse) GetSuccess() bool {
@@ -1153,7 +1076,7 @@ type WithdrawRoutesRequest struct {
 
 func (x *WithdrawRoutesRequest) Reset() {
 	*x = WithdrawRoutesRequest{}
-	mi := &file_mwan_v1_mwan_proto_msgTypes[19]
+	mi := &file_mwan_v1_mwan_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1165,7 +1088,7 @@ func (x *WithdrawRoutesRequest) String() string {
 func (*WithdrawRoutesRequest) ProtoMessage() {}
 
 func (x *WithdrawRoutesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mwan_v1_mwan_proto_msgTypes[19]
+	mi := &file_mwan_v1_mwan_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1178,7 +1101,7 @@ func (x *WithdrawRoutesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WithdrawRoutesRequest.ProtoReflect.Descriptor instead.
 func (*WithdrawRoutesRequest) Descriptor() ([]byte, []int) {
-	return file_mwan_v1_mwan_proto_rawDescGZIP(), []int{19}
+	return file_mwan_v1_mwan_proto_rawDescGZIP(), []int{18}
 }
 
 type WithdrawRoutesResponse struct {
@@ -1191,7 +1114,7 @@ type WithdrawRoutesResponse struct {
 
 func (x *WithdrawRoutesResponse) Reset() {
 	*x = WithdrawRoutesResponse{}
-	mi := &file_mwan_v1_mwan_proto_msgTypes[20]
+	mi := &file_mwan_v1_mwan_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1203,7 +1126,7 @@ func (x *WithdrawRoutesResponse) String() string {
 func (*WithdrawRoutesResponse) ProtoMessage() {}
 
 func (x *WithdrawRoutesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mwan_v1_mwan_proto_msgTypes[20]
+	mi := &file_mwan_v1_mwan_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1216,7 +1139,7 @@ func (x *WithdrawRoutesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WithdrawRoutesResponse.ProtoReflect.Descriptor instead.
 func (*WithdrawRoutesResponse) Descriptor() ([]byte, []int) {
-	return file_mwan_v1_mwan_proto_rawDescGZIP(), []int{20}
+	return file_mwan_v1_mwan_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *WithdrawRoutesResponse) GetSuccess() bool {
@@ -1259,13 +1182,12 @@ const file_mwan_v1_mwan_proto_rawDesc = "" +
 	"\fPingResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12)\n" +
 	"\x10packets_received\x18\x02 \x01(\x05R\x0fpacketsReceived\"\x17\n" +
-	"\x15GetConfigStateRequest\"\xba\x01\n" +
+	"\x15GetConfigStateRequest\"\xa7\x01\n" +
 	"\x16GetConfigStateResponse\x12\x1f\n" +
 	"\vconfig_hash\x18\x01 \x01(\tR\n" +
 	"configHash\x12*\n" +
-	"\x11last_deploy_epoch\x18\x02 \x01(\x03R\x0flastDeployEpoch\x12*\n" +
 	"\x11last_change_epoch\x18\x03 \x01(\x03R\x0flastChangeEpoch\x12'\n" +
-	"\x0fconfig_manifest\x18\x04 \x01(\tR\x0econfigManifest\"\x16\n" +
+	"\x0fconfig_manifest\x18\x04 \x01(\tR\x0econfigManifestJ\x04\b\x02\x10\x03R\x11last_deploy_epoch\"\x16\n" +
 	"\x14GetSystemInfoRequest\"\xa9\x02\n" +
 	"\x15GetSystemInfoResponse\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12%\n" +
@@ -1275,13 +1197,12 @@ const file_mwan_v1_mwan_proto_rawDesc = "" +
 	"\x12memory_total_bytes\x18\x05 \x01(\x03R\x10memoryTotalBytes\x12&\n" +
 	"\x0fdisk_used_bytes\x18\x06 \x01(\x03R\rdiskUsedBytes\x12(\n" +
 	"\x10disk_total_bytes\x18\a \x01(\x03R\x0ediskTotalBytes\"\x14\n" +
-	"\x12WatchEventsRequest\"\xa2\x02\n" +
+	"\x12WatchEventsRequest\"\xd3\x01\n" +
 	"\n" +
 	"AgentEvent\x12'\n" +
 	"\x0ftimestamp_epoch\x18\x01 \x01(\x03R\x0etimestampEpoch\x12D\n" +
 	"\x0econfig_changed\x18\x02 \x01(\v2\x1b.mwan.v1.ConfigChangedEventH\x00R\rconfigChanged\x12M\n" +
-	"\x11health_transition\x18\x03 \x01(\v2\x1e.mwan.v1.HealthTransitionEventH\x00R\x10healthTransition\x12M\n" +
-	"\x11suppress_rollback\x18\x04 \x01(\v2\x1e.mwan.v1.SuppressRollbackEventH\x00R\x10suppressRollbackB\a\n" +
+	"\x11health_transition\x18\x03 \x01(\v2\x1e.mwan.v1.HealthTransitionEventH\x00R\x10healthTransitionB\a\n" +
 	"\x05event\"J\n" +
 	"\x12ConfigChangedEvent\x12\x19\n" +
 	"\bold_hash\x18\x01 \x01(\tR\aoldHash\x12\x19\n" +
@@ -1289,10 +1210,7 @@ const file_mwan_v1_mwan_proto_rawDesc = "" +
 	"\x15HealthTransitionEvent\x12%\n" +
 	"\x0einterface_name\x18\x01 \x01(\tR\rinterfaceName\x12\x1b\n" +
 	"\told_state\x18\x02 \x01(\tR\boldState\x12\x1b\n" +
-	"\tnew_state\x18\x03 \x01(\tR\bnewState\"Z\n" +
-	"\x15SuppressRollbackEvent\x12)\n" +
-	"\x10duration_seconds\x18\x01 \x01(\x05R\x0fdurationSeconds\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\tR\x06reason\"\x15\n" +
+	"\tnew_state\x18\x03 \x01(\tR\bnewState\"\x15\n" +
 	"\x13GetBGPStatusRequest\"\xdf\x01\n" +
 	"\x14GetBGPStatusResponse\x12\x1e\n" +
 	"\n" +
@@ -1338,7 +1256,7 @@ func file_mwan_v1_mwan_proto_rawDescGZIP() []byte {
 	return file_mwan_v1_mwan_proto_rawDescData
 }
 
-var file_mwan_v1_mwan_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_mwan_v1_mwan_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_mwan_v1_mwan_proto_goTypes = []any{
 	(*GetHealthRequest)(nil),       // 0: mwan.v1.GetHealthRequest
 	(*GetHealthResponse)(nil),      // 1: mwan.v1.GetHealthResponse
@@ -1353,42 +1271,40 @@ var file_mwan_v1_mwan_proto_goTypes = []any{
 	(*AgentEvent)(nil),             // 10: mwan.v1.AgentEvent
 	(*ConfigChangedEvent)(nil),     // 11: mwan.v1.ConfigChangedEvent
 	(*HealthTransitionEvent)(nil),  // 12: mwan.v1.HealthTransitionEvent
-	(*SuppressRollbackEvent)(nil),  // 13: mwan.v1.SuppressRollbackEvent
-	(*GetBGPStatusRequest)(nil),    // 14: mwan.v1.GetBGPStatusRequest
-	(*GetBGPStatusResponse)(nil),   // 15: mwan.v1.GetBGPStatusResponse
-	(*BGPPeerStatus)(nil),          // 16: mwan.v1.BGPPeerStatus
-	(*AnnounceRoutesRequest)(nil),  // 17: mwan.v1.AnnounceRoutesRequest
-	(*AnnounceRoutesResponse)(nil), // 18: mwan.v1.AnnounceRoutesResponse
-	(*WithdrawRoutesRequest)(nil),  // 19: mwan.v1.WithdrawRoutesRequest
-	(*WithdrawRoutesResponse)(nil), // 20: mwan.v1.WithdrawRoutesResponse
+	(*GetBGPStatusRequest)(nil),    // 13: mwan.v1.GetBGPStatusRequest
+	(*GetBGPStatusResponse)(nil),   // 14: mwan.v1.GetBGPStatusResponse
+	(*BGPPeerStatus)(nil),          // 15: mwan.v1.BGPPeerStatus
+	(*AnnounceRoutesRequest)(nil),  // 16: mwan.v1.AnnounceRoutesRequest
+	(*AnnounceRoutesResponse)(nil), // 17: mwan.v1.AnnounceRoutesResponse
+	(*WithdrawRoutesRequest)(nil),  // 18: mwan.v1.WithdrawRoutesRequest
+	(*WithdrawRoutesResponse)(nil), // 19: mwan.v1.WithdrawRoutesResponse
 }
 var file_mwan_v1_mwan_proto_depIdxs = []int32{
 	2,  // 0: mwan.v1.GetHealthResponse.wan_interfaces:type_name -> mwan.v1.WANStatus
 	11, // 1: mwan.v1.AgentEvent.config_changed:type_name -> mwan.v1.ConfigChangedEvent
 	12, // 2: mwan.v1.AgentEvent.health_transition:type_name -> mwan.v1.HealthTransitionEvent
-	13, // 3: mwan.v1.AgentEvent.suppress_rollback:type_name -> mwan.v1.SuppressRollbackEvent
-	16, // 4: mwan.v1.GetBGPStatusResponse.peers:type_name -> mwan.v1.BGPPeerStatus
-	0,  // 5: mwan.v1.MWANAgent.GetHealth:input_type -> mwan.v1.GetHealthRequest
-	3,  // 6: mwan.v1.MWANAgent.Ping:input_type -> mwan.v1.PingRequest
-	5,  // 7: mwan.v1.MWANAgent.GetConfigState:input_type -> mwan.v1.GetConfigStateRequest
-	7,  // 8: mwan.v1.MWANAgent.GetSystemInfo:input_type -> mwan.v1.GetSystemInfoRequest
-	9,  // 9: mwan.v1.MWANAgent.WatchEvents:input_type -> mwan.v1.WatchEventsRequest
-	14, // 10: mwan.v1.MWANAgent.GetBGPStatus:input_type -> mwan.v1.GetBGPStatusRequest
-	17, // 11: mwan.v1.MWANAgent.AnnounceRoutes:input_type -> mwan.v1.AnnounceRoutesRequest
-	19, // 12: mwan.v1.MWANAgent.WithdrawRoutes:input_type -> mwan.v1.WithdrawRoutesRequest
-	1,  // 13: mwan.v1.MWANAgent.GetHealth:output_type -> mwan.v1.GetHealthResponse
-	4,  // 14: mwan.v1.MWANAgent.Ping:output_type -> mwan.v1.PingResponse
-	6,  // 15: mwan.v1.MWANAgent.GetConfigState:output_type -> mwan.v1.GetConfigStateResponse
-	8,  // 16: mwan.v1.MWANAgent.GetSystemInfo:output_type -> mwan.v1.GetSystemInfoResponse
-	10, // 17: mwan.v1.MWANAgent.WatchEvents:output_type -> mwan.v1.AgentEvent
-	15, // 18: mwan.v1.MWANAgent.GetBGPStatus:output_type -> mwan.v1.GetBGPStatusResponse
-	18, // 19: mwan.v1.MWANAgent.AnnounceRoutes:output_type -> mwan.v1.AnnounceRoutesResponse
-	20, // 20: mwan.v1.MWANAgent.WithdrawRoutes:output_type -> mwan.v1.WithdrawRoutesResponse
-	13, // [13:21] is the sub-list for method output_type
-	5,  // [5:13] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	15, // 3: mwan.v1.GetBGPStatusResponse.peers:type_name -> mwan.v1.BGPPeerStatus
+	0,  // 4: mwan.v1.MWANAgent.GetHealth:input_type -> mwan.v1.GetHealthRequest
+	3,  // 5: mwan.v1.MWANAgent.Ping:input_type -> mwan.v1.PingRequest
+	5,  // 6: mwan.v1.MWANAgent.GetConfigState:input_type -> mwan.v1.GetConfigStateRequest
+	7,  // 7: mwan.v1.MWANAgent.GetSystemInfo:input_type -> mwan.v1.GetSystemInfoRequest
+	9,  // 8: mwan.v1.MWANAgent.WatchEvents:input_type -> mwan.v1.WatchEventsRequest
+	13, // 9: mwan.v1.MWANAgent.GetBGPStatus:input_type -> mwan.v1.GetBGPStatusRequest
+	16, // 10: mwan.v1.MWANAgent.AnnounceRoutes:input_type -> mwan.v1.AnnounceRoutesRequest
+	18, // 11: mwan.v1.MWANAgent.WithdrawRoutes:input_type -> mwan.v1.WithdrawRoutesRequest
+	1,  // 12: mwan.v1.MWANAgent.GetHealth:output_type -> mwan.v1.GetHealthResponse
+	4,  // 13: mwan.v1.MWANAgent.Ping:output_type -> mwan.v1.PingResponse
+	6,  // 14: mwan.v1.MWANAgent.GetConfigState:output_type -> mwan.v1.GetConfigStateResponse
+	8,  // 15: mwan.v1.MWANAgent.GetSystemInfo:output_type -> mwan.v1.GetSystemInfoResponse
+	10, // 16: mwan.v1.MWANAgent.WatchEvents:output_type -> mwan.v1.AgentEvent
+	14, // 17: mwan.v1.MWANAgent.GetBGPStatus:output_type -> mwan.v1.GetBGPStatusResponse
+	17, // 18: mwan.v1.MWANAgent.AnnounceRoutes:output_type -> mwan.v1.AnnounceRoutesResponse
+	19, // 19: mwan.v1.MWANAgent.WithdrawRoutes:output_type -> mwan.v1.WithdrawRoutesResponse
+	12, // [12:20] is the sub-list for method output_type
+	4,  // [4:12] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_mwan_v1_mwan_proto_init() }
@@ -1399,7 +1315,6 @@ func file_mwan_v1_mwan_proto_init() {
 	file_mwan_v1_mwan_proto_msgTypes[10].OneofWrappers = []any{
 		(*AgentEvent_ConfigChanged)(nil),
 		(*AgentEvent_HealthTransition)(nil),
-		(*AgentEvent_SuppressRollback)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1407,7 +1322,7 @@ func file_mwan_v1_mwan_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mwan_v1_mwan_proto_rawDesc), len(file_mwan_v1_mwan_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   21,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

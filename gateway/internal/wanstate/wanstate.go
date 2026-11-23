@@ -99,9 +99,9 @@ type BGPPeer struct {
 
 // BGP is the routing-session snapshot with its freshness.
 type BGP struct {
-	Peers   []BGPPeer
-	ReadAt  time.Time
-	Reached bool
+	Peers         []BGPPeer
+	ReadAt        time.Time
+	PollSucceeded bool
 }
 
 // OwnedRuleset is one writer's last intended rules and reconciliation error.
@@ -172,7 +172,7 @@ func NewWithClock(wallClock clock.Clock) *Store {
 		routingGeneration:   0,
 		activeTier:          0,
 		tierValid:           false,
-		bgp:                 BGP{Peers: nil, ReadAt: time.Time{}, Reached: false},
+		bgp:                 BGP{Peers: nil, ReadAt: time.Time{}, PollSucceeded: false},
 		bgpSessions:         map[string][]bgp.SessionState{},
 		intendedRulesets:    map[string]OwnedRuleset{},
 		observer:            nil,

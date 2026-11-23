@@ -20,7 +20,6 @@ import (
 	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
 	"goodkind.io/mwan/internal/bgp"
 	"goodkind.io/mwan/internal/configstate"
-	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/tracing"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -32,12 +31,9 @@ var pingReceivedRE = regexp.MustCompile(`(\d+)\s+received`)
 
 type Server struct {
 	mwanv1.UnimplementedMWANAgentServer
-	deployFilePath         string
-	deployExpected         bool
 	log                    *slog.Logger
 	bgp                    *bgp.Speaker // nil when BGP is disabled
 	clock                  clock
-	notifier               notify.Notifier
 	forwardingMu           sync.Mutex
 	forwardingPath         string
 	forwardingPollInterval time.Duration
@@ -48,48 +44,23 @@ type Server struct {
 	manualWithdraw         bool
 	lastReadError          string
 
-	// These are injectable in tests to avoid reading real /proc files.
-	// Production code leaves them nil and uses the real /proc paths.
+	// The constructor sets these paths to local system files. Tests can replace them.
 	uptimePath  string
 	loadAvgPath string
 	meminfoPath string
 	statfsPath  string
 }
 
-func NewServer(
-	deployFilePath string,
-	log *slog.Logger,
-	bgpSpeaker *bgp.Speaker,
-	notifier notify.Notifier,
-) *Server {
-	if notifier == nil {
-		notifier = notify.NullNotifier{}
-	}
+func NewServer(log *slog.Logger, bgpSpeaker *bgp.Speaker) *Server {
 	return &Server{
-		deployFilePath: deployFilePath,
-		// deployExpected defaults to true so production and testbed-deployed
-		// hosts keep their historical alerting behaviour. Fresh hosts that
-		// have never been Ansible-deployed flip this to false via
-		// SetDeployExpected so the missing file is steady state.
-		deployExpected: true,
-		log:            log,
-		bgp:            bgpSpeaker,
-		clock:          realClock{},
-		notifier:       notifier,
-		uptimePath:     "/proc/uptime",
-		loadAvgPath:    "/proc/loadavg",
-		meminfoPath:    "/proc/meminfo",
-		statfsPath:     "/",
+		log:         log,
+		bgp:         bgpSpeaker,
+		clock:       realClock{},
+		uptimePath:  "/proc/uptime",
+		loadAvgPath: "/proc/loadavg",
+		meminfoPath: "/proc/meminfo",
+		statfsPath:  "/",
 	}
-}
-
-// SetDeployExpected toggles the deploy-file-missing notify gate. When
-// false, GetConfigState treats a missing deploy file as steady state
-// and skips the Notify call. The Resolve call still fires on a
-// successful read so a host that flips from fresh to deployed clears
-// any stale alert.
-func (a *Server) SetDeployExpected(expected bool) {
-	a.deployExpected = expected
 }
 
 func (a *Server) enrichRPCContext(
@@ -123,9 +94,8 @@ func (a *Server) GetHealth(
 	ipv4OK := a.pingExitZero(ctx, "ping", "-c", "1", "-W", "2", "1.1.1.1")
 	resp.Ipv4Ok = ipv4OK
 
-	// No -s flag: relies on Linux ping6's 56-byte default. Webpass drops
-	// ICMPv6 with payload <= 8 bytes; if this ever runs on FreeBSD or with
-	// a smaller default, add "-s", "16" to keep the Webpass path measurable.
+	// Linux ping6 sends a 56-byte payload by default. Webpass drops ICMPv6
+	// packets with payloads of 8 bytes or less.
 	ipv6OK := a.pingExitZero(ctx, "ping6", "-c", "1", "-W", "2", "2606:4700:4700::1111")
 	resp.Ipv6Ok = ipv6OK
 
@@ -304,48 +274,13 @@ func parsePingReceivedCount(stdout string) int32 {
 }
 
 func (a *Server) GetConfigState(
-	ctx context.Context,
+	_ context.Context,
 	_ *mwanv1.GetConfigStateRequest,
 ) (*mwanv1.GetConfigStateResponse, error) {
-	peerInfo, _ := peer.FromContext(ctx)
-	metadataMap, _ := metadata.FromIncomingContext(ctx)
-	ctx = a.enrichRPCContext(ctx, peerInfo, metadataMap)
-
-	raw, err := os.ReadFile(a.deployFilePath)
-	if err != nil {
-		// Skip the notify route on hosts that have never been deployed.
-		// The watchdog's deploy-staleness check still observes a zero
-		// epoch; this gate suppresses the WARN flood on fresh hosts.
-		if a.deployExpected {
-			a.notifier.Notify(
-				ctx,
-				notify.Event{
-					Level:   slog.LevelWarn,
-					Kind:    "deploy-file-missing",
-					Key:     a.deployFilePath,
-					Message: "read deploy file",
-					Fields: []slog.Attr{
-						slog.String("path", a.deployFilePath),
-						slog.String("error", err.Error()),
-					},
-				},
-			)
-		}
-	} else {
-		a.notifier.Resolve(
-			ctx,
-			"deploy-file-missing",
-			a.deployFilePath,
-			"deploy file readable",
-			slog.String("path", a.deployFilePath),
-		)
-	}
-	state := configstate.Read("", raw)
-
+	state := configstate.Read("")
 	return &mwanv1.GetConfigStateResponse{
 		ConfigHash:      state.ConfigHash,
 		ConfigManifest:  state.ConfigManifest,
-		LastDeployEpoch: state.LastDeployEpoch,
 		LastChangeEpoch: a.clock.Now().Unix(),
 	}, nil
 }
@@ -545,7 +480,7 @@ func (a *Server) AnnounceRoutes(
 				Error:   "primary forwarding is not ready",
 			}, nil
 		}
-		// A ready family can still serve clients while the primary is down.
+		// Require at least one configured announcement family when requireAllFamilies is false.
 		if !a.requireAllFamilies && !(a.announceIPv4 && state.IPv4) && !(a.announceIPv6 && state.IPv6) {
 			return &mwanv1.AnnounceRoutesResponse{
 				Success: false,

@@ -17,10 +17,6 @@ func validateFirewall(g Gateway) error {
 		return invalid(fmt.Sprintf("firewall: %v", err))
 	}
 
-	if g.Firewall.ManagementPolicy.Absent(g.Firewall.ManagementInterface) {
-		return nil
-	}
-
 	return validateKey("management link", g.Firewall.ManagementInterface)
 }
 

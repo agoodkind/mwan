@@ -1,20 +1,14 @@
 # Gateway firewall ownership
 
-The gateway daemon installs and maintains its firewall rules. Configs deploys
-the network configuration and the released binary. The gateway no longer loads a
-separate ruleset file through `nftables.service`.
-
-This specification defines the required behavior. The
-[implementation plan](plans/2026-09-26-mwan-341-firewall.md) defines the code
-changes, tests, and deployment sequence.
+The gateway daemon installs and maintains firewall rules from the configured
+network document and local firewall settings.
 
 ## Current behavior
 
-The gateway firewall module installs filtering, IPv4 address translation,
-packet marking, and destination-set definitions. The translation module
-creates its IPv6 NAT chains and installs edge-address exceptions. The translation
-module's kernel packet program translates IPv6 prefixes. The steering module
-maintains its own table.
+The firewall module installs filtering, IPv4 address translation, packet
+marking, and destination-set definitions. The NPT module creates IPv6 NAT
+chains, installs edge-address exceptions, and translates IPv6 prefixes. The
+steering module maintains its own table.
 
 The gateway daemon starts before device discovery and the network manager. It
 installs and inspects protective rules before writing network configuration.
@@ -39,9 +33,6 @@ The destination refresher continues to update the addresses in the configured
 destination sets. The daemon creates missing sets and preserves their
 existing elements during reconciliation. Set definitions retain support for
 address ranges and automatic merging of overlapping ranges.
-
-The gateway role enables firewall ownership. The failover container and
-hypervisor roles retain their existing firewall arrangements.
 
 ## Startup and failure behavior
 
@@ -71,8 +62,7 @@ Kernel modules required by the firewall load before the daemon. The daemon
 retains its existing restriction against loading kernel modules itself.
 
 Stopping the daemon preserves its installed rules. If the binary cannot run,
-it cannot install protective rules. The deployment gate and snapshot rollback
-remain the recovery for that failure.
+it cannot install protective rules.
 
 ## Rule updates and repair
 
@@ -95,10 +85,9 @@ failed refreshes. After a complete ruleset deletion, the daemon recreates the
 set definitions and the refresher repopulates their contents. Acceptance
 checks set recovery separately from rule recovery.
 
-Drift detection watches the authoritative daemon configuration instead of the
-retired ruleset file. Reconciliation replaces temporary manual rule changes.
-A configured firewall change persists after deployment of the updated network
-configuration.
+Drift detection watches the authoritative daemon configuration. Reconciliation
+replaces temporary manual rule changes. A configured firewall change persists
+after deployment of the updated network configuration.
 
 ## Packet behavior
 
@@ -146,31 +135,3 @@ MWAN-341 does not select a tunnel protocol or implement external BGP.
 MWAN-507 supplies those implementations and their integrated acceptance tests.
 The firewall design must support them without requiring production peer
 addresses, prefixes, or circuit details during development.
-
-## Acceptance
-
-MWAN-354 strengthens the deployment gate before the ownership cutover.
-Success requires both configured address families and consecutive successful
-probe rounds. A testbed IPv4 translation failure must fail the gate even
-when IPv6 works.
-
-MWAN-355 validates generated rules before deployment using the production
-writers in an isolated Linux network namespace. Comparison includes rule
-order, chain properties, and set definitions. It excludes changing kernel
-handles, counters, and refresher-owned set contents. Real packet checks
-verify filtering and translation in addition to the ruleset comparison.
-
-Testbed acceptance must demonstrate startup protection, management access,
-reboot, daemon restart, invalid configuration, full ruleset repair,
-destination-set recovery, and preservation of the current packet behavior.
-Downstream clients must demonstrate both address families, balancing,
-provider fallback, inbound replies, and the existing translation modes.
-
-Production acceptance uses the same released binary after testbed acceptance.
-It compares intended rules with the kernel and verifies downstream traffic
-after reboot. The ruleset file is absent and its loading service is masked.
-
-MWAN-507 later verifies direct BGP, tunnels with configured routes, and BGP
-over tunnels against this firewall. Its tests include packet-size errors and
-independent IPv4 operation. New-circuit production acceptance remains after
-October 2026.

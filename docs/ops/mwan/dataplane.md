@@ -85,16 +85,8 @@ state.
 
 ## Tracing
 
-The ifmgr daemon emits structured JSON logs to `/var/log/mwan-ifmgr.jsonl`,
-and each line carries the active `traceId` so events across a deploy or a
-boot correlate. `update-att-pinned-dests.sh` still writes shell-side JSON to
-`/var/log/mwan-debug.log` when `mwan_debug_logging: true`.
-
-Trace ID sources:
-
-- `mwan-trace-boot.service` writes `/run/mwan-trace-id` and
-  `/var/lib/mwan/trace-id` at boot.
-- The deploy playbook writes the same files at the start of deploy.
+The ifmgr daemon writes structured JSON logs to `/var/log/mwan-ifmgr.jsonl`.
+Each record includes a trace ID for grouping related events.
 
 Quick check on MWAN:
 
@@ -117,7 +109,7 @@ ssh root@mwan.home.goodkind.io
 wpa_cli status
 systemctl status wpa_supplicant-mwan systemd-networkd networkd-dispatcher \
   mwan-ifmgr@wan cloudflared
-mwan deploy-gate inspect-firewall /etc/mwan/network.json /usr/local/share/wanconfig/yang
+mwan debug inspect-firewall /etc/mwan/network.json /usr/local/share/wanconfig/yang
 mwan debug npt
 mwan debug connectivity
 mwan debug systemd

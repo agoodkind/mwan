@@ -1,5 +1,4 @@
-// Package wanconfig projects the loaded gateway configuration into management
-// path-value items. The Linux daemon publishes the projection through sysrepo.
+// Package wanconfig turns gateway settings into path-value items for sysrepo.
 package wanconfig
 
 import (
@@ -18,7 +17,7 @@ import (
 	"goodkind.io/mwan/internal/observation/contract"
 )
 
-// MarshalObservationItems includes the complete configured check in operational reads.
+// MarshalObservationItems converts a configured check into operational items.
 func MarshalObservationItems(check contract.CheckSpec, intervalSeconds int) ([]Item, error) {
 	definition, err := json.Marshal(check)
 	if err != nil {
@@ -41,16 +40,15 @@ func MarshalObservationItems(check contract.CheckSpec, intervalSeconds int) ([]I
 	}, nil
 }
 
-// Item is one path-value pair in the published tree. It mirrors the
-// publishing binding's item so the projection can be built and tested on
-// every platform; the linux publisher converts it on the way out.
+// Item pairs one model path with its value. The Linux publisher converts each
+// item to the sysrepo binding type.
 type Item struct {
 	Path  string
 	Value string
 }
 
-// Member configures one connection with a network interface, steering tier,
-// health policy, and optional translation policy.
+// Member configures one provider's interface, steering tier, health policy,
+// and translation policy.
 type Member struct {
 	SelectionEnabled *bool
 	// Name is the connection ID used by probe policies and translation instances.
@@ -60,47 +58,39 @@ type Member struct {
 	Iface string
 	// Tier is the steering tier the configuration assigns; lower is preferred.
 	Tier uint8
-	// Weight is the member's share of its tier, at least one. The schema bounds
-	// it there, so a zero would be refused by the datastore rather than
-	// published.
+	// Weight is the member's share of its tier. The model requires a value of
+	// at least one.
 	Weight uint16
-	// ProbePolicy is the name of the health policy that decides the member's
-	// state, or empty when the daemon runs no probe for it.
+	// ProbePolicy identifies the health policy that sets the member's state.
+	// An empty value means the daemon does not probe the member.
 	ProbePolicy     string
 	TranslationV4   *config.IPv4Translation
 	TranslationV6   *config.IPv6Translation
 	TranslationIDV4 uint32
 	TranslationIDV6 uint32
-	// TableID, FwMark, FwMarkPrio, and FromPrio are the provider's routing
-	// numbers: the table holding its default route, the firewall mark that
-	// selects that table, and the priorities of the two policy rules. The
-	// model ranges the table and the mark from 1, so a zero is refused rather
-	// than published.
+	// TableID selects the provider's default-route table. FwMark selects that
+	// table, and FwMarkPrio and FromPrio set the two policy-rule priorities.
+	// The model requires a nonzero table and mark.
 	TableID    uint32
 	FwMark     uint32
 	FwMarkPrio uint32
 	FromPrio   uint32
-	// V4Source is the provider's static IPv4 link address exactly as loaded,
-	// an address or a prefix, or empty when the provider carries none.
+	// V4Source is the provider's static IPv4 link address or prefix.
 	V4Source string
-	// ForcedDSCP is the DSCP value that forces a new flow onto the provider,
-	// or zero when it carries none. The model ranges it from 1, so zero is
-	// free to mean absent.
+	// ForcedDSCP assigns new flows with that DSCP value to this provider. Zero
+	// means that the provider has no forced value.
 	ForcedDSCP uint8
-	// Health is the provider's probe as loaded, or nil when the provider
-	// carries no health container.
+	// Health stores the provider's probe settings. Nil means the provider has
+	// no health container.
 	Health *ProbeSettings
-	// LinkFiles says who writes the member's unit files, as the link-files
-	// leaf spells it: rendered or hand-authored. Empty publishes nothing,
-	// which is what a caller holding no network configuration passes.
+	// LinkFiles identifies whether the member's unit files are rendered or
+	// hand-authored. An empty value omits the leaf.
 	LinkFiles   string
 	BGPSessions []config.BGPSession
 }
 
-// ProbeSettings is one provider's health probe as the loaded configuration
-// holds it. A disabled probe keeps whichever settings its file carries, so
-// each count and the interval is a pointer: nil is a leaf the file left out,
-// and publishes nothing, while zero is a value the model accepts.
+// ProbeSettings stores one provider's health probe. Pointer fields distinguish
+// an omitted setting from a configured zero value.
 type ProbeSettings struct {
 	Enabled              bool
 	PingCount            *uint8
@@ -113,108 +103,41 @@ type ProbeSettings struct {
 	HTTPURLs             []string
 }
 
-// GroupSettings are the network values that belong to the member group as a
-// whole rather than to one provider.
+// GroupSettings stores network values shared by all providers.
 type GroupSettings struct {
-	// ReservedTables are the routing tables no provider may take.
+	// ReservedTables lists routing tables that providers cannot use.
 	ReservedTables []uint32
-	// InternalPrefix is the internal half of every member's translation.
+	// InternalPrefix is the internal prefix used by every member's translation.
 	InternalPrefix netip.Prefix
-	// OpnsenseEdgeV6 and MwanbrEdgeV6 are the router's and the gateway's
-	// addresses on the internal link.
+	// OpnsenseEdgeV6 and MwanbrEdgeV6 are the router and gateway addresses on
+	// the internal link.
 	OpnsenseEdgeV6 netip.Addr
 	MwanbrEdgeV6   netip.Addr
-	// InternalNetV4 is the internal IPv4 network routed into every member's
-	// table.
+	// InternalNetV4 is the internal IPv4 network routed through every member.
 	InternalNetV4 netip.Prefix
-	// ProbeTimeoutMillis is how long one probe attempt may take. The model
-	// ranges it from 1, so zero publishes nothing.
+	// ProbeTimeoutMillis limits one probe attempt. Zero omits the model leaf.
 	ProbeTimeoutMillis uint32
 }
 
-// WatchdogSettings is the rollback watchdog's policy as the publishing
-// daemon's configuration carries it: the thresholds that decide when a
-// deploy is judged and rolled back, and the targets its probes exercise.
-// Present gates publishing, so a host whose configuration carries no
-// watchdog section publishes nothing under the container.
-type WatchdogSettings struct {
-	Present                      bool
-	DeployWindowMinutes          uint16
-	ConnectivityTimeoutSeconds   uint16
-	CheckIntervalHealthySeconds  uint16
-	CheckIntervalDegradedSeconds uint16
-	PostRollbackGraceSeconds     uint16
-	AlertCooldownSeconds         uint16
-	DeployGracePeriodSeconds     uint16
-	MaxRollbackAttempts          uint8
-	SnapshotHealthyThreshold     uint16
-	MaxKnownGoodSnapshots        uint8
-	// PingTargets are the addresses the watchdog pings, both families.
-	PingTargets []netip.Addr
-}
-
-// OOBSettings is the out-of-band access policy as the publishing daemon's
-// configuration carries it. Each family publishes only when its module
-// config is present in the daemon's role.
-type OOBSettings struct {
-	V6Present         bool
-	V6Iface           string
-	V6Addr            netip.Addr
-	V6TableID         uint32
-	ManageSLAACRule   bool
-	SLAACRulePriority uint32
-	V4Present         bool
-	V4Iface           string
-	V4TableID         uint32
-}
-
-// TapSettings is the tunnel tap as the publishing daemon's configuration
-// carries it: the unit whose journal is tailed and the patterns whose
-// entries are downgraded.
-type TapSettings struct {
-	Present           bool
-	Unit              string
-	DowngradePatterns []string
-}
-
-// DaemonSettings are the daemon settings no published model covers,
-// published under the local module's daemon container.
-type DaemonSettings struct {
-	Watchdog WatchdogSettings
-	OOB      OOBSettings
-	Tap      TapSettings
-}
-
-// Gateway is the loaded configuration the surface publishes.
+// Gateway stores configuration for the management surface.
 type Gateway struct {
-	GuestType          config.GuestType
 	Firewall           firewall.Config
 	PinnedConnectionID string
 	ConnectionIDs      map[string]connectionid.ID
 	Connections        []interfaceintent.Connection
-	// InternalIface is the link toward the router behind the gateway. It is
-	// published as an interface entry with both families enabled, because
-	// the daemon routes both families over it.
+	// InternalIface connects the gateway to the router. The model enables both
+	// address families on this interface.
 	InternalIface string
-	// HashMode is how a new connection is assigned to a member of the active
-	// tier. It is published because the daemon acts on it, so a reader of the
-	// tree sees the rule the kernel is running under. Empty publishes nothing,
-	// which is what a role that runs no steering module carries.
+	// HashMode selects a provider for each new connection in the active tier.
+	// An empty value omits the leaf.
 	HashMode string
-	// Group carries the rest of the steering group's network values. A value
-	// left zero publishes nothing, which is what a caller holding no network
-	// configuration passes.
+	// Group stores network values shared by providers. Zero values omit leaves.
 	Group GroupSettings
 	// Members are the steering members in a stable order.
 	Members []Member
-	// Daemon carries the settings published under the local module's
-	// daemon container.
-	Daemon DaemonSettings
 }
 
-// OwnedPaths are the subtrees the daemon owns in the configuration
-// datastore. A publish replaces them wholesale, so an entry a retired
-// configuration wrote cannot survive a restart.
+// OwnedPaths lists datastore subtrees that each publication replaces.
 var OwnedPaths = []string{
 	interfacesPath,
 	natPath,
@@ -227,24 +150,23 @@ const (
 	natPath           = "/ietf-nat:nat"
 	daemonPath        = "/goodkind-mwan-steering:daemon"
 
-	// natPolicyID is the single policy each instance carries.
+	// natPolicyID identifies the policy used by each translation instance.
 	natPolicyID = 1
 
 	boolTrue = "true"
 
-	// maxDSCP is the largest value a six-bit DSCP field holds.
+	// maxDSCP is the largest value in the six-bit DSCP field.
 	maxDSCP = 63
 
 	// maxVLANID is the largest tag the model's vlan/id leaf accepts.
 	maxVLANID = 4094
 
-	// The two values the link-files leaf takes.
+	// These values match the link-files enumeration.
 	linkFilesRendered     = "rendered"
 	linkFilesHandAuthored = "hand-authored"
 
-	// itemsPerMember and itemsForGroup size the item slice for a member with
-	// a full probe and a group carrying every value; they are capacity hints,
-	// not limits.
+	// These constants estimate item-slice capacity for populated members and
+	// groups. They do not limit the item count.
 	itemsPerMember = 28
 	itemsForGroup  = 16
 	// itemsPerLink sizes the items a rendered link with both families and a
@@ -252,15 +174,11 @@ const (
 	itemsPerLink = 24
 )
 
-// ErrInvalidGateway means the Gateway cannot be published as given. The
-// message names the member and field.
+// ErrInvalidGateway marks gateway values that the model cannot accept.
 var ErrInvalidGateway = errors.New("wanconfig: invalid gateway")
 
-// ConfigItems returns the items that describe g in the model, in a stable
-// order, or an error when g cannot be published faithfully: a member or the
-// internal link with no name, a name that cannot be quoted into a path, a
-// duplicate link, a translation pair with only one prefix, or a value outside
-// the range or address family its leaf accepts.
+// ConfigItems returns model items in a stable order. It returns an error when
+// a key, translation pair, or value violates the model.
 func ConfigItems(g Gateway) ([]Item, error) {
 	if err := validate(g); err != nil {
 		return nil, err
@@ -268,7 +186,6 @@ func ConfigItems(g Gateway) ([]Item, error) {
 
 	items := make([]Item, 0, itemsPerMember*len(g.Members)+itemsForGroup)
 
-	items = append(items, guestTypeItems(g)...)
 	for _, connection := range g.Connections {
 		items = append(items, connectionItems(connection, g.ConnectionIDs)...)
 	}
@@ -285,153 +202,13 @@ func ConfigItems(g Gateway) ([]Item, error) {
 		items = append(items, natInstanceItems(member)...)
 	}
 
-	items = append(items, daemonItems(g.Daemon)...)
-
 	return items, nil
 }
 
-// daemonItems describes the daemon settings the loaded configuration
-// carries. A section that is not present publishes nothing, so the tree
-// never invents values another host owns.
-func daemonItems(daemon DaemonSettings) []Item {
-	items := make([]Item, 0, 16)
-	items = append(items, watchdogItems(daemon.Watchdog)...)
-	items = append(items, oobItems(daemon.OOB)...)
-	items = append(items, tapItems(daemon.Tap)...)
-
-	return items
-}
-
-func watchdogItems(watchdog WatchdogSettings) []Item {
-	if !watchdog.Present {
-		return nil
-	}
-
-	base := daemonPath + "/watchdog"
-	items := []Item{
-		{
-			Path:  base + "/deploy-window-minutes",
-			Value: uintValue(uint64(watchdog.DeployWindowMinutes)),
-		},
-		{
-			Path:  base + "/connectivity-timeout-seconds",
-			Value: uintValue(uint64(watchdog.ConnectivityTimeoutSeconds)),
-		},
-		{
-			Path:  base + "/check-interval-healthy-seconds",
-			Value: uintValue(uint64(watchdog.CheckIntervalHealthySeconds)),
-		},
-		{
-			Path:  base + "/check-interval-degraded-seconds",
-			Value: uintValue(uint64(watchdog.CheckIntervalDegradedSeconds)),
-		},
-		{
-			Path:  base + "/post-rollback-grace-seconds",
-			Value: uintValue(uint64(watchdog.PostRollbackGraceSeconds)),
-		},
-		{
-			Path:  base + "/alert-cooldown-seconds",
-			Value: uintValue(uint64(watchdog.AlertCooldownSeconds)),
-		},
-		{
-			Path:  base + "/deploy-grace-period-seconds",
-			Value: uintValue(uint64(watchdog.DeployGracePeriodSeconds)),
-		},
-		{
-			Path:  base + "/max-rollback-attempts",
-			Value: uintValue(uint64(watchdog.MaxRollbackAttempts)),
-		},
-		{
-			Path:  base + "/snapshot-healthy-threshold",
-			Value: uintValue(uint64(watchdog.SnapshotHealthyThreshold)),
-		},
-		{
-			Path:  base + "/max-known-good-snapshots",
-			Value: uintValue(uint64(watchdog.MaxKnownGoodSnapshots)),
-		},
-	}
-	// Leaf-list entries are addressed by their value, not a predicate, so
-	// the datastore keys each instance by the value itself. The leaf is
-	// typed, so a zero address publishes nothing rather than a value the
-	// schema rejects.
-	for _, target := range watchdog.PingTargets {
-		if !target.IsValid() {
-			continue
-		}
-
-		items = append(
-			items,
-			Item{
-				Path:  base + "/probe-targets/ping",
-				Value: target.String(),
-			},
-		)
-	}
-
-	return items
-}
-
-func oobItems(oob OOBSettings) []Item {
-	items := make([]Item, 0, 7)
-	if oob.V6Present {
-		base := daemonPath + "/oob/ipv6"
-		items = append(
-			items,
-			Item{Path: base + "/interface", Value: oob.V6Iface},
-			Item{Path: base + "/table-id", Value: uintValue(uint64(oob.V6TableID))},
-			Item{Path: base + "/manage-slaac-rule", Value: boolValue(oob.ManageSLAACRule)},
-			Item{
-				Path:  base + "/slaac-rule-priority",
-				Value: uintValue(uint64(oob.SLAACRulePriority)),
-			},
-		)
-		// The address leaf is typed; a configuration that carries none
-		// publishes none rather than an unparsable value.
-		if oob.V6Addr.IsValid() {
-			items = append(items, Item{Path: base + "/address", Value: oob.V6Addr.String()})
-		}
-	}
-
-	if oob.V4Present {
-		base := daemonPath + "/oob/ipv4"
-		items = append(
-			items,
-			Item{Path: base + "/interface", Value: oob.V4Iface},
-			Item{Path: base + "/table-id", Value: uintValue(uint64(oob.V4TableID))},
-		)
-	}
-
-	return items
-}
-
-func tapItems(tap TapSettings) []Item {
-	if !tap.Present {
-		return nil
-	}
-
-	base := daemonPath + "/tap"
-	items := []Item{{Path: base + "/unit", Value: tap.Unit}}
-	// Patterns carry regex text a path predicate cannot quote, so each
-	// leaf-list entry is addressed by the bare path with its value.
-	for _, pattern := range tap.DowngradePatterns {
-		items = append(
-			items,
-			Item{
-				Path:  base + "/downgrade-pattern",
-				Value: pattern,
-			},
-		)
-	}
-
-	return items
-}
-
-// uintValue renders one unsigned leaf value.
 func uintValue(value uint64) string {
 	return strconv.FormatUint(value, 10)
 }
 
-// boolValue renders one boolean leaf value.
 func boolValue(value bool) string {
 	if value {
 		return boolTrue
@@ -440,8 +217,7 @@ func boolValue(value bool) string {
 	return "false"
 }
 
-// interfaceItems describes one link: the entry exists, its type is
-// unspecified, it is enabled, and both address families are enabled.
+// interfaceItems projects one link and its configured address families.
 func connectionItems(
 	connection interfaceintent.Connection,
 	explicit map[string]connectionid.ID,
@@ -626,9 +402,7 @@ func resolverItems(base string, servers []netip.Addr, domains []string) []Item {
 	return items
 }
 
-// steeringItems marks the member's link as a steering member with its tier and
-// weight and, when the daemon probes it, the probe policy that decides its
-// state.
+// steeringItems projects each provider's tier, weight, and probe policy.
 func steeringItems(member Member) []Item {
 	base := interfacePath(member.Iface) + "/goodkind-mwan-steering:steering"
 	items := []Item{
@@ -649,8 +423,7 @@ func steeringItems(member Member) []Item {
 	return items
 }
 
-// wanItems publishes the provider display name and its configured routing,
-// translation, source, and health values.
+// wanItems projects provider routing, translation, source, and health settings.
 func wanItems(member Member) []Item {
 	base := interfacePath(member.Iface) + "/goodkind-mwan-steering:wan"
 	providerName := member.ProviderName
@@ -683,9 +456,7 @@ func wanItems(member Member) []Item {
 	return items
 }
 
-// probeItems describes one provider's probe: the enabled flag whenever the
-// container exists, and each setting the loaded probe holds. Leaf-list entries
-// are addressed by the bare path with their value, like the watchdog targets.
+// probeItems projects the configured probe. Leaf-list values serve as keys.
 func probeItems(base string, probe *ProbeSettings) []Item {
 	if probe == nil {
 		return nil
@@ -738,10 +509,8 @@ func probeItems(base string, probe *ProbeSettings) []Item {
 	return items
 }
 
-// linkItems describes who writes the member's unit files and, for a link the
-// daemon renders, the link identity, both family containers, and the
-// free-form sections exactly as the daemon loaded them. A member holding no
-// link-files value publishes none of it.
+// linkItems projects link ownership, identity, address families, and networkd
+// sections for links that the daemon renders.
 func linkItems(connection interfaceintent.Connection) []Item {
 	base := interfacePath(connection.Name)
 	items := make([]Item, 0, itemsPerLink)
@@ -845,9 +614,7 @@ func linkItems(connection interfaceintent.Connection) []Item {
 	return items
 }
 
-// familyItems describes the leaves both families carry: the published
-// forwarding flag and address list, and the steering module's dhcp, gateway,
-// and route-metric leaves beside them.
+// familyItems projects address, forwarding, DHCP, gateway, and route settings.
 func familyItems(base string, family interfaceintent.Family) []Item {
 	var items []Item
 	if family.Enabled != nil {
@@ -910,9 +677,8 @@ func familyItems(base string, family interfaceintent.Family) []Item {
 	return items
 }
 
-// delegationItems describes the delegation the interface requests. Every leaf
-// is optional in the model, so each publishes only when the loaded value
-// carries it.
+// delegationItems projects the configured delegation fields. The model makes
+// each field optional.
 func delegationItems(base string, delegation interfaceintent.Delegation) []Item {
 	var items []Item
 	if delegation.Hint.IsValid() {
@@ -961,8 +727,7 @@ func delegationItems(base string, delegation interfaceintent.Delegation) []Item 
 	return items
 }
 
-// freeFormItems describes the free-form sections, addressing each section and
-// each line by the positional key the model gives it.
+// freeFormItems projects networkd sections and entries by their index keys.
 func freeFormItems(base string, files []interfaceintent.UnitFile) []Item {
 	var items []Item
 
@@ -986,12 +751,9 @@ func freeFormItems(base string, files []interfaceintent.UnitFile) []Item {
 	return items
 }
 
-// steeringGroupItems describes the settings that apply to the member set as a
-// whole. A value the gateway does not hold publishes nothing: a role that runs
-// no steering module carries no hash mode, and a caller holding no network
-// configuration carries no group values, so the tree never shows a value the
-// daemon does not act on. The internal link is always held, because it is the
-// interface entry every member routes toward.
+// steeringGroupItems projects settings shared by the provider set. Zero values
+// omit optional leaves. The internal link identifies the route toward the
+// router.
 func steeringGroupItems(g Gateway) []Item {
 	group := g.Group
 	items := make([]Item, 0, itemsForGroup+len(group.ReservedTables))
@@ -1050,28 +812,24 @@ func steeringGroupItems(g Gateway) []Item {
 	return items
 }
 
-// hashModes are the values the model's enumeration accepts. A value outside the
-// set would make the datastore reject the whole replace, taking every other
-// item with it, so it is caught before the write.
+// hashModes lists the values accepted by the model's hash-mode enumeration.
 var hashModes = map[string]bool{
 	"random":             true,
 	"source":             true,
 	"source-destination": true,
 }
 
-// interfacePath is the list entry for one link.
 func interfacePath(iface string) string {
 	return interfacesPath + "/interface[name='" + iface + "']"
 }
 
-// invalid logs and returns one rejection, so every validation failure is
-// both visible in the daemon log and matchable with ErrInvalidGateway.
+// invalid logs a rejected value and returns ErrInvalidGateway.
 func invalid(reason string) error {
 	slog.Warn("wanconfig: invalid gateway", "reason", reason)
 	return fmt.Errorf("%w: %s", ErrInvalidGateway, reason)
 }
 
-// validate rejects a Gateway the projection cannot express as paths.
+// validate rejects gateway values that the model cannot express.
 func validate(g Gateway) error {
 	if err := validateKey("internal link", g.InternalIface); err != nil {
 		return err
@@ -1111,9 +869,7 @@ func validateConnectionIDInterfaces(ids map[string]connectionid.ID) error {
 	return nil
 }
 
-// validateProvider rejects a provider value its leaf would refuse. A refused
-// item fails the whole replace, taking every other item with it, so each one
-// is caught before the write.
+// validateProvider rejects provider values outside the model's constraints.
 func validateProvider(member Member) error {
 	if member.TableID == 0 {
 		return invalid(fmt.Sprintf("member %s table-id must be at least 1", member.Name))
@@ -1155,9 +911,7 @@ func validateProvider(member Member) error {
 	return nil
 }
 
-// validateMappings rejects a static mapping the list would refuse: an address
-// outside IPv4, or an external address the provider maps twice, which the list
-// key would collapse into one entry.
+// validateMappings rejects non-IPv4 mappings and duplicate external addresses.
 func validateMappings(member Member) error {
 	if member.TranslationV4 == nil {
 		return nil
@@ -1194,7 +948,7 @@ func validateMappings(member Member) error {
 	return nil
 }
 
-// validateProbe rejects a probe target outside its leaf-list's address family.
+// validateProbe rejects targets outside their configured address families.
 func validateProbe(name string, probe *ProbeSettings) error {
 	if probe == nil {
 		return nil
@@ -1219,7 +973,7 @@ func validateProbe(name string, probe *ProbeSettings) error {
 	return nil
 }
 
-// validateGroup rejects a group value outside its leaf's address family.
+// validateGroup rejects values outside their configured address families.
 func validateGroup(group GroupSettings) error {
 	if group.InternalPrefix.IsValid() && !group.InternalPrefix.Addr().Is6() {
 		return invalid(fmt.Sprintf("internal prefix %q is not IPv6", group.InternalPrefix))
@@ -1240,8 +994,7 @@ func validateGroup(group GroupSettings) error {
 	return nil
 }
 
-// isIPv4AddressOrPrefix reports whether value is one of the two forms the
-// v4-source leaf's union accepts.
+// isIPv4AddressOrPrefix reports whether value is an IPv4 address or prefix.
 func isIPv4AddressOrPrefix(value string) bool {
 	if address, err := netip.ParseAddr(value); err == nil {
 		return address.Is4()
@@ -1254,8 +1007,7 @@ func isIPv4AddressOrPrefix(value string) bool {
 	return false
 }
 
-// validateKey rejects an empty key or one that cannot sit inside the
-// single-quoted predicate the paths use.
+// validateKey rejects empty keys and characters that break path predicates.
 func validateKey(what string, value string) error {
 	if value == "" {
 		return invalid(what + " is empty")

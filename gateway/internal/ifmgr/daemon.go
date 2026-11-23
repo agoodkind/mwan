@@ -44,11 +44,8 @@ type Daemon struct {
 	env               *Env
 	primaryConnection *interfaceintent.Connection
 
-	// reconcileReq lets a module ask for an immediate reconcile pass instead
-	// of waiting for the periodic tick. It is buffered with capacity 1 so a
-	// burst of requests coalesces into a single pass; senders drop their
-	// request when one is already queued. This is what makes health-driven
-	// failover event-driven rather than tick-latency-bound.
+	// reconcileReq lets a module request a prompt reconcile pass. The channel
+	// has capacity one, so queued requests coalesce into one pass.
 	reconcileReq chan struct{}
 
 	mu              sync.Mutex
@@ -368,15 +365,16 @@ func (d *Daemon) startDHCP(ctx context.Context) (dhcpStartup, error) {
 	}
 
 	dhcpConfig := netif.DHCPConfig{
-		Iface:           d.cfg.Iface,
-		InitialBackoff:  d.cfg.DHCPInitial,
-		MaxBackoff:      d.cfg.DHCPMax,
-		DiscoverTimeout: 0,
-		RequestTimeout:  0,
-		RenewTimeout:    0,
-		ClientID:        nil,
-		CachedLease:     nil,
-		RestartWindow:   0,
+		Iface:              d.cfg.Iface,
+		InitialBackoff:     d.cfg.DHCPInitial,
+		MaxBackoff:         d.cfg.DHCPMax,
+		DiscoverTimeout:    0,
+		RequestTimeout:     0,
+		RenewTimeout:       0,
+		MinimumRenewalWait: 0,
+		ClientID:           nil,
+		CachedLease:        nil,
+		RestartWindow:      0,
 	}
 	if recoveryLoader != nil {
 		startup.client = netif.StartDHCPClientWithRecovery(ctx, d.log, dhcpConfig, recoveryLoader)
@@ -488,14 +486,9 @@ func (d *Daemon) setForwardingReadiness(state forwardingready.State) {
 }
 
 func (d *Daemon) initModules(ctx context.Context) error {
-	// Init every module in role order. Failure here is fatal unless the
-	// module returns ifmgr.ErrModuleDisabled, in which case the module
-	// removes itself from this daemon's dispatch list for the rest of
-	// the process lifetime. This is the opt-in pattern: a unified role
-	// (e.g. "oob") can list modules that are only configured on some
-	// hosts; an entirely-absent [ifmgr.modules.X] section yields a zero
-	// Config, Init sees empty state, and returns the sentinel so the
-	// daemon transparently skips the module on that host.
+	// Init each module in role order. Other initialization errors stop startup.
+	// ErrModuleDisabled excludes a module with absent or unusable optional
+	// configuration from the remaining dispatch calls.
 	enabledModules := make([]Module, 0, len(d.modules))
 	for _, m := range d.modules {
 		mlog := d.log.With("module", m.Name(), "phase", "init")

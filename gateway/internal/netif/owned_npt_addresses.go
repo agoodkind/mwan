@@ -38,7 +38,11 @@ type NPTEdgeRecord struct {
 func ObserveLegacyLink(connection interfaceintent.Connection) (netlink.Link, error) {
 	link, err := netlink.LinkByName(connection.Name)
 	if err != nil {
-		return nil, NewLegacyNPTError("observe legacy link "+connection.Name, err)
+		if !IsLinkNotFound(err) {
+			slog.Warn("Configured link lookup failed", "link", connection.Name, "err", err)
+		}
+
+		return nil, fmt.Errorf("read configured link %s: %w", connection.Name, err)
 	}
 
 	if connection.Link != nil &&
@@ -66,10 +70,7 @@ func ObserveLegacyLink(connection interfaceintent.Connection) (netlink.Link, err
 				filepath.Join("/sys/class/net", connection.Name, "device/driver"),
 			)
 			if err != nil {
-				return nil, NewLegacyNPTError(
-					fmt.Sprintf("observe legacy driver for %s", connection.ID),
-					err,
-				)
+				return nil, fmt.Errorf("resolve driver for %s: %w", connection.Name, err)
 			}
 
 			driver = filepath.Base(path)

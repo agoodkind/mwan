@@ -28,11 +28,16 @@ const (
 	renewalTimingClient    = "dhrenew-c0"
 	renewalTimingServer    = "dhrenew-s0"
 	renewalTimingCIDR      = "198.51.100.77/24"
-	renewalTimingT1        = 5 * time.Second
-	renewalTimingT2        = 150 * time.Second
-	renewalTimingLease     = 220 * time.Second
-	renewalTimingAttempt   = 2 * time.Second
-	renewalTimingTolerance = 3 * time.Second
+	renewalTimingT1        = time.Second
+	renewalTimingT2        = 30 * time.Second
+	renewalTimingLease     = 44 * time.Second
+	renewalTimingAttempt   = 400 * time.Millisecond
+	renewalTimingMinimum   = 12 * time.Second
+	renewalTimingTolerance = 600 * time.Millisecond
+	renewalTimingSecond    = 15700 * time.Millisecond
+	renewalTimingThird     = 28100 * time.Millisecond
+	renewalTimingLast      = 42400 * time.Millisecond
+	renewalTimingDeadline  = 90 * time.Second
 )
 
 type renewalTimingRequest struct {
@@ -45,7 +50,14 @@ func TestDHCPRenewalRetransmissionFollowsRemainingLeaseTime(t *testing.T) {
 		if os.Geteuid() != 0 {
 			t.Skip("The test requires root to create network namespaces.")
 		}
-		child := exec.Command(os.Args[0], "-test.v", "-test.run=^"+t.Name()+"$")
+		childContext, cancel := context.WithTimeout(t.Context(), renewalTimingDeadline)
+		defer cancel()
+		child := exec.CommandContext(
+			childContext,
+			os.Args[0],
+			"-test.v",
+			"-test.run=^"+t.Name()+"$",
+		)
 		child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
 		child.Env = append(os.Environ(), renewalTimingChildEnv+"=1")
 		output, err := child.CombinedOutput()
@@ -156,14 +168,15 @@ func TestDHCPRenewalRetransmissionFollowsRemainingLeaseTime(t *testing.T) {
 		ctx,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		netif.DHCPConfig{
-			Iface:          renewalTimingClient,
-			InitialBackoff: time.Second,
-			RenewTimeout:   renewalTimingAttempt,
+			Iface:              renewalTimingClient,
+			InitialBackoff:     time.Second,
+			RenewTimeout:       renewalTimingAttempt,
+			MinimumRenewalWait: renewalTimingMinimum,
 		},
 	)
 	var boundAt time.Time
 	var expiredAt time.Time
-	deadline := time.After(renewalTimingLease + 30*time.Second)
+	deadline := time.After(renewalTimingLease + renewalTimingDeadline/2)
 	for expiredAt.IsZero() {
 		select {
 		case event := <-client.Events:
@@ -206,10 +219,10 @@ func TestDHCPRenewalRetransmissionFollowsRemainingLeaseTime(t *testing.T) {
 		broadcast bool
 	}{
 		{renewalTimingT1, false},
-		{78500 * time.Millisecond, false},
-		{140500 * time.Millisecond, false},
+		{renewalTimingSecond, false},
+		{renewalTimingThird, false},
 		{renewalTimingT2, true},
-		{212 * time.Second, true},
+		{renewalTimingLast, true},
 	}
 	if len(requests) != len(want) {
 		t.Fatalf(

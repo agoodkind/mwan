@@ -51,9 +51,9 @@ func TestStore_SnapshotCarriesEveryWrite(t *testing.T) {
 	}
 	store.SetTranslation(map[string]MemberTranslation{"att": translation})
 	store.SetBGP(BGP{
-		Peers:   []BGPPeer{{Address: "2001:db8::1", Established: true}},
-		ReadAt:  transition,
-		Reached: true,
+		Peers:         []BGPPeer{{Address: "2001:db8::1", Established: true}},
+		ReadAt:        transition,
+		PollSucceeded: true,
 	})
 
 	snap := store.Snapshot()
@@ -77,7 +77,7 @@ func TestStore_SnapshotCarriesEveryWrite(t *testing.T) {
 		t.Fatalf("translation snapshot = %+v", snap.Translation["att"])
 	}
 
-	if !snap.BGP.Reached || len(snap.BGP.Peers) != 1 || !snap.BGP.Peers[0].Established {
+	if !snap.BGP.PollSucceeded || len(snap.BGP.Peers) != 1 || !snap.BGP.Peers[0].Established {
 		t.Fatalf("bgp snapshot = %+v", snap.BGP)
 	}
 }

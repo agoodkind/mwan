@@ -15,7 +15,6 @@ import (
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/observation"
-	"goodkind.io/mwan/internal/statuspush"
 	"goodkind.io/mwan/internal/wanstate"
 )
 
@@ -50,10 +49,8 @@ const (
 	StateUnhealthy State = "unhealthy"
 )
 
-// WAN embeds the shared identity and carries optional health-policy overrides
-// plus the provider's tier. The tier is here because the module computes the
-// active tier for the status it pushes, and it already holds the verdict half
-// of that computation.
+// WAN embeds the shared identity and defines probe-policy overrides and its
+// provider-selection tier.
 type WAN struct {
 	ifmgr.WANRef
 	Tier              uint8
@@ -151,8 +148,6 @@ type Config struct {
 	SuccessThreshold  int
 	FailureThreshold  int
 	RecoveryThreshold int
-	StatusPushCID     uint32
-	StatusPushPort    uint32
 	WANs              []WAN
 }
 
@@ -186,13 +181,6 @@ type transition struct {
 	To   State
 }
 
-// statusSender is the push side of the status channel. The module depends on
-// the interface so a test observes what it sends without opening a socket; the
-// production implementation is statuspush.Sender.
-type statusSender interface {
-	Send(ctx context.Context, status statuspush.Status)
-}
-
 // Module serializes probe cycles so the interval loop and reconcile-triggered
 // cycle cannot advance hysteresis from overlapping observations.
 type Module struct {
@@ -217,11 +205,6 @@ type Module struct {
 	probeV6    pingFunc
 	probeHTTP6 httpFunc
 	probeHTTP4 httpFunc
-
-	// pusher delivers the cycle verdict to the hypervisor watchdog. Nil on a
-	// host with no push address configured, which is every host but the two
-	// gateways.
-	pusher statusSender
 }
 
 // Init implements ifmgr.Module and binds the steady-state loop to daemon
@@ -550,20 +533,12 @@ func (m *Module) runCycle(ctx context.Context, log *slog.Logger) error {
 		m.Env.RequestReconcile("health address family verdict changed")
 	}
 
-	// One push per cycle, after the transitions are committed, so a verdict
-	// change reaches the watchdog in the cycle that made it and a transition
-	// cycle never sends the same thing twice.
-	m.pushStatus(ctx, nextStatuses)
-
 	return nil
 }
 
-// publishLiveState writes the cycle's outcome to the management surface's
-// snapshot store, when this host serves one. Each family's result is its
-// verdict leg, the same rule probeWAN combines: the ping success threshold
-// or at least one HTTP success in that family. A family the provider does not
-// carry keeps the unprobed value, because nothing was asked of it and reporting
-// it as failing would show an IPv4-only provider as half broken.
+// publishLiveState updates the local snapshot when this process serves the
+// management API. It preserves each stored verdict and marks unprobed families
+// with ProbeNone.
 func (m *Module) publishLiveState(
 	statuses map[string]wanStatus,
 	results map[string]probeResult,
@@ -603,27 +578,6 @@ func (m *Module) publishLiveState(
 	}
 
 	m.Env.LiveState.SetHealth(members)
-}
-
-// pushStatus tells the hypervisor watchdog what this cycle decided: every
-// provider's verdict and the tier now carrying traffic. The watchdog holds no
-// provider list of its own, so this message is the whole of what it knows.
-func (m *Module) pushStatus(ctx context.Context, statuses map[string]wanStatus) {
-	if m.pusher == nil {
-		return
-	}
-
-	states := make(netif.HealthStates, len(m.cfg.WANs))
-	for _, wan := range m.cfg.WANs {
-		state := StateUnknown
-		if status, ok := statuses[wan.Key()]; ok && status.State.Valid() {
-			state = status.State
-		}
-
-		states[wan.Key()] = string(state)
-	}
-
-	m.pusher.Send(ctx, statuspush.NewStatus(m.now(), m.cfg.TierMembers(), states))
 }
 
 // verdictOf maps the module's hysteresis state onto the management
@@ -793,16 +747,6 @@ func (m *Module) snapshotStatuses() map[string]wanStatus {
 	return statuses
 }
 
-// now reads the injected clock, falling back to the wall clock for a test that
-// builds the struct bare. Init installs the real clock on the daemon path.
-func (m *Module) now() time.Time {
-	if m.clock == nil {
-		return internalclock.Real{}.Now()
-	}
-
-	return m.clock.Now()
-}
-
 func advanceHealth(
 	current wanStatus,
 	cyclePassed bool,
@@ -870,7 +814,7 @@ func (m *Module) emitTransition(
 
 	// A health transition changes routing eligibility, so ask the daemon to
 	// reconcile now rather than wait for the periodic tick; this makes
-	// wan.routes failover event-driven.
+	// This lets wan.routes update routing promptly after health changes.
 	if m.Env != nil && m.Env.RequestReconcile != nil {
 		m.Env.RequestReconcile(
 			"health " + event.WAN.Name + " " + string(event.From) + "->" + string(event.To),
