@@ -1,0 +1,79 @@
+name: Build gateway archives
+
+on:
+  workflow_call:
+    inputs:
+      arch:
+        required: true
+        type: string
+      runner:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    name: Compile and package gateway
+    runs-on: ${{ inputs.runner }}
+    env:
+      COMPOSE_ENV_FILES: ${{ github.workspace }}/build/wanconfig.env
+      COMPOSE_FILE: compose.build.yaml:compose.${{ inputs.arch }}.yaml:compose.release.yaml
+      WANCONFIG_CACHE_ID: ${{ github.run_id }}
+      RELEASE_PLATFORMS: linux/${{ inputs.arch }}
+    defaults:
+      run:
+        working-directory: gateway
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4.4.1
+      - name: Resolve release image targets
+        run: docker compose build --print release stack-build > "$RUNNER_TEMP/gateway-release.json"
+      - name: Build and cache release images
+        uses: docker/bake-action@v7.5.0
+        with:
+          source: .
+          files: ${{ runner.temp }}/gateway-release.json
+          targets: |
+            release
+            stack-build
+          load: true
+          set: |
+            release.cache-from=type=gha,scope=mwan-gateway-release-${{ inputs.arch }}
+            release.cache-from+=type=gha,scope=mwan-gateway-builder-${{ inputs.arch }}
+            release.cache-to=type=gha,scope=mwan-gateway-release-${{ inputs.arch }},mode=max
+            stack-build.cache-from=type=gha,scope=mwan-gateway-stack-build-${{ inputs.arch }}
+            stack-build.cache-to=type=gha,scope=mwan-gateway-stack-build-${{ inputs.arch }},mode=max
+      - name: Set CI release tag
+        run: echo "RELEASE_TAG=ci-${GITHUB_RUN_ID}-${GITHUB_SHA:0:7}" >> "$GITHUB_ENV"
+      - name: Build WANCONFIG stack archive
+        run: docker compose run --pull never --rm stack-build
+      - name: Compile gateway
+        env:
+          RELEASE_STAGE: compile
+        run: &release-command docker compose run --pull never --rm release
+      - uses: actions/upload-artifact@v7
+        with:
+          name: build-gateway-linux-${{ inputs.arch }}
+          path: gateway/dist
+          if-no-files-found: error
+      - name: Package without publishing
+        env:
+          RELEASE_STAGE: package
+        run: *release-command
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ci-gateway-linux-${{ inputs.arch }}-archives
+          path: gateway/dist/*.tar.gz
+          if-no-files-found: error
+
+  attest:
+    needs: compile
+    uses: ./.github/workflows/attest.yml
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    with:
+      arch: ${{ inputs.arch }}

@@ -20,9 +20,8 @@ Run each command with `--help` for its required inputs.
 ## Check acquisition and forwarding
 
 Use connected Linux namespaces with real Kea and radvd processes. Include VLAN devices,
-an upstream provider peer, and a downstream sender. Run the
-[protocol namespace service](../../../gateway/compose.test.yaml) for real protocol and
-packet cases and the [systemd service](../../../gateway/compose.systemd.yaml) for cases
+an upstream provider peer, and a downstream sender. Run `make -C gateway test-protocol-namespace`
+for real protocol and packet cases. Run `make -C gateway test-systemd` for cases
 that require networkd, resolved, or udev. The
 [CI workflow](../../../.github/workflows/ci.yml) records the current commands and
 cleanup.

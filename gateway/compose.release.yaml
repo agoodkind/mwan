@@ -1,0 +1,5 @@
+services:
+  release:
+    environment:
+      GITHUB_SHA: ${GITHUB_SHA:?Supply CI commit}
+      GITHUB_RUN_NUMBER: ${GITHUB_RUN_NUMBER:?Supply CI run number}

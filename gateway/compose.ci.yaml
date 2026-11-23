@@ -1,8 +1,7 @@
 x-ci: &ci
-  working_dir: ${WANCONFIG_DOCKER_SOURCE}/gateway
+  working_dir: ${GITHUB_WORKSPACE:?Supply the CI workspace}/gateway
   environment:
-    GIT_WORK_TREE: ${WANCONFIG_DOCKER_SOURCE}
-    GIT_CONFIG_VALUE_0: ${WANCONFIG_DOCKER_SOURCE}
+    GIT_CONFIG_VALUE_0: ${GITHUB_WORKSPACE}
     GITHUB_OUTPUT: /github/output
     GITHUB_ACTIONS: "true"
     GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-}
@@ -12,11 +11,11 @@ x-ci: &ci
     GITHUB_REF: ${GITHUB_REF:-}
     GITHUB_REF_NAME: ${GITHUB_REF_NAME:-}
     GITHUB_EVENT_NAME: ${GITHUB_EVENT_NAME:-}
-    GITHUB_WORKSPACE: ${WANCONFIG_DOCKER_SOURCE}
+    GITHUB_WORKSPACE: ${GITHUB_WORKSPACE}
   volumes:
     - type: bind
-      source: ${WANCONFIG_DOCKER_SOURCE}
-      target: ${WANCONFIG_DOCKER_SOURCE}
+      source: ..
+      target: ${GITHUB_WORKSPACE}
       bind:
         create_host_path: false
     - type: bind

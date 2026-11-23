@@ -8,89 +8,194 @@ x-build: &build
     LIBYANG_COMMIT: ${WANCONFIG_LIBYANG_COMMIT:?Supply the libyang commit}
     SYSREPO_COMMIT: ${WANCONFIG_SYSREPO_COMMIT:?Supply the sysrepo commit}
 
-x-environment: &environment
-  WANCONFIG_DOCKER_ARCH: ${WANCONFIG_DOCKER_ARCH:?Supply the architecture}
-  GOWORK: "off"
-  GIT_CONFIG_COUNT: "1"
-  GIT_CONFIG_KEY_0: safe.directory
-  GIT_CONFIG_VALUE_0: /src
-  GH_TOKEN: ${GH_TOKEN:-}
-  RELEASE_STAGE: ${RELEASE_STAGE:-}
-  RELEASE_TAG: ${RELEASE_TAG:-}
-  RELEASE_PLATFORMS: ${RELEASE_PLATFORMS:-linux/amd64 linux/arm64}
-  GO_MK_TARGET_GOOS: ${GO_MK_TARGET_GOOS:-}
-  GO_MK_TARGET_GOARCH: ${GO_MK_TARGET_GOARCH:-}
-  GO_MK_JOB_LAYOUT: ${GO_MK_JOB_LAYOUT:-split}
-  GO_MK_API_REPO: ${GO_MK_API_REPO:-agoodkind/go-makefile}
-  GO_MK_API_REF: ${GO_MK_API_REF:-main}
-  YANG_SCHEMA_DIR: ${YANG_SCHEMA_DIR:-internal/yangpub/schema}
-  YANG_DIR: ${YANG_DIR:-yang}
-  YANGLINT: ${YANGLINT:-yanglint}
-  GO_MK_DIFF_BASE: ${GO_MK_DIFF_BASE:-}
-  GO_MK_DIFF_BASE_IS_EXACT: ${GO_MK_DIFF_BASE_IS_EXACT:-}
-  GO_MK_DIFF_HEAD: ${GO_MK_DIFF_HEAD:-}
-  GO_MK_DEFAULT_BRANCH: ${GO_MK_DEFAULT_BRANCH:-}
-  GO_MK_EVENT_NAME: ${GO_MK_EVENT_NAME:-}
-  GO_MK_REF_NAME: ${GO_MK_REF_NAME:-}
-  GO_MK_CI_PRIMARY_COMMAND: ${GO_MK_CI_PRIMARY_COMMAND:-}
-  GO_MK_CI_PRIMARY_OUTCOME: ${GO_MK_CI_PRIMARY_OUTCOME:-}
-  GO_MK_CI_GOLANGCI_RAN: ${GO_MK_CI_GOLANGCI_RAN:-}
-  GO_MK_CI_LINT_CACHE_HIT: ${GO_MK_CI_LINT_CACHE_HIT:-}
-  GO_MK_CI_LINT_CACHE_PATHS: ${GO_MK_CI_LINT_CACHE_PATHS:-}
-  GO_MK_CI_REPORT_GOLANGCI_RUN: ${GO_MK_CI_REPORT_GOLANGCI_RUN:-}
+x-builder: &builder
+  build: *build
+  cpus: ${WANCONFIG_DOCKER_CPUS:-3}
+  mem_limit: ${WANCONFIG_DOCKER_MEMORY:-6g}
+  working_dir: /src/gateway
+  init: true
+  environment: &environment
+    GOWORK: "off"
+    GIT_CONFIG_COUNT: "1"
+    GIT_CONFIG_KEY_0: safe.directory
+    GIT_CONFIG_VALUE_0: /src
+    GH_TOKEN: ${GH_TOKEN:-}
+    RELEASE_STAGE: ${RELEASE_STAGE:-}
+    RELEASE_TAG: ${RELEASE_TAG:-}
+    RELEASE_PLATFORMS: ${RELEASE_PLATFORMS:-linux/amd64 linux/arm64}
+    GO_MK_TARGET_GOOS: ${GO_MK_TARGET_GOOS:-}
+    GO_MK_TARGET_GOARCH: ${GO_MK_TARGET_GOARCH:-}
+    BINARY: mwan
+    CMD: ./cmd/mwan
+    GKLOG_VPKG: goodkind.io/gklog/version
+    GO_BUILD_EXTRA_FLAGS: -trimpath -buildvcs=false
+    GO_MK_MODULES: go-build.mk go-release.mk
+    GO_MK_NOTICE_MAKEFILE: bootstrap.mk
+    GO_MK_CGO_OPTIONAL: github.com/osrg/gobgp/v4/internal/pkg/table
+    GOVULNCHECK_INSTALL: golang.org/x/vuln/cmd/govulncheck@v1.9.0
+    RELEASE_BINS: mwan:./cmd/mwan:cgo=1,platforms=linux/amd64,platforms=linux/arm64
+    GO_MK_API_REPO: ${GO_MK_API_REPO:-agoodkind/go-makefile}
+    GO_MK_API_REF: ${GO_MK_API_REF:-main}
+    YANG_SCHEMA_DIR: ${YANG_SCHEMA_DIR:-internal/yangpub/schema}
+    YANG_DIR: ${YANG_DIR:-yang}
+    YANGLINT: ${YANGLINT:-yanglint}
+  volumes:
+    - type: bind
+      source: ..
+      target: /src
+      bind:
+        create_host_path: false
+    - gomod:/go/pkg/mod
+    - cache:/root/.cache
+    - gomk:/src/gateway/.make
+
+x-network-tests: &network-tests
+  <<: *builder
+  build:
+    <<: *build
+    target: network-tests
+  privileged: true
+
+x-stack: &stack
+  build:
+    context: ..
+    dockerfile: gateway/Dockerfile.stack
+    target: stack-runtime
+    args:
+      WANCONFIG_LIBYANG_VERSION: ${WANCONFIG_LIBYANG_VERSION:?Supply the libyang pin}
+      WANCONFIG_LIBYANG_COMMIT: ${WANCONFIG_LIBYANG_COMMIT:?Supply the libyang commit}
+      WANCONFIG_SYSREPO_VERSION: ${WANCONFIG_SYSREPO_VERSION:?Supply the sysrepo pin}
+      WANCONFIG_SYSREPO_COMMIT: ${WANCONFIG_SYSREPO_COMMIT:?Supply the sysrepo commit}
+      WANCONFIG_LIBYANG_CPP_VERSION: ${WANCONFIG_LIBYANG_CPP_VERSION:?Supply the libyang-cpp pin}
+      WANCONFIG_LIBYANG_CPP_COMMIT: ${WANCONFIG_LIBYANG_CPP_COMMIT:?Supply the libyang-cpp commit}
+      WANCONFIG_SYSREPO_CPP_VERSION: ${WANCONFIG_SYSREPO_CPP_VERSION:?Supply the sysrepo-cpp pin}
+      WANCONFIG_SYSREPO_CPP_COMMIT: ${WANCONFIG_SYSREPO_CPP_COMMIT:?Supply the sysrepo-cpp commit}
+      WANCONFIG_NGHTTP2_ASIO_VERSION: ${WANCONFIG_NGHTTP2_ASIO_VERSION:?Supply the nghttp2-asio pin}
+      WANCONFIG_NGHTTP2_ASIO_COMMIT: ${WANCONFIG_NGHTTP2_ASIO_COMMIT:?Supply the nghttp2-asio commit}
+      WANCONFIG_ROUSETTE_VERSION: ${WANCONFIG_ROUSETTE_VERSION:?Supply the rousette pin}
+      WANCONFIG_ROUSETTE_COMMIT: ${WANCONFIG_ROUSETTE_COMMIT:?Supply the rousette commit}
 
 services:
-  build: &builder
-    image: ${WANCONFIG_BUILDER_IMAGE:?Supply the builder image}
-    build: *build
-    platform: linux/${WANCONFIG_DOCKER_ARCH}
-    cpus: ${WANCONFIG_DOCKER_CPUS:-3}
-    mem_limit: ${WANCONFIG_DOCKER_MEMORY:-6g}
-    working_dir: /src/gateway
-    init: true
-    environment: *environment
-    volumes:
-      - type: bind
-        source: ..
-        target: /src
-        bind:
-          create_host_path: false
-      - gomod:/go/pkg/mod
-      - cache:/root/.cache
-      - gomk:/src/gateway/.make
-    command: [make, build]
+  build:
+    <<: *builder
+    command: [make, -f, bootstrap.mk, build]
 
   check:
     <<: *builder
-    command: [make, build-check]
+    command: [make, -f, bootstrap.mk, build-check]
 
   release:
     <<: *builder
-    image: mwan-release-builder:${WANCONFIG_DOCKER_ARCH}
     build:
       <<: *build
       target: release
-    command: [make, release]
-
-  binary:
-    <<: *builder
-    command: [make, build-wanconfig]
+    environment:
+      <<: *environment
+      CGO_ENABLED: "1"
+      CGO_LDFLAGS: -static
+      GOFLAGS: -tags=osusergo,netgo
+    command: [go-mk, release]
 
   proto:
     <<: *builder
-    command: [make, proto]
+    command: [buf, generate]
 
   bpf:
     <<: *builder
-    command: [make, npt-bpf]
+    working_dir: /src/gateway/internal/ifmgr/modules/npt/bpf
+    command: [clang, -O2, -g, -Wall, -Werror, -target, bpfel, -c, npt.c, -o, npt_bpfel.o]
+
+  test:
+    <<: *builder
+    command: [go, test, -count=1, -vet=off, ./...]
+
+  check-yang:
+    <<: *builder
+    command: &validate-config [sh, -ec, 'exec "$${YANGLINT}" -t config "$${YANG_SCHEMA_DIR}"/*.yang "$${YANG_DIR}"/instances/*.json']
+
+  yang-validate:
+    <<: *builder
+    command: [sh, -ec, '"$${YANGLINT}" --version && exec "$${YANGLINT}" "$${YANG_SCHEMA_DIR}"/*.yang']
+
+  yang-validate-instances:
+    <<: *builder
+    command: *validate-config
+
+  provider-drift:
+    <<: *builder
+    build:
+      <<: *build
+      target: drift
+    working_dir: /src/provider
+    environment:
+      <<: *environment
+      GOWORK: /tmp/go.work
+      MWAN_BINARY: /usr/local/bin/mwan
+    command: [go, test, -v, -count=1, -tags, drift, ./...]
+
+  firewall:
+    <<: *builder
+    privileged: true
+    command: [go, test, -v, -count=1, -tags, firewall, ./...]
+
+  netns:
+    <<: *network-tests
+    environment:
+      <<: *environment
+      CGO_ENABLED: "1"
+    command: [go, test, -v, -count=1, -tags, netns, ./...]
+
+  protocol-namespace:
+    <<: *network-tests
+    environment:
+      <<: *environment
+      CGO_ENABLED: "1"
+      MWAN_PROTOCOL_ACCEPTANCE: "1"
+      GOFLAGS: -buildvcs=false
+    command: [go, test, -v, -count=1, -timeout=30m, -tags, protocol, -run, "${PROTOCOL_TEST:-.}", ./internal/commandline]
+
+  systemd:
+    <<: *builder
+    build:
+      <<: *build
+      target: systemd-tests
+    # systemd must run as PID 1 rather than Docker's init process.
+    init: false
+    privileged: true
+    cgroup: private
+    security_opt:
+      - label=disable
+    tmpfs:
+      - /run
+      - /run/lock
+    environment:
+      <<: *environment
+      GOFLAGS: -buildvcs=false
+    command: [/sbin/init]
+    healthcheck:
+      test: [CMD, systemctl, show, --property=Version, --value]
+      interval: 200ms
+      timeout: 1s
+      retries: 150
+      start_period: 1s
+
+  stack-build:
+    <<: *stack
+    volumes:
+      - type: bind
+        source: ./dist
+        target: /out
+        bind:
+          create_host_path: true
+
+  stack-verify:
+    <<: *stack
+    profiles: [verify]
 
 volumes:
   gomod:
-    name: mwan-gomod-${WANCONFIG_CACHE_ID:?Supply the checkout cache ID}-${WANCONFIG_DOCKER_ARCH}
   cache:
-    name: mwan-build-${WANCONFIG_CACHE_ID:?Supply the checkout cache ID}-${WANCONFIG_DOCKER_ARCH}
   gomk:
-    name: mwan-gomk-${WANCONFIG_CACHE_ID:?Supply the checkout cache ID}-${WANCONFIG_DOCKER_ARCH}
 
 networks:
   default:

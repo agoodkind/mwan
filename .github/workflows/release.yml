@@ -1,16 +1,5 @@
 name: Release
 
-# Releases the mwan artifacts every deploy installs. The deploy playbooks fetch
-# a published archive by version, so this workflow is the only place a shipped
-# binary is built.
-#
-# The gateway binary links libyang and libsysrepo through cgo. Each gateway
-# release platform builds on a native Linux runner with a C compiler.
-# The gateway entry in the modules JSON input sets cgo to true.
-# The compile job sets CGO_ENABLED=1 and passes the target architecture to
-# the Makefile. The workflow caches compiler output, the built C libraries,
-# and the stack packages between runs.
-
 on:
   push:
     branches: [main]
