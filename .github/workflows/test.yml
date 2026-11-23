@@ -1,0 +1,91 @@
+name: Test gateway
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  COMPOSE_ENV_FILES: ${{ github.workspace }}/build/wanconfig.env
+  COMPOSE_FILE: compose.build.yaml:compose.amd64.yaml
+  WANCONFIG_CACHE_ID: ${{ github.run_id }}
+  RELEASE_PLATFORMS: linux/amd64
+
+defaults:
+  run:
+    working-directory: gateway
+
+jobs:
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - &restore-amd64-builder
+        uses: ./.github/actions/gateway-builder
+        with:
+          arch: amd64
+      - uses: agoodkind/go-makefile/.github/actions/ci@main
+        with:
+          working-directory: gateway
+          go-version-file: gateway/go.mod
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - *restore-amd64-builder
+      - name: Run gateway tests
+        run: docker compose run --build --rm test
+
+  drift:
+    name: provider drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - *restore-amd64-builder
+      - name: Compare mwan install with provider data
+        run: docker compose run --build --rm provider-drift
+
+  yang:
+    name: yang gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - *restore-amd64-builder
+      - name: Validate YANG model and its instance documents
+        run: docker compose run --build --rm check-yang
+
+  netns:
+    name: mwan netns tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - *restore-amd64-builder
+      - name: Set runner socket buffer for nftables batch test
+        run: sudo sysctl -w net.core.rmem_default=212992
+      - name: Run network namespace tests as root
+        run: docker compose run --build --rm netns
+
+  firewall:
+    name: mwan firewall tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - *restore-amd64-builder
+      - name: Run firewall and namespace acceptance tests
+        run: |
+          docker compose run --build --rm firewall
+          docker compose run --build --rm protocol-namespace
+      - name: Run systemd acceptance tests
+        if: ${{ !cancelled() }}
+        run: |
+          docker compose up --build --wait systemd
+          docker compose exec -T systemd go test -count=1 -timeout=20m -tags systemd ./internal/commandline
+      - name: Stop systemd container
+        if: always()
+        run: docker compose down --remove-orphans

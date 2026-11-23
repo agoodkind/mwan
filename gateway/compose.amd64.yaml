@@ -1,0 +1,52 @@
+x-platform: &platform
+  platform: linux/amd64
+  environment:
+    WANCONFIG_DOCKER_ARCH: amd64
+    GO_MK_PLATFORMS: linux/amd64
+
+x-builder: &builder
+  <<: *platform
+  image: mwan-wanconfig-builder:amd64
+
+x-network-tests: &network-tests
+  <<: *platform
+  image: mwan-network-tests:amd64
+
+services:
+  build: *builder
+  check: *builder
+  proto: *builder
+  bpf:
+    <<: *builder
+    environment:
+      C_INCLUDE_PATH: ${NPT_BPF_INCLUDE:-/usr/include/x86_64-linux-gnu}
+  test: *builder
+  check-yang: *builder
+  yang-validate: *builder
+  yang-validate-instances: *builder
+  firewall: *builder
+  release:
+    <<: *platform
+    image: mwan-release-builder:amd64
+  netns: *network-tests
+  protocol-namespace: *network-tests
+  systemd:
+    <<: *platform
+    image: mwan-systemd-tests:amd64
+  provider-drift:
+    <<: *platform
+    image: mwan-provider-drift:amd64
+  stack-build:
+    platform: linux/amd64
+    command: [-verify, /bundle/wanconfig-stack_linux_amd64.tar.gz, -out, /out]
+  stack-verify:
+    platform: linux/amd64
+    command: [-verify, /bundle/wanconfig-stack_linux_amd64.tar.gz]
+
+volumes:
+  gomod:
+    name: mwan-gomod-${WANCONFIG_CACHE_ID:?Supply checkout cache ID}-amd64
+  cache:
+    name: mwan-build-${WANCONFIG_CACHE_ID:?Supply checkout cache ID}-amd64
+  gomk:
+    name: mwan-gomk-${WANCONFIG_CACHE_ID:?Supply checkout cache ID}-amd64

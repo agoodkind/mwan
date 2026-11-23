@@ -1,0 +1,54 @@
+name: Attest gateway archives
+
+on:
+  workflow_call:
+    inputs:
+      arch:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  attest:
+    name: Attest ${{ matrix.archive }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        archive: [mwan, wanconfig-stack]
+    env:
+      ARCHIVE: ${{ matrix.archive }}_linux_${{ inputs.arch }}.tar.gz
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: ci-gateway-linux-${{ inputs.arch }}-archives
+      - id: attest
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: ${{ env.ARCHIVE }}
+      - name: Name the attestation bundle for its archive
+        env:
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: cp "$BUNDLE_PATH" "$ARCHIVE.sigstore.json"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ci-gateway-linux-${{ inputs.arch }}-${{ matrix.archive }}-attestation
+          path: ${{ env.ARCHIVE }}.sigstore.json
+          if-no-files-found: error
+
+  release-artifacts:
+    name: Assemble gateway archives and attestations
+    needs: attest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/upload-artifact/merge@v7
+        with:
+          name: release-gateway-linux-${{ inputs.arch }}
+          pattern: ci-gateway-linux-${{ inputs.arch }}-*
+          compression-level: 0

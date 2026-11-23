@@ -53,7 +53,7 @@ RUN awk -f /tmp/pkgconfig.awk /opt/mwan/cgo/lib/pkgconfig/libyang.pc > /tmp/liby
     && mv /tmp/libyang.pc /opt/mwan/cgo/lib/pkgconfig/libyang.pc
 
 FROM base AS builder
-ENV MWAN_CONTAINER=1 GOWORK=off
+ENV GOWORK=off
 WORKDIR /src/gateway
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
@@ -62,6 +62,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     && go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
 
 FROM builder AS release
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    GOBIN=/usr/local/bin go install goodkind.io/go-makefile/cmd/go-mk@main
 RUN apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=static-libraries /opt/mwan/cgo /opt/mwan/cgo
@@ -84,6 +87,10 @@ STOPSIGNAL SIGRTMIN+3
 CMD ["/sbin/init"]
 
 FROM builder AS drift
+RUN --mount=type=bind,source=gateway,target=/src/gateway \
+    --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -trimpath -buildvcs=false -o /usr/local/bin/mwan ./cmd/mwan
 COPY gateway/go.mod /src/gateway/go.mod
 COPY provider/go.mod /src/provider/go.mod
 WORKDIR /tmp

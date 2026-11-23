@@ -4,9 +4,9 @@
 
 YANG_NATIVE_MK      := $(abspath $(lastword $(MAKEFILE_LIST)))
 YANG_NATIVE_MK_DIR  := $(patsubst %/,%,$(dir $(YANG_NATIVE_MK)))
-YANG_NATIVE_PINS_MK := $(YANG_NATIVE_MK_DIR)/wanconfig.mk
+YANG_NATIVE_PINS_FILE := $(YANG_NATIVE_MK_DIR)/wanconfig.env
 
-include $(YANG_NATIVE_PINS_MK)
+include $(YANG_NATIVE_PINS_FILE)
 
 YANG_NATIVE_HOST_OS   := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 YANG_NATIVE_HOST_ARCH := $(patsubst aarch64,arm64,$(patsubst x86_64,amd64,$(shell uname -m)))
@@ -74,7 +74,7 @@ YANG_NATIVE_CGO_LDFLAGS     := -L$(YANG_NATIVE_PREFIX)/lib
 YANG_NATIVE_CACHE_VERSIONS := \
 	pcre2=$(WANCONFIG_PCRE2_COMMIT) \
 	libyang=$(WANCONFIG_LIBYANG_COMMIT)-f$(YANG_NATIVE_FLAGS_REV)
-YANG_NATIVE_CACHE_INPUTS := $(YANG_NATIVE_MK) $(YANG_NATIVE_PINS_MK)
+YANG_NATIVE_CACHE_INPUTS := $(YANG_NATIVE_MK) $(YANG_NATIVE_PINS_FILE)
 
 ################################################################################
 # Build helpers

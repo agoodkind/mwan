@@ -11,205 +11,83 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  COMPOSE_ENV_FILES: ${{ github.workspace }}/build/wanconfig.env
+
 jobs:
-  go:
-    uses: agoodkind/go-makefile/.github/workflows/_ci.yml@main
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
-    secrets: inherit
-    with:
-      working_directory: gateway
-      go_version_file: gateway/go.mod
-      skip_unchanged: false
-      release_platforms: linux/amd64 linux/arm64
-      cgo: true
-
-  provider:
-    uses: agoodkind/go-makefile/.github/workflows/_ci.yml@main
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
-    secrets: inherit
-    with:
-      working_directory: provider
-      go_version_file: provider/go.mod
-      release_platforms: darwin/arm64 linux/amd64 linux/arm64
-      apt_packages: cmake pkg-config
-      darwin_runner: macos-15
-      cgo: true
-
-  # The drift comparison requires the gateway's libsysrepo builder image.
-  drift:
-    name: provider drift
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: gateway/go.mod
-          cache-dependency-path: gateway/go.sum
-      - name: Apply Compose environment
-        working-directory: gateway
-        run: make apply-compose-env >> "$GITHUB_ENV"
-      - name: Compare mwan install with the provider data
-        env:
-          GH_TOKEN: ${{ github.token }}
-        working-directory: gateway
-        run: docker compose -f compose.test.yaml run --build --rm provider-drift
-
-  tofu-plan:
-    name: provider tofu plan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      # Staticcheck-extra requires constant test input paths to use testdata.
-      # Keep this copy aligned with the validated gateway fixture.
-      - name: Check network route fixture copies
-        run: cmp gateway/yang/instances/network-routes.json provider/internal/provider/testdata/networkplan/network-routes.json
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: provider/go.mod
-          cache-dependency-path: provider/go.sum
-      # Disable the wrapper because TestTofuPlan reads tofu output directly.
-      - uses: opentofu/setup-opentofu@v2.0.2
-        with:
-          tofu_version: 1.12.6
-          tofu_wrapper: false
-      - name: Plan network documents with OpenTofu
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: make -C provider test-tofu-plan
-
-  provider-package:
-    needs: provider
-    if: needs.provider.outputs.changed == 'true'
-    strategy:
+  compose-config:
+    name: Validate gateway Compose (${{ matrix.arch }})
+    strategy: &gateway-platforms
       fail-fast: false
       matrix:
         include:
-          - platform: linux-amd64
+          - arch: amd64
             runner: ubuntu-latest
-          - platform: linux-arm64
+          - arch: arm64
             runner: ubuntu-24.04-arm
-          - platform: darwin-arm64
-            runner: macos-15
     runs-on: ${{ matrix.runner }}
+    env:
+      COMPOSE_FILE: compose.build.yaml:compose.${{ matrix.arch }}.yaml
+      WANCONFIG_CACHE_ID: ${{ github.run_id }}
+      RELEASE_PLATFORMS: linux/${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - name: Validate gateway configuration
+        working-directory: gateway
+        run: docker compose config --quiet
+      - name: Save gateway builder layers
+        uses: ./.github/actions/gateway-builder
         with:
-          go-version-file: provider/go.mod
-          cache-dependency-path: provider/go.sum
-      - uses: opentofu/setup-opentofu@v2.0.2
-        with:
-          tofu_version: 1.12.6
-          tofu_wrapper: false
-      - uses: actions/download-artifact@v8
-        with:
-          name: release-provider-${{ matrix.platform }}
-          path: ${{ runner.temp }}/provider-package
-      - env:
-          GH_TOKEN: ${{ github.token }}
-          PACKAGE_DIRECTORY: ${{ runner.temp }}/provider-package
-        run: |
-          package="$(find "$PACKAGE_DIRECTORY" -name 'terraform-provider-mwan_*.tar.gz' -print -quit)"
-          test -n "$package"
-          make -C provider test-release-package PROVIDER_PACKAGE="$package" TOFU="$(command -v tofu)" ALLOW_MISSING_CHECKSUMS=1
+          arch: ${{ matrix.arch }}
+          export-cache: 'true'
 
-  yang:
-    name: yang gates
+  prepare:
+    name: go / Prepare
+    needs: compose-config
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: gateway/go.mod
-          cache-dependency-path: gateway/go.sum
-      - name: Apply Compose environment
-        working-directory: gateway
-        run: make apply-compose-env >> "$GITHUB_ENV"
-      - name: Validate the YANG model and its instance documents
+      - name: Require both Compose configurations to pass
         env:
-          GH_TOKEN: ${{ github.token }}
-        working-directory: gateway
-        run: docker compose -f compose.test.yaml run --build --rm check-yang
+          RESULT: ${{ needs.compose-config.result }}
+        run: test "$RESULT" = success
 
-  # These tests create network namespaces and modify links, routes, and policy rules.
-  netns:
-    name: mwan netns tests
+  test:
+    name: go
+    needs: compose-config
+    uses: ./.github/workflows/test.yml
+
+  package:
+    name: Gateway packages (${{ matrix.arch }})
+    needs: compose-config
+    strategy: *gateway-platforms
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    with:
+      arch: ${{ matrix.arch }}
+      runner: ${{ matrix.runner }}
+
+  build:
+    name: go / Build
+    needs: [prepare, package]
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: gateway/go.mod
-          cache-dependency-path: gateway/go.sum
-      - name: Apply Compose environment
-        working-directory: gateway
-        run: make apply-compose-env >> "$GITHUB_ENV"
-      - name: Set the runner socket buffer for the nftables batch test
-        run: sudo sysctl -w net.core.rmem_default=212992
-      - name: Run the network namespace tests as root
+      - name: Require both native builds and their attested archives
         env:
-          GH_TOKEN: ${{ github.token }}
-        working-directory: gateway
-        run: docker compose -f compose.test.yaml run --build --rm netns
-
-  # The firewall tests need the privileged builder and cgo schema libraries.
-  firewall:
-    name: mwan firewall tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: gateway/go.mod
-          cache-dependency-path: gateway/go.sum
-      - name: Apply Compose environment
-        working-directory: gateway
-        run: make apply-compose-env >> "$GITHUB_ENV"
-      - name: Run the firewall and namespace acceptance tests
-        env:
-          GH_TOKEN: ${{ github.token }}
-          WANCONFIG_DOCKER_ARCH: amd64
-        working-directory: gateway
+          PREPARE: ${{ needs.prepare.result }}
+          PACKAGES: ${{ needs.package.result }}
         run: |
-          docker compose -f compose.test.yaml run --build --rm firewall
-          docker compose -f compose.test.yaml run --build --rm protocol-namespace
-      - name: Run the systemd acceptance tests
-        if: ${{ !cancelled() }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          WANCONFIG_DOCKER_ARCH: amd64
-        working-directory: gateway
-        run: |
-          docker compose -f compose.systemd.yaml up --build --wait systemd
-          docker compose -f compose.systemd.yaml exec -T systemd \
-            go test -count=1 -timeout=20m -tags systemd \
-            ./internal/commandline
-      - name: Stop the systemd container
-        if: always()
-        working-directory: gateway
-        run: docker compose -f compose.systemd.yaml down --remove-orphans
+          test "$PREPARE" = success
+          test "$PACKAGES" = success
 
-  arm64:
-    name: mwan arm64 tests
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: gateway/go.mod
-          cache-dependency-path: gateway/go.sum
-      - name: Apply Compose environment
-        working-directory: gateway
-        run: make apply-compose-env >> "$GITHUB_ENV"
-      - name: Run the suite in the arm64 builder image
-        env:
-          GH_TOKEN: ${{ github.token }}
-          WANCONFIG_DOCKER_ARCH: arm64
-        working-directory: gateway
-        run: docker compose -f compose.test.yaml run --build --rm test
+  provider:
+    uses: ./.github/workflows/test-provider.yml
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    secrets: inherit

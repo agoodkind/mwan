@@ -1,0 +1,40 @@
+name: Cache gateway builder layers
+description: Import gateway builder layers into the Buildx builder used by Compose.
+inputs:
+  arch:
+    description: Native gateway architecture, amd64 or arm64.
+    required: true
+  export-cache:
+    description: Export layers to GitHub Actions after building the image.
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - id: buildx
+      uses: docker/setup-buildx-action@v4.4.1
+      with:
+        driver: docker-container
+        driver-opts: default-load=true
+
+    - name: Resolve the gateway builder target
+      shell: bash
+      working-directory: gateway
+      env:
+        BUILDER_NAME: ${{ steps.buildx.outputs.name }}
+      run: |
+        docker compose build --print build > "$RUNNER_TEMP/gateway-builder.json"
+        echo "BUILDX_BUILDER=$BUILDER_NAME" >> "$GITHUB_ENV"
+        echo 'COMPOSE_BAKE=true' >> "$GITHUB_ENV"
+
+    - name: Build the gateway builder with cached layers
+      uses: docker/bake-action@v7.5.0
+      with:
+        source: .
+        files: ${{ runner.temp }}/gateway-builder.json
+        targets: build
+        builder: ${{ steps.buildx.outputs.name }}
+        load: true
+        set: |
+          build.cache-from=type=gha,scope=mwan-gateway-builder-${{ inputs.arch }}
+          ${{ inputs.export-cache == 'true' && format('build.cache-to=type=gha,scope=mwan-gateway-builder-{0},mode=max', inputs.arch) || '' }}

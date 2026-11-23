@@ -10,7 +10,7 @@ are in [AGENTS.md](AGENTS.md).
 Read the [gateway overview](docs/mwan.md) for provider selection, routing, and
 gateway operations.
 
-The [documentation guide](docs/README.md) links the gateway specifications,
+The [documentation guide](docs/README.md) links gateway specifications,
 implementation plans, and operator guides.
 
 ## Command help
@@ -69,14 +69,14 @@ RESTCONF policy. `mwan install` writes those files to the host:
 ```
 mwan install                             # Print help
 mwan install --role wan --apply          # install everything that role owns
-mwan install --print-schema /tmp/schema  # write the YANG modules for validation
+mwan install --print-schema /tmp/schema  # write YANG modules for validation
 ```
 
 The installer performs these actions for the `wan` role:
 
 - It writes the systemd units and drop-ins and re-enables each unit to update
   its `WantedBy` links.
-- It installs or updates the YANG modules in sysrepo and imports the read-only
+- It installs or updates the YANG modules in sysrepo and imports read-only
   NACM policy into startup and running when those datastores do not store it.
 
 The installer does not render templates or read site values. Every file it
