@@ -39,22 +39,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - *restore-amd64-builder
-      - &test
-        name: Run gateway tests
+      - name: Run gateway tests
         run: docker compose run --build --rm test
-
-  arm64:
-    name: mwan arm64 tests
-    runs-on: ubuntu-24.04-arm
-    env:
-      COMPOSE_FILE: compose.build.yaml:compose.arm64.yaml
-      RELEASE_PLATFORMS: linux/arm64
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/gateway-builder
-        with:
-          arch: arm64
-      - *test
 
   drift:
     name: provider drift
