@@ -150,6 +150,8 @@ jobs:
       - name: Apply Compose environment
         working-directory: gateway
         run: make apply-compose-env >> "$GITHUB_ENV"
+      - name: Set the runner socket buffer for the nftables batch test
+        run: sudo sysctl -w net.core.rmem_default=212992
       - name: Run the network namespace tests as root
         env:
           GH_TOKEN: ${{ github.token }}
