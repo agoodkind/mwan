@@ -2,6 +2,7 @@ x-ci: &ci
   working_dir: ${WANCONFIG_DOCKER_SOURCE}/gateway
   environment:
     GIT_WORK_TREE: ${WANCONFIG_DOCKER_SOURCE}
+    GIT_CONFIG_VALUE_0: ${WANCONFIG_DOCKER_SOURCE}
     GITHUB_OUTPUT: /github/output
     GITHUB_ACTIONS: "true"
     GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-}
