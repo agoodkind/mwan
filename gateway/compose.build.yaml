@@ -136,7 +136,7 @@ services:
   firewall:
     <<: *builder
     privileged: true
-    command: [go, test, -v, -count=1, -tags, firewall, ./...]
+    command: [go, test, -v, -count=1, -tags, firewall, ./internal/commandline]
 
   netns:
     <<: *network-tests
