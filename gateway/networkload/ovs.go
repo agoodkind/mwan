@@ -10,7 +10,12 @@ import (
 
 var errOVSSelection = errors.New("set dataplane to ovs")
 
-// LoadOVS loads and validates the supplied network configuration and requires OVS settings.
+// LoadOVS reads OVS settings from a WAN network document.
+//
+// It validates the document against the supplied YANG schema and returns
+// an error if the document selects kernel forwarding.
+//
+//	settings, err := networkload.LoadOVS(networkPath, schemaDir)
 func LoadOVS(path, schemaDir string) (ovsconfig.Config, error) {
 	loaded, err := Load(path, schemaDir)
 	if err != nil {
