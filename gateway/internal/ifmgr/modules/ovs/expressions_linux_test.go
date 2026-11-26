@@ -95,3 +95,43 @@ func TestRejectInvalidExpressions(t *testing.T) {
 		}
 	}
 }
+
+func TestOrderedActionsAndNestedGroups(t *testing.T) {
+	actions := []ovsconfig.Action{
+		{ID: 99, Name: "set_field", Argument: "192.0.2.1->ip_src"},
+		{ID: 1, Name: "set_field", Argument: "192.0.2.2->ip_src"},
+		{ID: 2, Name: "clone", Argument: "group:17,group:18"},
+	}
+	wire, err := marshalActionFields(bucketExpression, actions, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(wire) != 3 || !bytes.Contains(wire[0], []byte{192, 0, 2, 1}) ||
+		!bytes.Contains(wire[1], []byte{192, 0, 2, 2}) ||
+		!bytes.Contains(wire[2], []byte{0x6d, 0x77, 0, 17}) ||
+		!bytes.Contains(wire[2], []byte{0x6d, 0x77, 0, 18}) {
+		t.Fatalf("unexpected ordered action bytes %x", wire)
+	}
+}
+
+func TestBridgePortNumbers(t *testing.T) {
+	number := 2
+	ports := []*portRow{
+		{UUID: "p1", Interfaces: []string{"i1"}},
+		{UUID: "p2", Interfaces: []string{"i2"}},
+	}
+	interfaces := []*interfaceRow{
+		{UUID: "i1", Name: "lan", OpenFlow: &number},
+		{UUID: "i2", Name: "wan", OpenFlow: &number},
+	}
+	configured := []ovsconfig.Port{{Name: "lan"}, {Name: "wan"}}
+
+	for index, name := range []string{"lan", "wan"} {
+		bridge := &bridgeRow{Ports: []string{ports[index].UUID}}
+		numbers := bridgePortNumbers(bridge, ports, interfaces, configured)
+		if len(numbers) != 1 || numbers[name] != 2 {
+			t.Fatalf("bridge with port %s resolved %v", name, numbers)
+		}
+	}
+}

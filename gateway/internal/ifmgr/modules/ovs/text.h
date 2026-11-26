@@ -12,4 +12,4 @@ struct mwan_wire {
 };
 struct mwan_wire mwan_parse(const struct ofputil_port_map *, int kind, const char *text,
                             uint32_t group_namespace, uint32_t max_group_id);
-const char *mwan_validate_flow(const void *wire);
+const char *mwan_validate_flow(const uint8_t *wire);

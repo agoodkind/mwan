@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -46,26 +47,53 @@ func installOpenFlow(
 		return err
 	}
 
-	configured := make(map[string]bool, len(config.Ports))
-	for _, port := range config.Ports {
-		configured[port.Name] = true
+	var ports []*portRow
+	if err := readRows(ctx, database, &ports); err != nil {
+		return err
 	}
 
-	numbers := make(map[string]uint32, len(config.Ports))
+	bridge, err := readOpenFlowBridge(ctx, database, config.Bridge)
+	if err != nil {
+		return err
+	}
+
+	numbers := bridgePortNumbers(bridge, ports, interfaces, config.Ports)
+
+	return installOnSwitch(ctx, config.OpenFlow, *bridge.DatapathID, numbers, health)
+}
+
+func bridgePortNumbers(
+	bridge *bridgeRow,
+	ports []*portRow,
+	interfaces []*interfaceRow,
+	configured []ovsconfig.Port,
+) map[string]uint32 {
+	members := make(map[string]bool)
+
+	for _, port := range ports {
+		if slices.Contains(bridge.Ports, port.UUID) {
+			for _, id := range port.Interfaces {
+				members[id] = true
+			}
+		}
+	}
+
+	names := make(map[string]bool, len(configured))
+	for _, port := range configured {
+		names[port.Name] = true
+	}
+
+	numbers := make(map[string]uint32)
 
 	for _, device := range interfaces {
-		if configured[device.Name] && device.OpenFlow != nil && *device.OpenFlow > 0 &&
+		if members[device.UUID] && names[device.Name] && device.OpenFlow != nil &&
+			*device.OpenFlow > 0 &&
 			*device.OpenFlow <= math.MaxUint32 {
 			numbers[device.Name] = uint32(*device.OpenFlow)
 		}
 	}
 
-	bridgeID, err := readBridgeID(ctx, database, config.Bridge)
-	if err != nil {
-		return err
-	}
-
-	return installOnSwitch(ctx, config.OpenFlow, bridgeID, numbers, health)
+	return numbers
 }
 
 func compileFlows(
@@ -118,15 +146,19 @@ func compileFlows(
 	return flows, nil
 }
 
-func readBridgeID(ctx context.Context, database databaseClient, bridgeName string) (string, error) {
+func readOpenFlowBridge(
+	ctx context.Context,
+	database databaseClient,
+	bridgeName string,
+) (*bridgeRow, error) {
 	var bridges []*bridgeRow
 	if err := readRows(ctx, database, &bridges); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	for _, bridge := range bridges {
 		if bridge.Name == bridgeName && bridge.DatapathID != nil {
-			return *bridge.DatapathID, nil
+			return bridge, nil
 		}
 	}
 
@@ -139,7 +171,7 @@ func readBridgeID(ctx context.Context, database databaseClient, bridgeName strin
 		errOpenFlowBridge,
 	)
 
-	return "", fmt.Errorf(
+	return nil, fmt.Errorf(
 		"%w: OVSDB did not report a datapath ID for %q",
 		errOpenFlowBridge,
 		bridgeName,

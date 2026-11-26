@@ -18,11 +18,11 @@ struct ofputil_port_map *mwan_ports_new(void) {
     return ports;
 }
 
-const char *mwan_validate_flow(const void *wire) {
+const char *mwan_validate_flow(const uint8_t *wire) {
     struct ofputil_flow_mod flow;
     struct ofpbuf actions;
     ofpbuf_init(&actions, 128);
-    enum ofperr error = ofputil_decode_flow_mod(&flow, wire, OFPUTIL_P_OF15_OXM,
+    enum ofperr error = ofputil_decode_flow_mod(&flow, (const struct ofp_header *)wire, OFPUTIL_P_OF15_OXM,
                                                 NULL, NULL, &actions, OFPP_MAX, 255);
     if (!error) {
         minimatch_destroy(&flow.match);

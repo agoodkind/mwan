@@ -115,7 +115,7 @@ func transact(ctx context.Context, database databaseClient, operations []ovsdb.O
 }
 
 type statusRow interface {
-	switchRow | interfaceRow | bridgeRow
+	switchRow | interfaceRow | bridgeRow | portRow
 }
 
 func readRows[Row statusRow](ctx context.Context, database databaseClient, target *[]*Row) error {

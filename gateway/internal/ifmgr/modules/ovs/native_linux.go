@@ -18,7 +18,7 @@ import (
 )
 
 func validateFlowWire(data []byte) error {
-	message := C.mwan_validate_flow(unsafe.Pointer(unsafe.SliceData(data)))
+	message := C.mwan_validate_flow((*C.uint8_t)(unsafe.Pointer(unsafe.SliceData(data))))
 	if message != nil {
 		err := fmt.Errorf("%w: %s", errExpression, C.GoString(message))
 		slog.Error("OVS rejected the match and actions", "err", err)
