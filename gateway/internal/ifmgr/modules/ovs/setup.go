@@ -167,6 +167,10 @@ func readSwitch(
 				)
 			}
 		}
+
+		if err := requireMultiport(ctx, config.Ports); err != nil {
+			return switchRow{}, fmt.Errorf("check OVS-DOCA multiport readiness: %w", err)
+		}
 	}
 
 	return root, nil
