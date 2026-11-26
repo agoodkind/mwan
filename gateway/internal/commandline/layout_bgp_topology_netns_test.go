@@ -60,7 +60,7 @@ func (p bgpRuntimeProvider) peer() netip.Addr { return netip.MustParseAddr(p.net
 func (p bgpRuntimeProvider) remoteClient() string { return p.network + ":99::2" }
 
 func (p bgpRuntimeProvider) entry() string {
-	probe := `"enabled":true,"ping-count":1,"success-threshold":1,"failure-threshold":2,"recovery-threshold":1,"check-interval":1`
+	probe := `"enabled":true,"ping-count":1,"success-threshold":1,"failure-threshold":1,"recovery-threshold":1,"check-interval":1`
 	sessions := ""
 	if p.session {
 		restart := ""
