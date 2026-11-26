@@ -24,6 +24,7 @@ func TestSetupWithOVS(t *testing.T) {
 		Bridge:        "mwan-test",
 		DatapathType:  "netdev",
 		Offload:       "",
+		OpenFlow:      nil,
 		Ports: []ovsconfig.Port{
 			{Name: "mwan-test-host", Type: "internal", Options: nil},
 			{

@@ -114,6 +114,19 @@ jobs:
       - name: Run protocol acceptance tests
         run: docker compose run --pull never --rm protocol-namespace
 
+  ovs:
+    name: mwan OVS packet tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/gateway-builder
+        with:
+          arch: amd64
+          service: ovs
+          cache-go: 'true'
+      - name: Verify OVS bridge setup and WAN packet forwarding
+        run: docker compose run --pull never --rm ovs
+
   systemd:
     name: mwan systemd tests
     runs-on: ubuntu-latest

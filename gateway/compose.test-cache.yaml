@@ -9,5 +9,6 @@ services:
   provider-drift: *go-cache
   netns: *go-cache
   firewall: *go-cache
+  ovs: *go-cache
   protocol-namespace: *go-cache
   systemd: *go-cache

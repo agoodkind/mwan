@@ -51,7 +51,15 @@ func Setup(parent context.Context, config ovsconfig.Config) error {
 	}
 	defer database.Close()
 
-	return reconcileBridge(ctx, database, config)
+	if err := reconcileBridge(ctx, database, config); err != nil {
+		return err
+	}
+
+	if config.OpenFlow == nil {
+		return nil
+	}
+
+	return installOpenFlow(ctx, database, config)
 }
 
 func reconcileBridge(ctx context.Context, database databaseClient, config ovsconfig.Config) error {
@@ -83,6 +91,10 @@ func reconcileBridge(ctx context.Context, database databaseClient, config ovscon
 	matches, err := bridgeMatches(ctx, database, bridge, config, ports)
 	if err != nil || matches {
 		return err
+	}
+
+	if config.OpenFlow != nil && !slices.Contains(bridge.Protocols, "OpenFlow15") {
+		bridge.Protocols = append(bridge.Protocols, "OpenFlow15")
 	}
 
 	operations, err := configurationChanges(
@@ -118,6 +130,10 @@ func bridgeMatches(
 	current, err := ownedPorts(ctx, database, bridge, config.DatapathType)
 	if err != nil || len(current) != len(ports) {
 		return false, err
+	}
+
+	if config.OpenFlow != nil && !slices.Contains(bridge.Protocols, "OpenFlow15") {
+		return false, nil
 	}
 
 	for _, port := range ports {

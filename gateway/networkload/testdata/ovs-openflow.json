@@ -1,0 +1,57 @@
+{
+  "ietf-interfaces:interfaces": {
+    "interface": [
+      {"name": "mwan-of-a", "type": "iana-if-type:other"},
+      {"name": "mwan-of-in", "type": "iana-if-type:other"},
+      {"name": "mwan-of-b", "type": "iana-if-type:other"}
+    ],
+    "goodkind-mwan-steering:steering-group": {
+      "routes": {"internal-iface": "mwan-of-in"},
+      "firewall": {
+        "management-interface": "mwan-of-b",
+        "management-service": [{"protocol": "tcp", "port": 22}],
+        "pinned-set-v4-name": "uplink_pinned_v4",
+        "pinned-set-v6-name": "uplink_pinned_v6"
+      }
+    },
+    "goodkind-mwan-steering:dataplane": "ovs",
+    "goodkind-mwan-steering:ovs": {
+      "database-socket": "/run/openvswitch/db.sock",
+      "startup-timeout-millis": 10000,
+      "bridge": "br-mwan-of",
+      "datapath-type": "netdev",
+      "port": [
+        {"name": "mwan-of-in", "type": "system"},
+        {"name": "mwan-of-a", "type": "system"},
+        {"name": "mwan-of-b", "type": "system"}
+      ],
+      "openflow": {
+        "socket": "/run/openvswitch/br-mwan-of.mgmt",
+        "flow": [
+          {
+            "name": "set-ipv4-source-and-continue",
+            "priority": 100,
+            "in-port": "mwan-of-in",
+            "ether-type": 2048,
+            "raw-instruction": ["AAQAGAAAAAAAGQAQgAAWBMsAcS0AAAAA", "AAEACAEAAAA="]
+          },
+          {
+            "name": "forward-ipv4",
+            "table": 1,
+            "priority": 100,
+            "in-port": "mwan-of-in",
+            "ether-type": 2048,
+            "output": ["mwan-of-a"]
+          },
+          {
+            "name": "forward-ipv6",
+            "priority": 100,
+            "in-port": "mwan-of-in",
+            "ether-type": 34525,
+            "output": ["mwan-of-b"]
+          }
+        ]
+      }
+    }
+  }
+}

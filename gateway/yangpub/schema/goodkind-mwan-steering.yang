@@ -50,7 +50,7 @@ module goodkind-mwan-steering {
      internal link the members route toward.";
 
   revision 2026-11-22 {
-    description "Add OVS bridge and port configuration.";
+    description "Add OVS bridge, port, and OpenFlow configuration.";
   }
   revision 2026-11-21;
 
@@ -1456,6 +1456,61 @@ module goodkind-mwan-steering {
             type string;
             mandatory true;
             description "OVS interface option value.";
+          }
+        }
+      }
+      container openflow {
+        presence "Manage OpenFlow rules on this bridge.";
+        description
+          "Use this rule set for rules that mwan manages.
+           An empty rule set removes all rules that mwan manages.";
+        leaf socket {
+          type string { pattern '/.+'; }
+          mandatory true;
+          description "Absolute path to this bridge's OpenFlow management socket.";
+        }
+        list flow {
+          key "name";
+          description "An OpenFlow rule.";
+          leaf name {
+            type string { length "1..max"; }
+            description "Identifies this rule in configuration errors.";
+          }
+          leaf table {
+            type uint8 { range "0..254"; }
+            default 0;
+            description "OpenFlow table number.";
+          }
+          leaf priority {
+            type uint16;
+            mandatory true;
+            description "Priority among matching rules in this table.";
+          }
+          leaf in-port {
+            type leafref { path "../../../port/name"; }
+            description "Match packets received on this configured OVS port.";
+          }
+          leaf ether-type {
+            type uint16;
+            description "Match this Ethernet protocol number.";
+          }
+          leaf-list output {
+            type leafref { path "../../../port/name"; }
+            ordered-by user;
+            description "Send matching packets to these configured OVS ports.";
+          }
+          leaf-list raw-match {
+            type binary { length "5..259"; }
+            ordered-by user;
+            description "OpenFlow 1.5 OXM fields with their headers.";
+          }
+          leaf-list raw-instruction {
+            type binary { length "8..65000"; }
+            ordered-by user;
+            description "OpenFlow 1.5 instructions with their headers.";
+          }
+          must "not(output) or not(raw-instruction)" {
+            error-message "A flow must use either output ports or raw instructions.";
           }
         }
       }
