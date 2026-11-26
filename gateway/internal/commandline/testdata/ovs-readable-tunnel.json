@@ -1,0 +1,96 @@
+{
+  "ietf-interfaces:interfaces": {
+    "interface": [
+      {
+        "name": "tn-in",
+        "type": "iana-if-type:other"
+      }
+    ],
+    "goodkind-mwan-steering:steering-group": {
+      "routes": {
+        "internal-iface": "tn-in"
+      },
+      "firewall": {
+        "management-interface": "tn-in",
+        "management-service": [
+          {
+            "protocol": "tcp",
+            "port": 22
+          }
+        ],
+        "pinned-set-v4-name": "tun_pinned_v4",
+        "pinned-set-v6-name": "tun_pinned_v6"
+      }
+    },
+    "goodkind-mwan-steering:dataplane": "ovs",
+    "goodkind-mwan-steering:ovs": {
+      "database-socket": "/run/openvswitch/db.sock",
+      "startup-timeout-millis": 10000,
+      "bridge": "br-tun-tests",
+      "datapath-type": "netdev",
+      "port": [
+        {
+          "name": "tn-in",
+          "type": "system"
+        },
+        {
+          "name": "tn-vx73",
+          "type": "vxlan",
+          "options": [
+            {
+              "name": "remote_ip",
+              "value": "192.0.2.2"
+            },
+            {
+              "name": "key",
+              "value": "73"
+            },
+            {
+              "name": "dst_port",
+              "value": "4789"
+            }
+          ]
+        }
+      ],
+      "openflow": {
+        "socket": "/run/openvswitch/br-tun-tests.mgmt",
+        "flow": [
+          {
+            "name": "vxlan-egress",
+            "priority": 100,
+            "match": [
+              {
+                "field": "in_port",
+                "value": "tn-in"
+              }
+            ],
+            "action": [
+              {
+                "id": 1,
+                "name": "output",
+                "argument": "tn-vx73"
+              }
+            ]
+          },
+          {
+            "name": "vxlan-return",
+            "priority": 100,
+            "match": [
+              {
+                "field": "in_port",
+                "value": "tn-vx73"
+              }
+            ],
+            "action": [
+              {
+                "id": 1,
+                "name": "output",
+                "argument": "tn-in"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
