@@ -29,15 +29,12 @@ const (
 	renewalTimingServer    = "dhrenew-s0"
 	renewalTimingCIDR      = "198.51.100.77/24"
 	renewalTimingT1        = time.Second
-	renewalTimingT2        = 30 * time.Second
-	renewalTimingLease     = 44 * time.Second
+	renewalTimingT2        = 2 * time.Second
+	renewalTimingLease     = 3 * time.Second
 	renewalTimingAttempt   = 400 * time.Millisecond
-	renewalTimingMinimum   = 12 * time.Second
+	renewalTimingMinimum   = 2 * time.Second
 	renewalTimingTolerance = 600 * time.Millisecond
-	renewalTimingSecond    = 15700 * time.Millisecond
-	renewalTimingThird     = 28100 * time.Millisecond
-	renewalTimingLast      = 42400 * time.Millisecond
-	renewalTimingDeadline  = 90 * time.Second
+	renewalTimingDeadline  = 15 * time.Second
 )
 
 type renewalTimingRequest struct {
@@ -45,7 +42,7 @@ type renewalTimingRequest struct {
 	broadcast bool
 }
 
-func TestDHCPRenewalRetransmissionFollowsRemainingLeaseTime(t *testing.T) {
+func TestDHCPRenewalAndRebindingUseKernelSockets(t *testing.T) {
 	if os.Getenv(renewalTimingChildEnv) != "1" {
 		if os.Geteuid() != 0 {
 			t.Skip("The test requires root to create network namespaces.")
@@ -219,10 +216,7 @@ func TestDHCPRenewalRetransmissionFollowsRemainingLeaseTime(t *testing.T) {
 		broadcast bool
 	}{
 		{renewalTimingT1, false},
-		{renewalTimingSecond, false},
-		{renewalTimingThird, false},
 		{renewalTimingT2, true},
-		{renewalTimingLast, true},
 	}
 	if len(requests) != len(want) {
 		t.Fatalf(

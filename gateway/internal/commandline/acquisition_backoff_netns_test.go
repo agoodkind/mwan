@@ -141,6 +141,7 @@ func dhcpAcquireBackoffIsolated(t *testing.T) bool {
 	if os.Getenv(dhcpAcquireBackoffChildEnv) == "1" {
 		return true
 	}
+	t.Parallel()
 	daemonBinary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$", "-test.v")
 	child.SysProcAttr = &syscall.SysProcAttr{

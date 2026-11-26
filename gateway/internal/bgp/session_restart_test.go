@@ -113,6 +113,8 @@ func gracefulExportConfig(name string, peer *testPeer, exported netip.Prefix) bg
 }
 
 func TestSessionRestartRefreshesTheAdvertisedPrefixAtThePeer(t *testing.T) {
+	t.Parallel()
+
 	exported := netip.MustParsePrefix("3fff:a::/48")
 	peer := startGracefulTestPeer(t, netip.IPv6Loopback())
 	cfg := gracefulExportConfig("restart", peer, exported)
@@ -178,7 +180,19 @@ func TestSessionReportsGracefulRestartOnlyForAPeerThatAdvertisesIt(t *testing.T)
 	}
 }
 
+func TestSessionRestartExpiresTheAdvertisedPrefixWithoutReconnect(t *testing.T) {
+	const restartSeconds = 3
+	exported := netip.MustParsePrefix("3fff:a::/48")
+	peer := startGracefulTestPeer(t, netip.IPv6Loopback())
+	cfg := gracefulExportConfig("expires", peer, exported)
+	cfg.GracefulRestartSeconds = restartSeconds
+	advertiseThenStopRetaining(t, startSession(t, cfg), peer, exported)
+	waitReceived(t, peer)
+}
+
 func TestSessionRestartWithdrawsAPrefixThatTheNextProcessDoesNotAdvertise(t *testing.T) {
+	t.Parallel()
+
 	exported := netip.MustParsePrefix("3fff:a::/48")
 	peer := startGracefulTestPeer(t, netip.IPv6Loopback())
 	cfg := gracefulExportConfig("withdrawn", peer, exported)

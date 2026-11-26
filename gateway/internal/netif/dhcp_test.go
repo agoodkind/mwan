@@ -5,12 +5,145 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"slices"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv4/nclient4"
 )
+
+func TestDHCPRenewalRetransmissionFollowsRemainingLeaseTime(t *testing.T) {
+	link, err := net.InterfaceByName("lo")
+	if err != nil {
+		link, err = net.InterfaceByName("lo0")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	synctest.Test(
+		t,
+		func(t *testing.T) {
+			testDHCPRenewalSchedule(t, link)
+		},
+	)
+}
+
+type renewalPacketConn struct {
+	net.Conn
+	sent func(*dhcpv4.DHCPv4)
+}
+
+func (conn renewalPacketConn) ReadFrom(_ []byte) (int, net.Addr, error) {
+	var buffer [1]byte
+	n, err := conn.Read(buffer[:])
+
+	return n, conn.RemoteAddr(), err
+}
+
+func (conn renewalPacketConn) WriteTo(packet []byte, _ net.Addr) (int, error) {
+	message, err := dhcpv4.FromBytes(packet)
+	if err != nil {
+		return 0, err
+	}
+
+	conn.sent(message)
+
+	return len(packet), nil
+}
+
+func testDHCPRenewalSchedule(t *testing.T, link *net.Interface) {
+	t.Helper()
+	const renewal = time.Second
+	const rebinding = 30 * time.Second
+	const lifetime = 44 * time.Second
+	server := net.IPv4(198, 51, 100, 2)
+	address := net.IPv4(198, 51, 100, 77)
+	ack, err := dhcpv4.New(
+		dhcpv4.WithMessageType(dhcpv4.MessageTypeAck),
+		dhcpv4.WithYourIP(address),
+		dhcpv4.WithOption(dhcpv4.OptServerIdentifier(server)),
+		dhcpv4.WithOption(dhcpv4.OptSubnetMask(net.CIDRMask(24, 32))),
+		dhcpv4.WithOption(dhcpv4.OptIPAddressLeaseTime(lifetime)),
+		dhcpv4.WithOption(dhcpv4.OptRenewTimeValue(renewal)),
+		dhcpv4.WithOption(dhcpv4.OptRebindingTimeValue(rebinding)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	started := time.Now()
+	type request struct {
+		after     time.Duration
+		broadcast bool
+	}
+	var requests []request
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	client := DHCPClient{
+		cfg: DHCPConfig{
+			Iface:              link.Name,
+			RenewTimeout:       400 * time.Millisecond,
+			MinimumRenewalWait: 12 * time.Second,
+		},
+		log:    logger,
+		clock:  realClock{},
+		origin: LeaseInfo{LinkIndex: link.Index, LinkHardwareAddr: link.HardwareAddr},
+		Events: make(chan LeaseInfo, 16),
+		openRenewal: func(_ LeaseInfo, _ LeaseState, options ...nclient4.ClientOpt) (
+			*nclient4.Client,
+			error,
+		) {
+			wire, peer := net.Pipe()
+			t.Cleanup(func() {
+				_ = wire.Close()
+				_ = peer.Close()
+			})
+			conn := renewalPacketConn{
+				Conn: wire,
+				sent: func(packet *dhcpv4.DHCPv4) {
+					if packet.MessageType() != dhcpv4.MessageTypeRequest ||
+						!packet.ClientIPAddr.Equal(address) {
+						t.Errorf("renewal packet = %s", packet.Summary())
+					}
+
+					requests = append(requests, request{time.Since(started), packet.IsBroadcast()})
+				},
+			}
+			hardware := link.HardwareAddr
+			if hardware == nil {
+				hardware = net.HardwareAddr{}
+			}
+
+			return nclient4.NewWithConn(conn, hardware, options...)
+		},
+	}
+	client.bound(
+		t.Context(),
+		logger,
+		&dhcpLease{lease: &nclient4.Lease{Offer: ack, ACK: ack}, requestedAt: started},
+	)
+	want := []request{
+		{renewal, false},
+		{15700 * time.Millisecond, false},
+		{28100 * time.Millisecond, false},
+		{rebinding, true},
+		{42400 * time.Millisecond, true},
+	}
+	if !slices.Equal(requests, want) {
+		t.Errorf("requests = %+v, want %+v", requests, want)
+	}
+
+	if last := client.LastLease(); last.State != LeaseExpired || time.Since(started) != lifetime {
+		t.Errorf(
+			"lease state after %s = %v, want expired after %s",
+			time.Since(started),
+			last.State,
+			lifetime,
+		)
+	}
+}
 
 func TestNextBackoff(t *testing.T) {
 	cases := []struct {

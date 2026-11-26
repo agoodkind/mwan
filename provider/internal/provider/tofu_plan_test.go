@@ -92,7 +92,9 @@ func TestTofuPlan(t *testing.T) {
 		t.Run(
 			strings.TrimSuffix(rejection.document, ".json"),
 			func(t *testing.T) {
-				output, err := workspace.run(
+				t.Parallel()
+				isolated := workspace.copyState(t)
+				output, err := isolated.run(
 					t,
 					"plan",
 					"-input=false",
@@ -139,7 +141,7 @@ func TestTofuPlanDefersUnknownContent(t *testing.T) {
 	const invalidDocument = "unknownmember.json"
 	workspace := newTofuWorkspace(t, tofuDeferredModule)
 
-	plan, text := workspace.plan(t, invalidDocument)
+	plan, text := workspace.plan(t, invalidDocument, false)
 
 	config := findTofuChange(t, plan, tofuConfigAddress)
 	checkTofuAction(t, config, tofuActionCreate)
@@ -176,7 +178,7 @@ func TestTofuPlanDefersUnknownContent(t *testing.T) {
 	}
 
 	workspace.apply(t, tofuBaseDocument)
-	plan, text = workspace.plan(t, tofuBaseDocument)
+	plan, text = workspace.plan(t, tofuBaseDocument, true)
 	checkTofuAction(t, findTofuChange(t, plan, tofuConfigAddress), tofuActionNoOp)
 	if !strings.HasPrefix(normalizeTofuText(text), "No changes.") {
 		t.Errorf("the rendered plan does not start with No changes.:\n%s", text)
@@ -988,23 +990,47 @@ func (w *tofuWorkspace) apply(t *testing.T, document string) {
 	)
 }
 
+func (w *tofuWorkspace) copyState(t *testing.T) *tofuWorkspace {
+	t.Helper()
+	dir := t.TempDir()
+	for _, name := range []string{"main.tf", "terraform.tfstate"} {
+		data, err := os.ReadFile(filepath.Join(w.dir, name))
+		if err != nil {
+			t.Fatalf("read baseline %s: %v", name, err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatalf("copy baseline %s: %v", name, err)
+		}
+	}
+
+	return &tofuWorkspace{binary: w.binary, dir: dir}
+}
+
 func (w *tofuWorkspace) checkVariants(t *testing.T, variants []tofuVariant) {
 	t.Helper()
 	for _, variant := range variants {
 		t.Run(
 			strings.TrimSuffix(variant.document, ".json"),
 			func(t *testing.T) {
-				plan, text := w.plan(t, variant.document)
+				t.Parallel()
+				isolated := w.copyState(t)
+				unchanged := variant.configAction == tofuActionNoOp &&
+					variant.fileAction == tofuActionNoOp
+				plan, text := isolated.plan(t, variant.document, unchanged)
 				checkTofuPlan(t, plan, text, variant)
 			},
 		)
 	}
 }
 
-func (w *tofuWorkspace) plan(t *testing.T, document string) (tofuPlan, string) {
+func (w *tofuWorkspace) plan(
+	t *testing.T,
+	document string,
+	renderSavedPlan bool,
+) (tofuPlan, string) {
 	t.Helper()
 	planFile := filepath.Join(t.TempDir(), "tfplan")
-	w.mustRun(
+	text := w.mustRun(
 		t,
 		"plan",
 		"-input=false",
@@ -1025,7 +1051,10 @@ func (w *tofuWorkspace) plan(t *testing.T, document string) (tofuPlan, string) {
 	if err := json.Unmarshal(shown, &plan); err != nil {
 		t.Fatalf("decode the JSON plan: %v", err)
 	}
-	return plan, w.mustRun(t, "show", "-no-color", planFile)
+	if renderSavedPlan {
+		text = w.mustRun(t, "show", "-no-color", planFile)
+	}
+	return plan, text
 }
 
 func checkTofuPlan(t *testing.T, plan tofuPlan, text string, variant tofuVariant) {

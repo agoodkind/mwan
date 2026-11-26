@@ -243,20 +243,20 @@ func StartDHCPv6PDClient(
 				log.ErrorContext(ctx, "dhcpv6: client panicked", "err", recovered)
 			}
 		}()
-		client.run(ctx, log, config)
+		client.run(ctx, log, systemDHCPv6Run(config))
 	}()
 
 	return client, nil
 }
 
-func (client *DHCPv6PDClient) run(ctx context.Context, log *slog.Logger, config DHCPv6PDConfig) {
+func (client *DHCPv6PDClient) run(ctx context.Context, log *slog.Logger, runtime dhcpv6Runtime) {
 	defer close(client.Events)
 	defer client.completeRecovery()
 
 	for ctx.Err() == nil {
-		link, err := net.InterfaceByName(config.Iface)
+		link, err := runtime.lookup(runtime.Iface)
 		if err != nil {
-			log.WarnContext(ctx, "dhcpv6: link unavailable", "iface", config.Iface, "err", err)
+			log.WarnContext(ctx, "dhcpv6: link unavailable", "iface", runtime.Iface, "err", err)
 			if !waitDHCPv6(ctx) {
 				return
 			}
@@ -264,8 +264,8 @@ func (client *DHCPv6PDClient) run(ctx context.Context, log *slog.Logger, config 
 			continue
 		}
 
-		if config.WaitForRA &&
-			!waitDHCPv6RA(ctx, log, config.Iface, link.Index, config.RequestAddress) {
+		if runtime.WaitForRA &&
+			!waitDHCPv6RA(ctx, log, runtime.Iface, link.Index, runtime.RequestAddress) {
 			if !waitDHCPv6(ctx) {
 				return
 			}
@@ -273,13 +273,13 @@ func (client *DHCPv6PDClient) run(ctx context.Context, log *slog.Logger, config 
 			continue
 		}
 
-		recovered, solicitMaxRT, err := client.recoverOnLink(ctx, log, config, link)
+		recovered, solicitMaxRT, err := client.recoverOnLink(ctx, log, runtime, link)
 		if err != nil {
 			log.WarnContext(
 				ctx,
 				"dhcpv6: recovery socket unavailable",
 				"iface",
-				config.Iface,
+				runtime.Iface,
 				"err",
 				err,
 			)
@@ -291,9 +291,9 @@ func (client *DHCPv6PDClient) run(ctx context.Context, log *slog.Logger, config 
 		}
 
 		client.completeRecovery()
-		transport, err := nclient6.New(config.Iface, dhcpv6TransportOptions()...)
+		transport, err := runtime.open(runtime.Iface, dhcpv6TransportOptions()...)
 		if err != nil {
-			log.WarnContext(ctx, "dhcpv6: socket unavailable", "iface", config.Iface, "err", err)
+			log.WarnContext(ctx, "dhcpv6: socket unavailable", "iface", runtime.Iface, "err", err)
 			if !waitDHCPv6(ctx) {
 				return
 			}
@@ -301,7 +301,7 @@ func (client *DHCPv6PDClient) run(ctx context.Context, log *slog.Logger, config 
 			continue
 		}
 
-		client.negotiate(ctx, log, transport, config, link, recovered, solicitMaxRT)
+		client.negotiate(ctx, log, transport, runtime.DHCPv6PDConfig, link, recovered, solicitMaxRT)
 		if err := transport.Close(); err != nil {
 			log.WarnContext(ctx, "dhcpv6: close socket failed", "err", err)
 		}

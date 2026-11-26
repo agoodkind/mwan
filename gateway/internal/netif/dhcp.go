@@ -151,6 +151,7 @@ type DHCPClient struct {
 	linkDownSeen   bool
 	linkChanged    chan struct{}
 	recoveryLoader func(context.Context) (*LeaseInfo, error)
+	openRenewal    func(LeaseInfo, LeaseState, ...nclient4.ClientOpt) (*nclient4.Client, error)
 
 	Events chan LeaseInfo
 }
@@ -252,6 +253,7 @@ func startDHCPClient(
 		linkDownSeen:   false,
 		linkChanged:    make(chan struct{}, 1),
 		recoveryLoader: loader,
+		openRenewal:    dhcpRenewalClient(cfg.Iface),
 		Events:         make(chan LeaseInfo, 1),
 	}
 	go func() {
@@ -762,21 +764,7 @@ func (c *DHCPClient) renewAttempt(
 		nclient4.WithRetry(1),
 		nclient4.WithLogger(newSlogDHCPLogger(c.log)),
 	}
-	if state == LeaseRenewing {
-		options = append(
-			options,
-			nclient4.WithUnicast(&net.UDPAddr{
-				IP:   current.IP,
-				Port: nclient4.ClientPort,
-			}),
-			nclient4.WithServerAddr(&net.UDPAddr{
-				IP:   current.Server,
-				Port: nclient4.ServerPort,
-			}),
-		)
-	}
-
-	client, err := nclient4.New(c.cfg.Iface, options...)
+	client, err := c.openRenewal(current, state, options...)
 	if err != nil {
 		c.log.WarnContext(ctx, "dhcp: renewal socket open failed", "err", err)
 		return nil, fmt.Errorf("open DHCP renewal client: %w", err)
@@ -811,6 +799,31 @@ func (c *DHCPClient) renewAttempt(
 	}
 
 	return &dhcpLease{lease: renewed, requestedAt: requestedAt}, nil
+}
+
+func dhcpRenewalClient(
+	iface string,
+) func(LeaseInfo, LeaseState, ...nclient4.ClientOpt) (*nclient4.Client, error) {
+	return func(current LeaseInfo, state LeaseState, options ...nclient4.ClientOpt) (
+		*nclient4.Client,
+		error,
+	) {
+		if state == LeaseRenewing {
+			options = append(
+				options,
+				nclient4.WithUnicast(&net.UDPAddr{
+					IP:   current.IP,
+					Port: nclient4.ClientPort,
+				}),
+				nclient4.WithServerAddr(&net.UDPAddr{
+					IP:   current.Server,
+					Port: nclient4.ServerPort,
+				}),
+			)
+		}
+
+		return nclient4.New(iface, options...)
+	}
 }
 
 func earlier(a, b time.Time) time.Time {

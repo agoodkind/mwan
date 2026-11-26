@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/nftables"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
@@ -214,17 +215,25 @@ func waitRuntimeTable(
 		t.Fatal(err)
 	}
 	defer gateway.Close()
+	setRuntimeNamespace(t, gateway)
+	var tableFamily nftables.TableFamily
+	switch family {
+	case "inet":
+		tableFamily = nftables.TableFamilyINet
+	case "ip":
+		tableFamily = nftables.TableFamilyIPv4
+	case "ip6":
+		tableFamily = nftables.TableFamilyIPv6
+	default:
+		t.Fatalf("unsupported nftables family %q", family)
+	}
+	conn, err := nftables.New(nftables.WithNetNSFd(int(gateway)))
+	if err != nil {
+		t.Fatalf("open nftables connection: %v", err)
+	}
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		setRuntimeNamespace(t, gateway)
-		if output, err := exec.Command(
-			"nft",
-			"list",
-			"table",
-			family,
-			table,
-		).CombinedOutput(); err == nil &&
-			len(output) > 0 {
+		if _, err := conn.ListTableOfFamily(table, tableFamily); err == nil {
 			return
 		}
 		assertRuntimeDaemonRunning(t, daemon)

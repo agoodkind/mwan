@@ -12,19 +12,11 @@ import (
 )
 
 const (
-	bgpRuntimeClientPort = 18179
-	bgpRuntimeRemotePort = 18180
-	bgpRuntimeISPPort    = 18181
-	// Set the graceful restart timer long enough to include shutdown, the outage, and the
-	// End-of-RIB exchange.
-	bgpRuntimeRestartTime     = 45
+	bgpRuntimeClientPort      = 18179
+	bgpRuntimeRemotePort      = 18180
+	bgpRuntimeISPPort         = 18181
+	bgpRuntimeRestartTime     = 10
 	bgpRuntimeRestartDuration = bgpRuntimeRestartTime * time.Second
-	// Check past the hold time. A peer without graceful restart withdraws the routes of a
-	// stopped daemon by then.
-	bgpRuntimeStoppedWindow = 2 * bgpRuntimeHold * time.Second
-	// Stop before the latest safe reconnect time. The available restart window excludes the
-	// hold time.
-	bgpRuntimeEndOfRIBWindow = 30 * time.Second
 )
 
 func requireBGPRuntimeIPv4(t *testing.T, run *bgpRuntimeRun, daemon *runtimeDaemon) {
@@ -137,7 +129,16 @@ func bgpRuntimePeerLoss(
 			return !router.kernelRoute(t, home)
 		},
 	)
-	requireBGPRuntimeFamily(t, run.read, provider.device, "not-ready", "not-ready")
+	waitTunnelRuntimeFamily(
+		t,
+		daemon,
+		run.read,
+		provider.device,
+		"ipv6",
+		"not-ready",
+		"not-ready",
+		tunnelRuntimeFailureWindow,
+	)
 	requireBGPRuntimeIPv4(t, run, daemon)
 
 	router.addNeighbor(t)
@@ -205,156 +206,43 @@ func bgpRuntimeForwardingLoss(
 	requireBGPRuntimeIPv4Unchanged(t, run, since)
 }
 
-func requireBGPRuntimeRoutesPresent(
-	t *testing.T,
-	run *bgpRuntimeRun,
-	daemon *runtimeDaemon,
-	provider bgpRuntimeProvider,
-	description string,
-	deadline time.Time,
-	done func() bool,
-) {
-	t.Helper()
-	router := run.routers[provider.id]
-	home := netip.MustParsePrefix(bgpRuntimeHome)
-	for time.Now().Before(deadline) {
-		if !bgpRuntimeGatewayRoute(t, provider.device, provider.learned) {
-			t.Fatalf(
-				"gateway has no BGP route to %s %s; published state=%s",
-				provider.learned,
-				description,
-				run.read(),
-			)
-		}
-		if received := router.received(t); !router.kernelRoute(t, home) ||
-			!slices.Equal(received, []netip.Prefix{home}) {
-			t.Fatalf("router has no route to %s %s; received=%v", home, description, received)
-		}
-		if done() {
-			return
-		}
-		if daemon != nil {
-			assertRuntimeDaemonRunning(t, daemon)
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	t.Fatalf(
-		"route check %s did not finish before %s; published state=%s",
-		description,
-		deadline,
-		run.read(),
-	)
-}
-
 func bgpRuntimeGracefulRestart(
 	t *testing.T,
 	run *bgpRuntimeRun,
 	first *runtimeDaemon,
 	provider bgpRuntimeProvider,
-) *runtimeDaemon {
+) {
 	t.Helper()
 	router := run.routers[provider.id]
 	home := netip.MustParsePrefix(bgpRuntimeHome)
+	router.retainRoutesOnStop()
 	stopRuntimeDaemon(t, first)
-	stopped := time.Now()
-	restartDeadline := stopped.Add(bgpRuntimeRestartDuration)
-	requireBGPRuntimeRoutesPresent(
+	waitBGPRuntime(
 		t,
-		run,
 		nil,
-		provider,
-		"while the daemon is stopped",
-		restartDeadline,
+		run.read,
+		"retained routes while the daemon is stopped",
+		bgpRuntimeRestartDuration,
 		func() bool {
-			return time.Since(stopped) > bgpRuntimeStoppedWindow
+			return router.observedGracefulStop() &&
+				bgpRuntimeGatewayRoute(t, provider.device, provider.learned) &&
+				router.kernelRoute(t, home) && !router.hasFreshPath(t, home) &&
+				slices.Equal(router.received(t), []netip.Prefix{home})
 		},
 	)
 	second := run.start(t, "bgp-graceful")
-	requireBGPRuntimeRoutesPresent(
-		t,
-		run,
-		second,
-		provider,
-		"from the start of the restarted daemon until 30 seconds after the previous daemon shutdown",
-		restartDeadline,
-		func() bool {
-			return time.Since(stopped) > bgpRuntimeEndOfRIBWindow
-		},
-	)
-	waitTunnelRuntimeFamily(
-		t,
-		second,
-		run.read,
-		provider.device,
-		"ipv6",
-		"ready",
-		"ready",
-		tunnelRuntimeRecoverWindow,
-	)
-	waitBGPRuntimeReceived(t, second, run.read, router, home)
-	requireBGPRuntimeExchange(t, run, second, provider)
-
-	stopRuntimeDaemon(t, second)
-	stopped = time.Now()
-	router.withdraw(t, provider.learned)
-	third := run.start(t, "bgp-graceful-withdrawn")
-	if !bgpRuntimeGatewayRoute(t, provider.device, provider.learned) {
-		t.Fatalf(
-			"gateway kernel has no retained BGP route to %s when the restarted daemon starts",
-			provider.learned,
-		)
-	}
-	// Require withdrawal before the timer expires to verify that End-of-RIB caused it.
 	waitBGPRuntime(
 		t,
-		third,
+		second,
 		run.read,
-		"End-of-RIB removal of the gateway route to "+provider.learned.String(),
-		time.Until(stopped.Add(bgpRuntimeEndOfRIBWindow)),
+		"the refreshed home prefix at the router",
+		tunnelRuntimeRecoverWindow,
 		func() bool {
-			return !bgpRuntimeGatewayRoute(t, provider.device, provider.learned)
+			return router.hasFreshPath(t, home) && router.kernelRoute(t, home)
 		},
 	)
 	waitTunnelRuntimeFamily(
 		t,
-		third,
-		run.read,
-		provider.device,
-		"ipv6",
-		"not-ready",
-		"not-ready",
-		tunnelRuntimeRecoverWindow,
-	)
-	router.announce(t, provider.learned, provider.peer())
-	waitTunnelRuntimeFamily(
-		t,
-		third,
-		run.read,
-		provider.device,
-		"ipv6",
-		"ready",
-		"ready",
-		tunnelRuntimeRecoverWindow,
-	)
-	waitBGPRuntimeReceived(t, third, run.read, router, home)
-	requireBGPRuntimeExchange(t, run, third, provider)
-	return third
-}
-
-func bgpRuntimeRestart(
-	t *testing.T,
-	run *bgpRuntimeRun,
-	first *runtimeDaemon,
-	provider bgpRuntimeProvider,
-) *runtimeDaemon {
-	t.Helper()
-	killOwnedRuntimeDaemon(t, first)
-	if !bgpRuntimeGatewayRoute(t, provider.device, provider.learned) {
-		t.Fatalf("gateway has no BGP route to %s after the daemon process ended", provider.learned)
-	}
-	second := run.start(t, "bgp-second")
-	waitTunnelRuntimeFamily(
-		t,
 		second,
 		run.read,
 		provider.device,
@@ -363,54 +251,17 @@ func bgpRuntimeRestart(
 		"ready",
 		tunnelRuntimeRecoverWindow,
 	)
-	waitBGPRuntimeReceived(
+	waitBGPRuntimeSession(
 		t,
 		second,
 		run.read,
-		run.routers[provider.id],
-		netip.MustParsePrefix(bgpRuntimeHome),
+		provider.device,
+		"the refreshed routes",
+		func(session bgpRuntimeSession) bool {
+			return session.Established && len(session.Retained) == 0 &&
+				slices.Equal(session.Accepted, []string{provider.learned.String()}) &&
+				slices.Equal(session.Advertised, []string{home.String()})
+		},
 	)
 	requireBGPRuntimeExchange(t, run, second, provider)
-	return second
-}
-
-func bgpRuntimeSessionRemoval(
-	t *testing.T,
-	run *bgpRuntimeRun,
-	second *runtimeDaemon,
-	provider bgpRuntimeProvider,
-) {
-	t.Helper()
-	killOwnedRuntimeDaemon(t, second)
-	if !bgpRuntimeGatewayRoute(t, provider.device, provider.learned) {
-		t.Fatalf("gateway has no BGP route to %s before the removal", provider.learned)
-	}
-	provider.session = false
-	writeBGPRuntimeNetwork(t, run.networkDir, provider)
-	third := run.start(t, "bgp-third")
-	waitBGPRuntimeGatewayRoute(t, third, run.read, provider.device, provider.learned, false)
-	waitTunnelRuntimeFamily(
-		t,
-		third,
-		run.read,
-		provider.device,
-		"ipv6",
-		"not-ready",
-		"not-ready",
-		tunnelRuntimeRecoverWindow,
-	)
-	// The restarted session never connects in this case. The router must withdraw stale
-	// routes when the timer expires.
-	router := run.routers[provider.id]
-	waitBGPRuntime(
-		t,
-		third,
-		run.read,
-		"router without received prefixes",
-		time.Duration(provider.restartTime)*time.Second+tunnelRuntimeRecoverWindow,
-		func() bool {
-			return len(router.received(t)) == 0
-		},
-	)
-	requireBGPRuntimeIPv4(t, run, third)
 }

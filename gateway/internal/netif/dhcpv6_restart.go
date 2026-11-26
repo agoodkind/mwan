@@ -12,6 +12,17 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv6/nclient6"
 )
 
+type dhcpv6Runtime struct {
+	DHCPv6PDConfig
+
+	lookup func(string) (*net.Interface, error)
+	open   func(string, ...nclient6.ClientOpt) (*nclient6.Client, error)
+}
+
+func systemDHCPv6Run(config DHCPv6PDConfig) dhcpv6Runtime {
+	return dhcpv6Runtime{DHCPv6PDConfig: config, lookup: net.InterfaceByName, open: nclient6.New}
+}
+
 type dhcpv6RestartExchangeError struct {
 	operation string
 	cause     error
@@ -84,16 +95,17 @@ func (client *DHCPv6PDClient) recoverCachedDHCPv6(
 func (client *DHCPv6PDClient) recoverOnLink(
 	ctx context.Context,
 	log *slog.Logger,
-	config DHCPv6PDConfig,
+	runtime dhcpv6Runtime,
 	link *net.Interface,
 ) (DHCPv6PDLease, time.Duration, error) {
+	config := runtime.DHCPv6PDConfig
 	var empty DHCPv6PDLease
 	solicitMaxRT := time.Hour
 	if config.CachedLease == nil || !compatibleDHCPv6Lease(config, link, *config.CachedLease) {
 		return empty, solicitMaxRT, nil
 	}
 
-	transport, err := nclient6.New(config.Iface, dhcpv6TransportOptions()...)
+	transport, err := runtime.open(config.Iface, dhcpv6TransportOptions()...)
 	if err != nil {
 		return empty, solicitMaxRT, fmt.Errorf(
 			"open DHCPv6 recovery socket on %s: %w",

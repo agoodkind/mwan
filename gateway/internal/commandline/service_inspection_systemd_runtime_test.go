@@ -27,36 +27,7 @@ func TestDebugSystemdPublicRuntime(t *testing.T) {
 	if err := os.WriteFile(configPath, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	unitName := "mwan-cli-inspection.service"
-	unitPath := filepath.Join("/run/systemd/system", unitName)
-	unit := "[Unit]\nDescription=CLI inspection timing fixture\n[Service]\nType=oneshot\nExecStart=/usr/bin/sleep 0.051\nRemainAfterExit=yes\n"
-	if err := os.WriteFile(unitPath, []byte(unit), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if output, err := commandline.SystemdFixtureOutput(
-			"systemctl",
-			"stop",
-			unitName,
-		); err != nil {
-			t.Errorf("stop fixture: %v: %s", err, output)
-		}
-		if err := os.Remove(unitPath); err != nil {
-			t.Error(err)
-		}
-		if output, err := commandline.SystemdFixtureOutput(
-			"systemctl",
-			"daemon-reload",
-		); err != nil {
-			t.Errorf("reload units: %v: %s", err, output)
-		}
-	})
-	for _, arguments := range [][]string{{"daemon-reload"}, {"start", unitName}} {
-		if output, err := commandline.SystemdFixtureOutput("systemctl", arguments...); err != nil {
-			t.Fatalf("systemctl %v: %v: %s", arguments, err, output)
-		}
-	}
-	additionalUnits := installDebugSystemdTimingUnits(t)
+	unitName, additionalUnits := installDebugSystemdTimingUnits(t)
 	connection, err := systemddbus.NewSystemConnectionContext(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -271,24 +242,40 @@ func TestDebugSystemdPublicRuntime(t *testing.T) {
 	}
 }
 
-func installDebugSystemdTimingUnits(t *testing.T) []string {
+func installDebugSystemdTimingUnits(t *testing.T) (string, []string) {
 	t.Helper()
-	template := "/run/systemd/system/mwan-cli-timing@.service"
-	unit := "[Unit]\nDescription=CLI complete timing inspection\n[Service]\nType=oneshot\nExecStart=/usr/bin/sleep 0.001\nRemainAfterExit=yes\n"
-	if err := os.WriteFile(template, []byte(unit), 0o644); err != nil {
-		t.Fatal(err)
+	const mainUnit = "mwan-cli-inspection.service"
+	files := []struct{ name, content string }{
+		{
+			mainUnit,
+			"[Unit]\nDescription=CLI inspection timing fixture\n[Service]\nType=oneshot\nExecStart=/usr/bin/sleep 0.051\nRemainAfterExit=yes\n",
+		},
+		{
+			"mwan-cli-timing@.service",
+			"[Unit]\nDescription=CLI complete timing inspection\n[Service]\nType=oneshot\nExecStart=/usr/bin/sleep 0.001\nRemainAfterExit=yes\n",
+		},
 	}
-	units := make([]string, 0, 22)
+	units := make([]string, 1, 23)
+	units[0] = mainUnit
 	for index := range 22 {
 		units = append(units, fmt.Sprintf("mwan-cli-timing@%d.service", index))
 	}
+	paths := make([]string, 0, len(files))
+	startAttempted := false
 	t.Cleanup(func() {
-		arguments := append([]string{"stop"}, units...)
-		if output, err := commandline.SystemdFixtureOutput("systemctl", arguments...); err != nil {
-			t.Errorf("stop timing units: %v: %s", err, output)
+		if startAttempted {
+			arguments := append([]string{"stop"}, units...)
+			if output, err := commandline.SystemdFixtureOutput(
+				"systemctl",
+				arguments...,
+			); err != nil {
+				t.Errorf("stop timing units: %v: %s", err, output)
+			}
 		}
-		if err := os.Remove(template); err != nil {
-			t.Error(err)
+		for _, path := range paths {
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				t.Error(err)
+			}
 		}
 		if output, err := commandline.SystemdFixtureOutput(
 			"systemctl",
@@ -297,10 +284,20 @@ func installDebugSystemdTimingUnits(t *testing.T) []string {
 			t.Errorf("reload timing units: %v: %s", err, output)
 		}
 	})
-	for _, arguments := range [][]string{{"daemon-reload"}, append([]string{"start"}, units...)} {
-		if output, err := commandline.SystemdFixtureOutput("systemctl", arguments...); err != nil {
-			t.Fatalf("systemctl timing units %v: %v: %s", arguments, err, output)
+	for _, file := range files {
+		path := filepath.Join("/run/systemd/system", file.name)
+		paths = append(paths, path)
+		if err := os.WriteFile(path, []byte(file.content), 0o644); err != nil {
+			t.Fatal(err)
 		}
 	}
-	return units
+	if output, err := commandline.SystemdFixtureOutput("systemctl", "daemon-reload"); err != nil {
+		t.Fatalf("reload timing units: %v: %s", err, output)
+	}
+	arguments := append([]string{"start"}, units...)
+	startAttempted = true
+	if output, err := commandline.SystemdFixtureOutput("systemctl", arguments...); err != nil {
+		t.Fatalf("start timing units: %v: %s", err, output)
+	}
+	return mainUnit, units[1:]
 }

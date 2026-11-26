@@ -11,6 +11,8 @@ import (
 )
 
 func TestSessionWithdrawsExportsAtPeerLoss(t *testing.T) {
+	t.Parallel()
+
 	loopback := netip.IPv6Loopback()
 	exported := netip.MustParsePrefix("2001:db8:a::/48")
 	learned := netip.MustParsePrefix("2001:db8:f::/48")

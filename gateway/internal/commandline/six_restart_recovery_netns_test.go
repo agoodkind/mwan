@@ -57,6 +57,7 @@ func TestOwnedDHCPv6DaemonRestartRecovery(t *testing.T) {
 		t.Run(
 			scenario,
 			func(t *testing.T) {
+				t.Parallel()
 				runDHCPv6RestartChild(t, binary, scenario)
 			},
 		)

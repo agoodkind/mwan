@@ -29,8 +29,6 @@ const (
 	bgpRuntimeRouterMetric = 200
 )
 
-// With graceful restart, the router keeps stale routes until the timer expires or the
-// gateway sends End-of-RIB.
 type bgpRuntimeRouter struct {
 	server      *server.BgpServer
 	handle      *netlink.Handle
@@ -39,9 +37,11 @@ type bgpRuntimeRouter struct {
 	neighborASN uint32
 	restartTime uint32
 
-	mu        sync.Mutex
-	installed map[string]*netlink.Route
-	receipts  []time.Time
+	mu           sync.Mutex
+	installed    map[string]*netlink.Route
+	retainOnStop bool
+	gracefulStop bool
+	receipts     []time.Time
 }
 
 func startBGPRuntimeRouter(
@@ -92,7 +92,6 @@ func startBGPRuntimeRouterWithRestart(
 	bgpServer := server.NewBgpServer()
 	entered := make(chan error, 1)
 	go func() {
-		// Wait for Serve to open the GoBGP listening socket.
 		runtime.LockOSThread()
 		enterErr := netns.Set(namespace)
 		entered <- enterErr
@@ -125,9 +124,20 @@ func startBGPRuntimeRouterWithRestart(
 	callbacks := server.WatchEventMessageCallbacks{
 		OnBestPath: func(paths []*apiutil.Path, _ time.Time) { router.apply(t, paths) },
 		OnPeerUpdate: func(event *apiutil.WatchEventMessage_PeerEvent, _ time.Time) {
-			if restartTime == 0 && event.Type == apiutil.PEER_EVENT_STATE &&
-				event.Peer.State.SessionState != bgppkt.BGP_FSM_ESTABLISHED {
-				router.flush(t)
+			if event.Type != apiutil.PEER_EVENT_STATE ||
+				event.Peer.State.SessionState == bgppkt.BGP_FSM_ESTABLISHED {
+				return
+			}
+			router.mu.Lock()
+			defer router.mu.Unlock()
+			if router.retainOnStop {
+				if event.Peer.State.DisconnectReason == apipb.PeerState_DISCONNECT_REASON_GRACEFUL_RESTART {
+					router.gracefulStop = true
+				}
+				return
+			}
+			for _, route := range router.installed {
+				router.remove(t, route)
 			}
 		},
 	}
@@ -162,7 +172,9 @@ func (r *bgpRuntimeRouter) apply(t *testing.T, paths []*apiutil.Path) {
 			Protocol:  unix.RTPROT_BGP,
 		}
 		if path.Withdrawal {
-			r.remove(t, route)
+			if !r.retainOnStop {
+				r.remove(t, route)
+			}
 			continue
 		}
 		r.receipts = append(r.receipts, time.Now())
@@ -176,6 +188,9 @@ func (r *bgpRuntimeRouter) apply(t *testing.T, paths []*apiutil.Path) {
 			continue
 		}
 		r.installed[destination.String()] = route
+		if !path.Stale {
+			r.retainOnStop = false
+		}
 	}
 }
 
@@ -218,7 +233,10 @@ func (r *bgpRuntimeRouter) addNeighbor(t *testing.T) {
 		},
 	}
 	if r.restartTime > 0 {
-		peer.GracefulRestart = &apipb.GracefulRestart{Enabled: true, RestartTime: r.restartTime}
+		peer.GracefulRestart = &apipb.GracefulRestart{
+			Enabled:     true,
+			RestartTime: r.restartTime,
+		}
 		peer.AfiSafis[0].MpGracefulRestart = &apipb.MpGracefulRestart{
 			Config: &apipb.MpGracefulRestartConfig{Enabled: true},
 		}
@@ -236,6 +254,7 @@ func (r *bgpRuntimeRouter) deleteNeighbor(t *testing.T) {
 	); err != nil {
 		t.Fatalf("delete the gateway as a router neighbor: %v", err)
 	}
+	r.flush(t)
 }
 
 func (r *bgpRuntimeRouter) announce(t *testing.T, prefix netip.Prefix, nextHop netip.Addr) {
@@ -281,7 +300,6 @@ func (r *bgpRuntimeRouter) withdraw(t *testing.T, prefix netip.Prefix) {
 	}
 }
 
-// Treat Adj-RIB-In read errors separately from a successful read with an empty list.
 func (r *bgpRuntimeRouter) received(t *testing.T) []netip.Prefix {
 	t.Helper()
 	prefixes, err := r.listReceived()
@@ -327,4 +345,41 @@ func (r *bgpRuntimeRouter) kernelRoute(t *testing.T, prefix netip.Prefix) bool {
 		}
 	}
 	return false
+}
+
+func (r *bgpRuntimeRouter) retainRoutesOnStop() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.retainOnStop = true
+	r.gracefulStop = false
+}
+
+func (r *bgpRuntimeRouter) observedGracefulStop() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.gracefulStop
+}
+
+func (r *bgpRuntimeRouter) hasFreshPath(t *testing.T, prefix netip.Prefix) bool {
+	t.Helper()
+	request := apiutil.ListPathRequest{
+		TableType: apipb.TableType_TABLE_TYPE_ADJ_IN,
+		Name:      r.neighbor.String(),
+		Family:    bgppkt.RF_IPv6_UC,
+	}
+	fresh := false
+	if err := r.server.ListPath(
+		request,
+		func(nlri bgppkt.NLRI, paths []*apiutil.Path) {
+			if nlri.String() == prefix.String() {
+				fresh = slices.ContainsFunc(
+					paths,
+					func(path *apiutil.Path) bool { return !path.Stale },
+				)
+			}
+		},
+	); err != nil {
+		t.Fatalf("list the router Adj-RIB-In: %v", err)
+	}
+	return fresh
 }

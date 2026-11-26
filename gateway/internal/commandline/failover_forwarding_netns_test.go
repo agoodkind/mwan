@@ -179,8 +179,7 @@ func TestForwardingPeerLossSelectsBestPath(t *testing.T) {
 	}
 	waitForwardingPathCount(t, router, bgppkt.RF_IPv4_UC, 0)
 	waitForwardingPathCount(t, router, bgppkt.RF_IPv6_UC, 0)
-	assertForwardingPathCountStable(t, router, bgppkt.RF_IPv4_UC, 0, time.Second)
-	assertForwardingPathCountStable(t, router, bgppkt.RF_IPv6_UC, 0, time.Second)
+	assertForwardingPathCountStable(t, router, 0, time.Second, bgppkt.RF_IPv4_UC, bgppkt.RF_IPv6_UC)
 	waitForwardingNoDefault(t, netlink.FAMILY_V4)
 	waitForwardingNoDefault(t, netlink.FAMILY_V6)
 	startForwardingProcess(
@@ -198,8 +197,7 @@ func TestForwardingPeerLossSelectsBestPath(t *testing.T) {
 	waitForwardingPathCount(t, router, bgppkt.RF_IPv6_UC, 1)
 	waitForwardingDefault(t, netlink.FAMILY_V4, forwardingPrimaryNH4, 10*time.Second)
 	waitForwardingDefault(t, netlink.FAMILY_V6, forwardingPrimaryNH6, 10*time.Second)
-	assertForwardingPathCountStable(t, router, bgppkt.RF_IPv4_UC, 1, time.Second)
-	assertForwardingPathCountStable(t, router, bgppkt.RF_IPv6_UC, 1, time.Second)
+	assertForwardingPathCountStable(t, router, 1, time.Second, bgppkt.RF_IPv4_UC, bgppkt.RF_IPv6_UC)
 	forwardingInNamespace(
 		t,
 		namespaces,
@@ -225,8 +223,7 @@ func TestForwardingPeerLossSelectsBestPath(t *testing.T) {
 		},
 	)
 	waitForwardingReadiness(t, readinessSocket, forwardingready.State{IPv4: true, IPv6: true})
-	assertForwardingPathCountStable(t, router, bgppkt.RF_IPv4_UC, 1, time.Second)
-	assertForwardingPathCountStable(t, router, bgppkt.RF_IPv6_UC, 1, time.Second)
+	assertForwardingPathCountStable(t, router, 1, time.Second, bgppkt.RF_IPv4_UC, bgppkt.RF_IPv6_UC)
 	resumeResult, err = wanClient.AnnounceRoutes(
 		forwardingRPCContext(t),
 		&mwanv1.AnnounceRoutesRequest{},
@@ -285,10 +282,10 @@ func TestForwardingPeerLossSelectsBestPath(t *testing.T) {
 		waitForwardingDefault(t, testCase.family, testCase.primary, 20*time.Second)
 		if testCase.family == netlink.FAMILY_V4 {
 			waitForwardingPathCount(t, router, bgppkt.RF_IPv4_UC, 1)
-			assertForwardingPathCountStable(t, router, bgppkt.RF_IPv6_UC, 2, time.Second)
+			assertForwardingPathCountStable(t, router, 2, time.Second, bgppkt.RF_IPv6_UC)
 		} else {
 			waitForwardingPathCount(t, router, bgppkt.RF_IPv6_UC, 1)
-			assertForwardingPathCountStable(t, router, bgppkt.RF_IPv4_UC, 2, time.Second)
+			assertForwardingPathCountStable(t, router, 2, time.Second, bgppkt.RF_IPv4_UC)
 		}
 		assertForwardingDial(t, namespaces, "tcp4", forwardingTarget4)
 		assertForwardingDial(t, namespaces, "tcp6", forwardingTarget6)
@@ -304,10 +301,10 @@ func TestForwardingPeerLossSelectsBestPath(t *testing.T) {
 		waitForwardingDefault(t, testCase.family, testCase.failover, 20*time.Second)
 		if testCase.family == netlink.FAMILY_V4 {
 			waitForwardingPathCount(t, router, bgppkt.RF_IPv4_UC, 2)
-			assertForwardingPathCountStable(t, router, bgppkt.RF_IPv6_UC, 2, time.Second)
+			assertForwardingPathCountStable(t, router, 2, time.Second, bgppkt.RF_IPv6_UC)
 		} else {
 			waitForwardingPathCount(t, router, bgppkt.RF_IPv6_UC, 2)
-			assertForwardingPathCountStable(t, router, bgppkt.RF_IPv4_UC, 2, time.Second)
+			assertForwardingPathCountStable(t, router, 2, time.Second, bgppkt.RF_IPv4_UC)
 		}
 		assertForwardingDial(t, namespaces, testCase.network, testCase.target)
 	}
@@ -1065,27 +1062,32 @@ func waitForwardingPathCount(
 func assertForwardingPathCountStable(
 	t *testing.T,
 	router *server.BgpServer,
-	family bgppkt.Family,
 	want int,
 	duration time.Duration,
+	families ...bgppkt.Family,
 ) {
 	t.Helper()
 	deadline := time.Now().Add(duration)
 	for time.Now().Before(deadline) {
-		count := 0
-		if err := router.ListPath(
-			apiutil.ListPathRequest{TableType: apipb.TableType_TABLE_TYPE_GLOBAL, Family: family},
-			func(_ bgppkt.NLRI, paths []*apiutil.Path) { count += len(paths) },
-		); err != nil {
-			t.Fatal(err)
-		}
-		if count != want {
-			t.Fatalf(
-				"family %v path count = %d during stability check, want %d",
-				family,
-				count,
-				want,
-			)
+		for _, family := range families {
+			count := 0
+			if err := router.ListPath(
+				apiutil.ListPathRequest{
+					TableType: apipb.TableType_TABLE_TYPE_GLOBAL,
+					Family:    family,
+				},
+				func(_ bgppkt.NLRI, paths []*apiutil.Path) { count += len(paths) },
+			); err != nil {
+				t.Fatal(err)
+			}
+			if count != want {
+				t.Fatalf(
+					"family %v path count = %d during stability check, want %d",
+					family,
+					count,
+					want,
+				)
+			}
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

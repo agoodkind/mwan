@@ -47,7 +47,5 @@ func runBGPDirectDaemonRuntime(t *testing.T, run *bgpRuntimeRun, provider bgpRun
 	requireBGPRuntimeExchange(t, run, daemon, provider)
 	bgpRuntimePeerLoss(t, run, daemon, provider)
 	bgpRuntimeForwardingLoss(t, run, daemon, provider)
-	daemon = bgpRuntimeGracefulRestart(t, run, daemon, provider)
-	second := bgpRuntimeRestart(t, run, daemon, provider)
-	bgpRuntimeSessionRemoval(t, run, second, provider)
+	bgpRuntimeGracefulRestart(t, run, daemon, provider)
 }

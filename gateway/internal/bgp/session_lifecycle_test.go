@@ -12,6 +12,8 @@ import (
 )
 
 func TestSessionsWithSameASNsReportIndependentState(t *testing.T) {
+	t.Parallel()
+
 	loopback := netip.IPv6Loopback()
 	firstLearned := netip.MustParsePrefix("2001:db8:100::/48")
 	secondLearned := netip.MustParsePrefix("2001:db8:200::/48")
@@ -82,6 +84,8 @@ func TestSessionsWithSameASNsReportIndependentState(t *testing.T) {
 }
 
 func TestSessionOutlivesStartContext(t *testing.T) {
+	t.Parallel()
+
 	loopback := netip.IPv6Loopback()
 	learned := netip.MustParsePrefix("2001:db8:100::/48")
 	peer := startTestPeer(t, externalPeerASN, "192.0.2.2", loopback, loopback, sessionASN)
@@ -120,6 +124,8 @@ func TestSessionOutlivesStartContext(t *testing.T) {
 // The test verifies that Stop does not run a second delivery while the test
 // blocks one delivery. The OnChange contract excludes listeners that block.
 func TestSessionDeliversChangesOneAtATimeInOrder(t *testing.T) {
+	t.Parallel()
+
 	loopback := netip.IPv6Loopback()
 	peer := startTestPeer(t, externalPeerASN, "192.0.2.2", loopback, loopback, sessionASN)
 	session, err := bgp.NewSession(

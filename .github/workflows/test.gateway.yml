@@ -77,12 +77,25 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - *restore-amd64-builder
-      - name: Run firewall and namespace acceptance tests
-        run: |
-          docker compose run --build --rm firewall
-          docker compose run --build --rm protocol-namespace
+      - name: Run firewall acceptance tests
+        run: docker compose run --build --rm firewall
+
+  protocol:
+    name: mwan protocol tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - *restore-amd64-builder
+      - name: Run protocol acceptance tests
+        run: docker compose run --build --rm protocol-namespace
+
+  systemd:
+    name: mwan systemd tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - *restore-amd64-builder
       - name: Run systemd acceptance tests
-        if: ${{ !cancelled() }}
         run: |
           docker compose up --build --wait systemd
           docker compose exec -T systemd go test -count=1 -timeout=20m -tags systemd ./internal/commandline

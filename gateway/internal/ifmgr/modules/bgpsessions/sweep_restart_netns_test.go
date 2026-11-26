@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osrg/gobgp/v4/pkg/apiutil"
+	bgppkt "github.com/osrg/gobgp/v4/pkg/packet/bgp"
 	"github.com/vishvananda/netlink"
 
 	"goodkind.io/mwan/gateway/internal/bgp"
@@ -59,21 +61,22 @@ func startModule(t *testing.T, cfg bgpsessions.Config) func() {
 	return stop
 }
 
-// journalDeadline reads the restart deadline that the module shutdown path
-// wrote for the session owner.
-func journalDeadline(t *testing.T, stateFile string) time.Time {
+type sweepJournal struct {
+	Owners    json.RawMessage `json:"owners"`
+	Retaining []struct {
+		Interface string    `json:"interface"`
+		Metric    int       `json:"metric"`
+		Deadline  time.Time `json:"deadline"`
+	} `json:"retaining"`
+}
+
+func readSweepJournal(t *testing.T, stateFile string) sweepJournal {
 	t.Helper()
 	data, err := os.ReadFile(stateFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var document struct {
-		Retaining []struct {
-			Interface string    `json:"interface"`
-			Metric    int       `json:"metric"`
-			Deadline  time.Time `json:"deadline"`
-		} `json:"retaining"`
-	}
+	var document sweepJournal
 	if err := json.Unmarshal(data, &document); err != nil {
 		t.Fatalf("decode the journal %s: %v", data, err)
 	}
@@ -86,15 +89,11 @@ func journalDeadline(t *testing.T, stateFile string) time.Time {
 			sweepMetric,
 		)
 	}
-	return document.Retaining[0].Deadline
+	return document
 }
 
-func TestSweepRetainsRoutesUntilTheRestartDeadline(t *testing.T) {
-	if !runSweepIsolated(t) {
-		return
-	}
-	link, peer := startSweepPeer(t)
-	session := bgpsessions.Session{
+func sweepRestartSession() bgpsessions.Session {
+	return bgpsessions.Session{
 		WANRef: ifmgr.WANRef{ID: "transit", Name: "transit", Iface: sweepDevice},
 		Config: bgp.SessionConfig{
 			Name:                   "upstream",
@@ -110,13 +109,91 @@ func TestSweepRetainsRoutesUntilTheRestartDeadline(t *testing.T) {
 			RouteMetric:            sweepMetric,
 		},
 	}
+}
+
+func TestSweepRelearnsARouteLeftByACrashedSession(t *testing.T) {
+	if !runSweepIsolated(t) {
+		return
+	}
+	link, peer := startSweepPeer(t)
 	stateFile := filepath.Join(t.TempDir(), "bgp-sessions.json")
-	cfg := bgpsessions.Config{Sessions: []bgpsessions.Session{session}, StateFile: stateFile}
+	session := sweepRestartSession()
+	prefix := netip.MustParsePrefix(sweepStale)
+	length := uint8(prefix.Bits())
+	session.Config.Import = []bgp.ImportRule{{Prefix: prefix, MinLength: length, MaxLength: length}}
+	if err := os.WriteFile(
+		stateFile,
+		[]byte(`{"owners":[{"interface":"`+sweepDevice+`","metric":300}]}`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.RouteAdd(sweepRoute(t, link, sweepStale)); err != nil {
+		t.Fatalf("add %s: %v", sweepStale, err)
+	}
+	startModule(
+		t,
+		bgpsessions.Config{Sessions: []bgpsessions.Session{session}, StateFile: stateFile},
+	)
+	waitSweepPeerEstablished(t, peer)
+	if sweepRoutePresent(t, link, sweepStale) {
+		t.Fatalf("the restarted session kept %s without a new announcement", prefix)
+	}
+	nlri, err := bgppkt.NewIPAddrPrefix(prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextHop, err := bgppkt.NewPathAttributeMpReachNLRI(
+		bgppkt.RF_IPv6_UC,
+		[]bgppkt.PathNLRI{{NLRI: nlri}},
+		netip.MustParseAddr(sweepGateway),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := peer.AddPath(apiutil.AddPathRequest{
+		Paths: []*apiutil.Path{
+			{
+				Family: bgppkt.RF_IPv6_UC,
+				Nlri:   nlri,
+				Attrs: []bgppkt.PathAttributeInterface{
+					bgppkt.NewPathAttributeOrigin(bgppkt.BGP_ORIGIN_ATTR_TYPE_IGP),
+					nextHop,
+				},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("announce %s: %v", prefix, err)
+	}
+	deadline := time.Now().Add(sweepWait)
+	for time.Now().Before(deadline) {
+		if sweepRoutePresent(t, link, sweepStale) {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("the restarted session did not install %s after a new announcement", prefix)
+}
+
+func TestSweepRetainsRoutesUntilTheRestartDeadline(t *testing.T) {
+	if !runSweepIsolated(t) {
+		return
+	}
+	link, peer := startSweepPeer(t)
+	stateFile := filepath.Join(t.TempDir(), "bgp-sessions.json")
+	cfg := bgpsessions.Config{
+		Sessions:  []bgpsessions.Session{sweepRestartSession()},
+		StateFile: stateFile,
+	}
 
 	stopFirst := startModule(t, cfg)
 	waitSweepPeerEstablished(t, peer)
 	stopFirst()
-	deadline := journalDeadline(t, stateFile)
+	if deadline := readSweepJournal(t, stateFile).Retaining[0].Deadline; !deadline.After(
+		time.Now(),
+	) {
+		t.Fatalf("shutdown journal recorded an expired deadline: %s", deadline)
+	}
 
 	if err := netlink.RouteAdd(sweepRoute(t, link, sweepStale)); err != nil {
 		t.Fatalf("add %s: %v", sweepStale, err)
@@ -130,12 +207,15 @@ func TestSweepRetainsRoutesUntilTheRestartDeadline(t *testing.T) {
 		t.Fatalf("the second module shutdown deleted the retained route %s", sweepStale)
 	}
 
-	// The second shutdown writes a later deadline when its session
-	// established.
-	if second := journalDeadline(t, stateFile); second.After(deadline) {
-		deadline = second
+	journal := readSweepJournal(t, stateFile)
+	journal.Retaining[0].Deadline = time.Now().Add(-time.Second)
+	data, err := json.Marshal(journal)
+	if err != nil {
+		t.Fatal(err)
 	}
-	time.Sleep(time.Until(deadline) + time.Second)
+	if err := os.WriteFile(stateFile, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	startModule(t, cfg)
 	if sweepRoutePresent(t, link, sweepStale) {
 		t.Fatalf("the sweep did not delete the route %s after the restart deadline", sweepStale)
