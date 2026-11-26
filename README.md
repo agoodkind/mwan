@@ -61,6 +61,19 @@ data. Argument, configuration, and output errors cause a nonzero exit. Use
 `--network` and `--schema-dir` to select the existing WANCONFIG document and
 validation models, and `--verbose` for diagnostic logs on standard error.
 
+## Inspect OpenFlow rule counters
+
+Run `mwan ovs-rule-status "$CONTROL_SOCKET" --network "$NETWORK" --schema-dir "$SCHEMA_DIR"`
+with the Unix control socket of the running `ovs-vswitchd` process. MWAN reads
+the configured bridge and prints one JSON record per installed OpenFlow rule.
+Each record includes the OpenFlow definition, total packet count and offloaded
+packet count since installation or the last counter reset.
+
+The forwarding result is `software` when OVS counted packets only in software,
+`hardware` when OVS counted every packet as offloaded, and `mixed` when it
+counted both. A rule with zero packets reports `no-traffic`. A rule missing
+either counter reports `unavailable`.
+
 ## Installing what the binary owns
 
 The binary embeds its systemd units, drop-ins, YANG schema, and read-only

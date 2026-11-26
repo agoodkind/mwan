@@ -167,6 +167,7 @@ func newRootCommand(started *bool, boundary func(string)) *cobra.Command {
 		versioncmd.New(runVersion),
 		installcmd.New(runInstallOptions, knownInstallRoles(), rootIsHost),
 		statuscmd.New(runGatewayStatusOptions),
+		newOVSRuleStatus(),
 	)
 	addHelpCommand(root)
 	installHelpRendering(root, started, boundary)

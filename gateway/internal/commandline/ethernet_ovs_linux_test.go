@@ -4,6 +4,7 @@ package commandline_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"math/bits"
 	"net"
@@ -58,6 +59,7 @@ func TestOVSRuleUpdateMovesPackets(t *testing.T) {
 	checkOVSIPPacket(t, input, second, first, layers.EthernetTypeIPv6, "initial IPv6")
 	bridge := "unix:" + filepath.Join(filepath.Dir(socket), "br-mwan-of.mgmt")
 	checkWeightedISPGroup(t, bridge)
+	checkSoftwareRuleCounters(t, socket, path)
 	foreign := "cookie=0x4321,table=11,priority=10,actions=group:0x6d770011"
 	if output, err := exec.CommandContext(
 		t.Context(),
@@ -112,6 +114,46 @@ func TestOVSRuleUpdateMovesPackets(t *testing.T) {
 	writeOVSPacketDocument(t, path, configuration)
 	checkOVSIPPacket(t, input, first, second, layers.EthernetTypeIPv4, "restored IPv4")
 	checkOVSIPPacket(t, input, second, first, layers.EthernetTypeIPv6, "restored IPv6")
+}
+
+func checkSoftwareRuleCounters(t *testing.T, socket, network string) {
+	t.Helper()
+	directory := filepath.Dir(socket)
+	pid, err := os.ReadFile(filepath.Join(directory, "ovs-vswitchd.pid"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := filepath.Join(directory, "ovs-vswitchd."+strings.TrimSpace(string(pid))+".ctl")
+	command := exec.CommandContext(
+		t.Context(),
+		testMwanBinary(t),
+		"ovs-rule-status",
+		control,
+		"--network",
+		network,
+		"--schema-dir",
+		"../../yangpub/schema",
+	)
+	var diagnostics bytes.Buffer
+	command.Stderr = &diagnostics
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("read per-rule forwarding counters: %v: %s", err, diagnostics.String())
+	}
+	var rules []struct {
+		Definition string
+		Forwarding string
+	}
+	if err := json.Unmarshal(output, &rules); err != nil {
+		t.Fatal(err)
+	}
+	for _, rule := range rules {
+		if strings.Contains(rule.Definition, "cookie=0x6d77616e00000000") &&
+			rule.Forwarding == "software" {
+			return
+		}
+	}
+	t.Fatalf("did not find software packet counters for the forwarded traffic: %s", output)
 }
 
 func checkWeightedISPGroup(t *testing.T, bridge string) {
