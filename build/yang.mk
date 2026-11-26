@@ -5,11 +5,11 @@ include ../build/wanconfig.env
 ################################################################################
 
 PCRE2_SOURCE  := $(GO_MK_CGO_PREFIX).src/pcre2
-PCRE2_REPO    := https://github.com/PCRE2Project/pcre2.git
+PCRE2_ARCHIVE := https://codeload.github.com/PCRE2Project/pcre2/tar.gz/$(WANCONFIG_PCRE2_COMMIT)
 PCRE2_OPTIONS := -DPCRE2_BUILD_PCRE2GREP=OFF -DPCRE2_BUILD_TESTS=OFF
 
 LIBYANG_SOURCE := $(GO_MK_CGO_PREFIX).src/libyang
-LIBYANG_REPO   := https://github.com/CESNET/libyang.git
+LIBYANG_ARCHIVE := https://codeload.github.com/CESNET/libyang/tar.gz/$(WANCONFIG_LIBYANG_COMMIT)
 # Disable XXHash discovery to avoid linking Homebrew's dynamic library.
 LIBYANG_OPTIONS := -DENABLE_TOOLS=OFF -DCMAKE_DISABLE_FIND_PACKAGE_XXHash=ON
 
@@ -50,9 +50,9 @@ $(YANG_STAMP):
 	rm -f $(YANG_STAMP_PREFIX)*.stamp
 
 	# libyang needs PCRE2 during its build.
-	$(call yang_checkout,$(PCRE2_SOURCE),$(PCRE2_REPO),$(WANCONFIG_PCRE2_COMMIT))
+	$(call yang_unpack,$(PCRE2_SOURCE),$(PCRE2_ARCHIVE),$(WANCONFIG_PCRE2_SHA256))
 	$(call yang_build,$(PCRE2_SOURCE),$(PCRE2_OPTIONS))
-	$(call yang_checkout,$(LIBYANG_SOURCE),$(LIBYANG_REPO),$(WANCONFIG_LIBYANG_COMMIT))
+	$(call yang_unpack,$(LIBYANG_SOURCE),$(LIBYANG_ARCHIVE),$(WANCONFIG_LIBYANG_SHA256))
 	$(call yang_build,$(LIBYANG_SOURCE),$(LIBYANG_OPTIONS))
 
 	sed 's|^Libs:.*|$(LIBYANG_PC_LIBS)|' $(LIBYANG_PC) > $(LIBYANG_PC).tmp
@@ -65,15 +65,15 @@ $(YANG_STAMP):
 	: > $@
 
 ################################################################################
-# Source checkout and compilation
+# Source archives and compilation
 ################################################################################
 
-define yang_checkout
+define yang_unpack
 	rm -rf $(1)
-	git init --quiet $(1)
-	git -C $(1) fetch --quiet --depth 1 $(2) $(3)
-	git -C $(1) checkout --quiet --detach FETCH_HEAD
-	test "$$(git -C $(1) rev-parse HEAD)" = "$(3)"
+	mkdir -p $(1)
+	curl --fail --silent --show-error --location --output $(1)/source.tar.gz '$(2)'
+	cd $(1) && printf '%s  source.tar.gz\n' '$(3)' | shasum -a 256 --check
+	tar -xzf $(1)/source.tar.gz -C $(1) --strip-components=1
 endef
 
 define yang_build
