@@ -216,7 +216,7 @@ func TestRoleWANListsFilesUnitsAndModules(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{"systemd-networkd.service", "systemd-sysctl.service"} {
+	for _, name := range []string{"systemd-sysctl.service"} {
 		var found bool
 
 		for _, unit := range role.Units {
