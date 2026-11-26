@@ -18,5 +18,6 @@ jobs:
     with:
       working_directory: provider
       go_version_file: provider/go.mod
+      darwin_runner: macos-26
       apt_packages: cmake pkg-config
       cgo: true
