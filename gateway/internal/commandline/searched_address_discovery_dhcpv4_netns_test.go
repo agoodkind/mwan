@@ -91,6 +91,17 @@ func testOwnedDHCPv4RecoveryDiscover(
 	}
 }
 
+func startDHCPRecoveryDaemon(t *testing.T, root, configPath string) *runtimeDaemon {
+	t.Helper()
+	return startRuntimeDaemonProcess(
+		t,
+		os.Args[0],
+		filepath.Join(root, "dhcpv4.log"),
+		[]string{dhcpRecoveryDaemonConfigEnv + "=" + configPath},
+		"-test.run=^"+t.Name()+"$",
+	)
+}
+
 func runDHCPRecoveryDaemon(t *testing.T, configPath string) {
 	t.Helper()
 	settings, err := config.LoadPath(configPath)
@@ -178,13 +189,7 @@ func runOwnedDHCPv4RecoveryDiscover(
 	serviceRunning = false
 	setRuntimeNamespace(t, gateway)
 
-	daemon = startRuntimeDaemonProcess(
-		t,
-		os.Args[0],
-		filepath.Join(root, "dhcpv4.log"),
-		[]string{dhcpRecoveryDaemonConfigEnv + "=" + configPath},
-		"-test.run=^"+t.Name()+"$",
-	)
+	daemon = startDHCPRecoveryDaemon(t, root, configPath)
 	waitDHCPRecoveryDiscoverFailure(t, daemon)
 	waitStaticRuntimeAddress(t, daemon, "enatt0", dhcpRecoverySavedAddress, true)
 	waitStaticRuntimeRoute(t, daemon, "ipv4", dhcpReconnectServerAddress, 20, true)

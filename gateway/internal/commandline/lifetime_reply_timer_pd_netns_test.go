@@ -21,10 +21,10 @@ const (
 
 	dhcpv6TimerPrefix         = "2001:db8:30::/60"
 	dhcpv6TimerAddress        = "2001:db8:30::1/128"
-	dhcpv6TimerT1             = 4 * time.Second
-	dhcpv6TimerT2             = 8 * time.Second
-	dhcpv6TimerPreferred      = 12 * time.Second
-	dhcpv6TimerValid          = 16 * time.Second
+	dhcpv6TimerT1             = time.Second
+	dhcpv6TimerT2             = 5 * time.Second
+	dhcpv6TimerPreferred      = 6 * time.Second
+	dhcpv6TimerValid          = 8 * time.Second
 	dhcpv6TimerReplyDelay     = 3 * time.Second
 	dhcpv6TimerWANTable       = 100
 	dhcpv6TimerSolicitDelay   = time.Second

@@ -138,6 +138,10 @@ func TestOwnedDHCPv4LinkFlapDuringAcquireWakesRetry(t *testing.T) {
 
 func dhcpAcquireBackoffIsolated(t *testing.T) bool {
 	t.Helper()
+	if configPath := os.Getenv(dhcpRecoveryDaemonConfigEnv); configPath != "" {
+		runDHCPRecoveryDaemon(t, configPath)
+		return false
+	}
 	if os.Getenv(dhcpAcquireBackoffChildEnv) == "1" {
 		return true
 	}

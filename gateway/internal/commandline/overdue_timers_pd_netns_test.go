@@ -82,8 +82,30 @@ func runOwnedDHCPv6PDTimerRuntime(t *testing.T, mode dhcpv6TimerMode) {
 func assertDHCPv6TimerLeaseHeld(t *testing.T, daemon *runtimeDaemon, observations *dhcpv6TimerLog) {
 	t.Helper()
 	started := time.Now()
-	deadline := started.Add(2*dhcpv6TimerValid + dhcpv6TimerT1)
-	for time.Now().Before(deadline) {
+	timer := time.NewTimer(2*dhcpv6TimerValid + dhcpv6TimerT1)
+	defer timer.Stop()
+	addresses := make(chan netlink.AddrUpdate)
+	routes := make(chan netlink.RouteUpdate)
+	stopAddresses := make(chan struct{})
+	if err := netlink.AddrSubscribe(addresses, stopAddresses); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		close(stopAddresses)
+		for range addresses {
+		}
+	}()
+	stopRoutes := make(chan struct{})
+	if err := netlink.RouteSubscribe(routes, stopRoutes); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		close(stopRoutes)
+		for range routes {
+		}
+	}()
+observe:
+	for {
 		if !dhcpv6TimerAddressReady() {
 			t.Fatalf(
 				"delegated address %s disappeared %s after the lease check started: messages=%v daemon=%s",
@@ -102,7 +124,18 @@ func assertDHCPv6TimerLeaseHeld(t *testing.T, daemon *runtimeDaemon, observation
 			)
 		}
 		assertRuntimeDaemonRunning(t, daemon)
-		time.Sleep(50 * time.Millisecond)
+		select {
+		case _, open := <-addresses:
+			if !open {
+				t.Fatal("address subscription closed")
+			}
+		case _, open := <-routes:
+			if !open {
+				t.Fatal("route subscription closed")
+			}
+		case <-timer.C:
+			break observe
+		}
 	}
 	lateReplies := 0
 	solicits := 0

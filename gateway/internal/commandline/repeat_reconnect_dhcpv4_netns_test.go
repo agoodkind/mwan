@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"net"
-	"os"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -29,10 +28,9 @@ const (
 	dhcpReconnectInFlightT1      = 20 * time.Second
 	dhcpReconnectLongT1          = 1800 * time.Second
 	dhcpReconnectLongT2          = 3000 * time.Second
-	dhcpReconnectNearT1          = 15 * time.Second
-	dhcpReconnectNearT2          = 35 * time.Second
-	dhcpReconnectBeforeT1        = 10 * time.Second
-	dhcpReconnectT1Tolerance     = 5 * time.Second
+	dhcpReconnectNearT1          = 2 * time.Second
+	dhcpReconnectNearT2          = 4 * time.Second
+	dhcpReconnectT1Tolerance     = time.Second
 )
 
 type dhcpReconnectBehavior int32
@@ -55,15 +53,17 @@ type dhcpReconnectPacket struct {
 type dhcpReconnectCapturedRequest struct {
 	At          time.Time
 	Destination net.IP
+	Client      net.IP
 }
 
 type dhcpReconnectRuntime struct {
-	behavior atomic.Int32
-	mu       sync.Mutex
-	packets  []dhcpReconnectPacket
-	requests []dhcpReconnectCapturedRequest
-	daemon   *runtimeDaemon
-	link     netlink.Link
+	behavior       atomic.Int32
+	mu             sync.Mutex
+	packets        []dhcpReconnectPacket
+	requests       []dhcpReconnectCapturedRequest
+	requestChanged chan struct{}
+	daemon         *runtimeDaemon
+	link           netlink.Link
 }
 
 func (r *dhcpReconnectRuntime) snapshot() []dhcpReconnectPacket {
@@ -185,13 +185,7 @@ func startDHCPReconnectRuntimeWithT2(
 	})
 	setRuntimeNamespace(t, gateway)
 	configPath := prepareDHCPv4WAN(t, root, true, false)
-	reconnect.daemon = startRuntimeDaemon(
-		t,
-		os.Getenv(dhcpAcquireBackoffBinaryEnv),
-		configPath,
-		root,
-		"dhcpv4",
-	)
+	reconnect.daemon = startDHCPRecoveryDaemon(t, root, configPath)
 	t.Cleanup(func() { stopRuntimeDaemon(t, reconnect.daemon) })
 	waitStaticRuntimeAddress(
 		t,
@@ -377,23 +371,47 @@ func TestOwnedDHCPv4ReconnectBeforeT1SilentServerKeepsLeaseT1AndT2(t *testing.T)
 		dhcpReconnectNearT1,
 		dhcpReconnectNearT2,
 	)
+	updates := make(chan netlink.AddrUpdate, 16)
+	done := make(chan struct{})
+	if err := netlink.AddrSubscribe(updates, done); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		close(done)
+		for range updates {
+		}
+	}()
+
 	boundAt := time.Now()
 	reconnect.behavior.Store(int32(dhcpReconnectSilent))
-	time.Sleep(dhcpReconnectBeforeT1)
 	reconnect.requireVerification(t, reconnect.flap(t))
-	deadline := boundAt.Add(dhcpReconnectNearT2 + dhcpReconnectT1Tolerance)
-	cidr := dhcpReconnectOriginalAddress + "/24"
-	for time.Now().Before(deadline) {
-		if !reconnect.hasAddress(t, cidr) {
+	deadline := time.After(time.Until(boundAt.Add(dhcpReconnectNearT2 + dhcpReconnectT1Tolerance)))
+	for {
+		if !reconnect.hasAddress(t, dhcpReconnectOriginalAddress+"/24") {
 			t.Fatalf(
-				"The client ended the lease while the server stayed silent. Daemon log: %s",
+				"DHCP address disappeared before rebinding: %s",
 				runtimeLogTail(t, reconnect.daemon, 30),
 			)
 		}
 		if _, found := reconnect.firstRequestTo(net.IPv4bcast); found {
 			break
 		}
-		time.Sleep(100 * time.Millisecond)
+		select {
+		case update, open := <-updates:
+			if !open {
+				t.Fatal("address subscription closed before rebinding")
+			}
+			if !update.NewAddr && update.LinkIndex == reconnect.link.Attrs().Index &&
+				update.LinkAddress.IP.Equal(net.ParseIP(dhcpReconnectOriginalAddress)) {
+				t.Fatal("DHCP address was removed before rebinding")
+			}
+		case <-reconnect.requestChanged:
+		case <-deadline:
+			t.Fatalf(
+				"DHCP rebinding packet did not arrive: %s",
+				runtimeLogTail(t, reconnect.daemon, 30),
+			)
+		}
 	}
 	reconnect.requireTimedRenewal(t, boundAt, dhcpReconnectNearT1)
 	rebinding, found := reconnect.firstRequestTo(net.IPv4bcast)
@@ -403,6 +421,9 @@ func TestOwnedDHCPv4ReconnectBeforeT1SilentServerKeepsLeaseT1AndT2(t *testing.T)
 			dhcpReconnectNearT2,
 			runtimeLogTail(t, reconnect.daemon, 30),
 		)
+	}
+	if !rebinding.Client.Equal(net.ParseIP(dhcpReconnectOriginalAddress)) {
+		t.Fatalf("rebinding ciaddr = %s, want %s", rebinding.Client, dhcpReconnectOriginalAddress)
 	}
 	if elapsed := rebinding.At.Sub(
 		boundAt,
@@ -430,6 +451,9 @@ func (r *dhcpReconnectRuntime) requireTimedRenewal(
 			runtimeLogTail(t, r.daemon, 30),
 		)
 	}
+	if !renewal.Client.Equal(net.ParseIP(dhcpReconnectOriginalAddress)) {
+		t.Fatalf("renewal ciaddr = %s, want %s", renewal.Client, dhcpReconnectOriginalAddress)
+	}
 	if elapsed := renewal.At.Sub(boundAt); elapsed < t1-dhcpReconnectT1Tolerance ||
 		elapsed > t1+dhcpReconnectT1Tolerance {
 		t.Fatalf(
@@ -455,6 +479,7 @@ func (r *dhcpReconnectRuntime) firstRequestTo(
 
 func (r *dhcpReconnectRuntime) captureLeaseRequests(t *testing.T, iface string) {
 	t.Helper()
+	r.requestChanged = make(chan struct{}, 1)
 	protocol := binary.NativeEndian.Uint16(binary.BigEndian.AppendUint16(nil, unix.ETH_P_IP))
 	fd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_DGRAM, int(protocol))
 	if err != nil {
@@ -522,6 +547,11 @@ func (r *dhcpReconnectRuntime) recordLeaseRequest(datagram []byte) {
 		dhcpReconnectCapturedRequest{
 			At:          time.Now(),
 			Destination: append(net.IP(nil), datagram[16:20]...),
+			Client:      packet.ClientIPAddr,
 		},
 	)
+	select {
+	case r.requestChanged <- struct{}{}:
+	default:
+	}
 }

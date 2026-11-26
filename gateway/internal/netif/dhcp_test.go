@@ -28,6 +28,15 @@ func TestDHCPLinkFlapsKeepRenewalRetryDeadline(t *testing.T) {
 	)
 }
 
+func TestDHCPReconnectBeforeT1SilentServerKeepsLeaseT1AndT2(t *testing.T) {
+	synctest.Test(
+		t,
+		func(t *testing.T) {
+			testDHCPRenewalSchedule(t, time.Minute, 700*time.Millisecond)
+		},
+	)
+}
+
 func TestDHCPReconnectSilentServerKeepsLeaseAfterDiscover(t *testing.T) {
 	synctest.Test(
 		t,
