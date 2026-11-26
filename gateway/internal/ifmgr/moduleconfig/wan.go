@@ -89,6 +89,7 @@ func addWANRoleConfigs(
 			shared,
 			ifmgrCfg.Modules.BGPSessions,
 			ifmgrCfg.Connections,
+			ifmgrCfg.OVSDataplane,
 		)
 	}
 
