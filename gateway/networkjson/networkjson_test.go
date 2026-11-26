@@ -167,7 +167,7 @@ func TestOVSRejectsBGPBackupFor(t *testing.T) {
 	_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err == nil ||
 		!strings.Contains(err.Error(), "backup-for requires kernel ISP forwarding readiness") {
-		t.Fatalf("expected a BGP backup export validation error, got %v", err)
+		t.Fatalf("networkload.Load returned %v instead of a BGP backup export validation error", err)
 	}
 }
 

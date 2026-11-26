@@ -153,7 +153,7 @@ func NewDaemon(log *slog.Logger, cfg DaemonConfig) (*Daemon, error) {
 
 	names, err := cfg.moduleNames()
 	if err != nil {
-		dlog.Warn("ifmgr: modulesForRole failed", "err", err)
+		dlog.Warn("ifmgr: cannot select modules", "err", err)
 		return nil, err
 	}
 

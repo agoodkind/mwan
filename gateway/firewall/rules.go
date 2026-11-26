@@ -97,11 +97,6 @@ func CompileBaseline(config BaselineConfig) (Ruleset, error) {
 	}), nil
 }
 
-// Ruleset selects host baseline rules for OVS gateways.
-//
-// Linux gateways also apply their kernel forwarding policy.
-//
-//	rules, err := config.Ruleset()
 func (config Config) Ruleset() (Ruleset, error) {
 	if config.HostBaseline != nil {
 		return CompileBaseline(*config.HostBaseline)

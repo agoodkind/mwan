@@ -50,7 +50,7 @@ module goodkind-mwan-steering {
      internal link the members route toward.";
 
   revision 2026-11-22 {
-    description "Add OVS bridge, port, and OpenFlow configuration.";
+    description "Add OVS bridge and port configuration.";
   }
   revision 2026-11-21;
 
