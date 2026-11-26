@@ -78,7 +78,7 @@ func runIfMgrPath(
 	output io.Writer,
 ) error {
 	if options.Role == ifMgrWANRole {
-		if err := bootstrapWANFirewall(ctx, networkjson.DefaultPath); err != nil {
+		if err := bootstrapWANFirewall(ctx, options.NetworkPath); err != nil {
 			slog.Error("ifmgr firewall bootstrap failed", "err", err)
 
 			return fmt.Errorf("ifmgr: %w", err)
@@ -117,6 +117,14 @@ func RunIfMgr(
 		return err
 	}
 
+	if flags.NetworkPath == "" {
+		flags.NetworkPath = networkjson.DefaultPath
+	}
+
+	if flags.SchemaDir == "" {
+		flags.SchemaDir = networkjson.DefaultSchemaDir
+	}
+
 	logger, closer := buildIfMgrLogger(cfg, flags.Debug, output)
 	defer closer.Close()
 	runID := tracing.NewID()
@@ -144,6 +152,7 @@ func RunIfMgr(
 		ctx,
 		cfg,
 		role,
+		flags,
 		logger,
 		runID,
 		startDHCPv4,
@@ -160,18 +169,19 @@ func prepareIfMgrDaemon(
 	ctx context.Context,
 	cfg *config.Config,
 	role string,
+	flags commandopts.Ifmgr,
 	logger *slog.Logger,
 	runID string,
 	startDHCPv4 addresses.DHCPv4Starter,
 	aliasSync *sync.WaitGroup,
 ) (*ifmgr.Daemon, ifmgr.DaemonConfig, []networkjson.Rejection, error) {
 	if role == ifMgrWANRole {
-		if err := bootstrapWANFirewall(ctx, networkjson.DefaultPath); err != nil {
+		if err := bootstrapWANFirewall(ctx, flags.NetworkPath); err != nil {
 			return nil, ifmgr.DaemonConfig{}, nil, err
 		}
 	}
 
-	loaded, err := parseNetworkConfig(ctx, logger, cfg, role)
+	loaded, err := parseNetworkConfig(ctx, logger, cfg, role, flags)
 	if err != nil {
 		logger.Error("ifmgr: network configuration unusable", "err", err)
 
@@ -570,6 +580,7 @@ func parseNetworkConfig(
 	log *slog.Logger,
 	cfg *config.Config,
 	role string,
+	flags commandopts.Ifmgr,
 ) (*networkjson.Config, error) {
 	steers, err := roleSteersProviders(role)
 	if err != nil {
@@ -580,13 +591,13 @@ func parseNetworkConfig(
 		return nil, nil
 	}
 
-	loaded, err := networkload.Load(networkjson.DefaultPath, networkjson.DefaultSchemaDir)
+	loaded, err := networkload.Load(flags.NetworkPath, flags.SchemaDir)
 	if err != nil {
 		log.ErrorContext(
 			ctx,
 			"ifmgr: load network configuration failed",
 			"path",
-			networkjson.DefaultPath,
+			flags.NetworkPath,
 			"role",
 			role,
 			"err",
@@ -601,7 +612,7 @@ func parseNetworkConfig(
 			ctx,
 			"ifmgr: provider entry rejected; steering the remaining providers",
 			"path",
-			networkjson.DefaultPath,
+			flags.NetworkPath,
 			"interface",
 			rejected.Interface,
 			"provider",
