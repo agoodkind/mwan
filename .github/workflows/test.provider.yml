@@ -18,5 +18,4 @@ jobs:
     with:
       working_directory: provider
       go_version_file: provider/go.mod
-      apt_packages: cmake pkg-config
       cgo: true
