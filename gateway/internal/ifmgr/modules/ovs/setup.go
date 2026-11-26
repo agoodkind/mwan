@@ -111,6 +111,10 @@ func reconcileBridge(ctx context.Context, database databaseClient, config ovscon
 		return err
 	}
 
+	if err := validateExpressions(ctx, config); err != nil {
+		return err
+	}
+
 	if config.OpenFlow != nil && !slices.Contains(bridge.Protocols, "OpenFlow15") {
 		bridge.Protocols = append(bridge.Protocols, "OpenFlow15")
 	}

@@ -77,7 +77,7 @@ func TestOVSRuleUpdateMovesPackets(t *testing.T) {
 		`"output": ["mwan-of-b"]`,
 		1,
 	)
-	updated = strings.Replace(updated, `"output": "mwan-of-b"`, `"output": "mwan-of-a"`, 1)
+	updated = strings.Replace(updated, `"argument": "mwan-of-b"`, `"argument": "mwan-of-a"`, 1)
 	writeOVSPacketDocument(t, path, updated)
 	checkOVSIPPacket(t, input, second, first, layers.EthernetTypeIPv4, "updated IPv4")
 	checkOVSIPPacket(t, input, first, second, layers.EthernetTypeIPv6, "updated IPv6")

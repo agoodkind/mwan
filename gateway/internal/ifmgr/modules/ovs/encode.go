@@ -48,6 +48,32 @@ func marshalFlow(
 	flow.Cookie = mwanFlowCookie
 	flow.Priority = rule.Priority
 	flow.TableId = rule.Table
+	if len(rule.Match) != 0 {
+		if rule.InPort != "" || rule.EtherType != nil || len(rule.RawMatch) != 0 {
+			return nil, errMatchConflict
+		}
+
+		match, err := marshalMatchFields(rule.Match, numbers)
+		if err != nil {
+			return nil, err
+		}
+
+		rule.RawMatch = match
+	}
+
+	if len(rule.Actions) != 0 {
+		if rule.GroupID != nil || len(rule.Output) != 0 || len(rule.RawInstruction) != 0 {
+			return nil, errFlowActions
+		}
+
+		instructions, err := marshalActionFields(instructionExpression, rule.Actions, numbers)
+		if err != nil {
+			return nil, err
+		}
+
+		rule.RawInstruction = instructions
+	}
+
 	if rule.InPort != "" {
 		number, exists := numbers[rule.InPort]
 		if !exists {
@@ -85,6 +111,17 @@ func marshalFlow(
 
 	if err := marshalInstructions(ctx, flow, rule, numbers); err != nil {
 		return nil, err
+	}
+
+	if len(rule.Match) != 0 || len(rule.Actions) != 0 {
+		wire, err := flow.MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+
+		if err := validateFlowWire(wire); err != nil {
+			return nil, err
+		}
 	}
 
 	return flow, nil

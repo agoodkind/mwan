@@ -46,10 +46,16 @@ func installOpenFlow(
 		return err
 	}
 
+	configured := make(map[string]bool, len(config.Ports))
+	for _, port := range config.Ports {
+		configured[port.Name] = true
+	}
+
 	numbers := make(map[string]uint32, len(config.Ports))
 
 	for _, device := range interfaces {
-		if device.OpenFlow != nil && *device.OpenFlow > 0 && *device.OpenFlow <= math.MaxUint32 {
+		if configured[device.Name] && device.OpenFlow != nil && *device.OpenFlow > 0 &&
+			*device.OpenFlow <= math.MaxUint32 {
 			numbers[device.Name] = uint32(*device.OpenFlow)
 		}
 	}

@@ -29,7 +29,7 @@
         "socket": "/run/openvswitch/br-mwan-of.mgmt",
         "group": [{
           "id": 17, "type": "select", "selection-method": "dp_hash",
-          "bucket": [{"id": 0, "output": "mwan-of-b"}]
+          "bucket": [{"id": 0, "action": [{"id": 1, "name": "output", "argument": "mwan-of-b"}]}]
         }, {
           "id": 18, "type": "select",
           "bucket": [
@@ -41,9 +41,11 @@
           {
             "name": "set-ipv4-source-and-continue",
             "priority": 100,
-            "in-port": "mwan-of-in",
-            "ether-type": 2048,
-            "raw-instruction": ["AAQAGAAAAAAAGQAQgAAWBMsAcS0AAAAA", "AAEACAEAAAA="]
+            "match": [{"field": "in_port", "value": "mwan-of-in"}, {"field": "ip"}],
+            "action": [
+              {"id": 1, "name": "set_field", "argument": "203.0.113.45->ip_src"},
+              {"id": 2, "name": "goto_table", "argument": "1"}
+            ]
           },
           {
             "name": "forward-ipv4",

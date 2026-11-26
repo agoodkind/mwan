@@ -21,6 +21,8 @@ type OpenFlowConfig struct {
 
 // Flow matches packets in one OpenFlow table and defines their actions.
 type Flow struct {
+	Match          []Match    `json:"match,omitempty"`
+	Actions        []Action   `json:"action,omitempty"`
 	Condition      *Condition `json:"condition,omitempty"`
 	Name           string     `json:"name"`
 	Table          uint8      `json:"table"`
@@ -56,12 +58,26 @@ const (
 
 // Bucket applies actions before sending packets to its output port.
 type Bucket struct {
+	Actions       []Action   `json:"action,omitempty"`
 	Condition     *Condition `json:"condition,omitempty"`
 	ID            uint32     `json:"id"`
 	RawActions    [][]byte   `json:"raw-action"`
 	Weight        *uint16    `json:"weight"`
 	Output        string     `json:"output"`
 	RawProperties [][]byte   `json:"raw-property"`
+}
+
+// Match selects one OVS packet field or protocol.
+type Match struct {
+	Field string `json:"field"`
+	Value string `json:"value,omitempty"`
+}
+
+// Action specifies one operation in the configured execution order.
+type Action struct {
+	ID       uint32 `json:"id"`
+	Name     string `json:"name"`
+	Argument string `json:"argument,omitempty"`
 }
 
 // Condition selects a flow or bucket according to connection health.

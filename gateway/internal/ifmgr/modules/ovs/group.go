@@ -140,7 +140,12 @@ func compileGroup(
 		seen[bucket.ID] = true
 		encoded, err := compileBucket(ctx, bucket, numbers)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf(
+				"compile OpenFlow group %d bucket %d: %w",
+				group.ID,
+				bucket.ID,
+				err,
+			)
 		}
 
 		if int(result.Len())+int(encoded.Len()) > maxFlowSize {
@@ -174,6 +179,16 @@ func compileBucket(
 
 	encoded.Properties = append(encoded.Properties, properties...)
 	var actions []openflow15.Action
+	if len(bucket.Actions) != 0 {
+		if len(bucket.RawActions) != 0 {
+			return nil, errRawAction
+		}
+
+		bucket.RawActions, err = marshalActionFields(bucketExpression, bucket.Actions, numbers)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	for _, raw := range bucket.RawActions {
 		if len(raw) < instructionSize || len(raw)%wireAlignment != 0 ||

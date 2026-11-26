@@ -50,7 +50,7 @@ module goodkind-mwan-steering {
      internal link the members route toward.";
 
   revision 2026-11-26 {
-    description "OpenFlow flows and group buckets can depend on an unhealthy connection.";
+    description "Accept Open vSwitch match and action expressions and conditions for unhealthy connections.";
   }
   revision 2026-11-25 {
     description "OpenFlow rules and group buckets can depend on connection health.";
@@ -1382,6 +1382,23 @@ module goodkind-mwan-steering {
     }
   }
 
+  grouping ovs-actions {
+    list action {
+      key "id";
+      ordered-by user;
+      description "OVS actions execute in list order. Each ID identifies one occurrence.";
+      leaf id { type uint32; }
+      leaf name {
+        type string { length "1..max"; }
+        mandatory true;
+      }
+      leaf argument {
+        type string { length "1..max"; }
+        description "OVS operand, including nested actions where the operation accepts them.";
+      }
+    }
+  }
+
   grouping ovs-health-condition {
     container condition {
       presence "Apply a health condition to this flow or bucket.";
@@ -1557,6 +1574,8 @@ module goodkind-mwan-steering {
               ordered-by user;
               description "OpenFlow 1.5 action bytes with headers.";
             }
+            uses ovs-actions;
+            must "not(action and raw-action)";
             leaf-list raw-property {
               type binary { length "8..65000"; }
               ordered-by user;
@@ -1607,6 +1626,21 @@ module goodkind-mwan-steering {
             ordered-by user;
             description "OpenFlow 1.5 OXM fields with their headers.";
           }
+          list match {
+            key "field";
+            ordered-by user;
+            description "Packet match fields and protocol keywords in ovs-ofctl syntax.";
+            leaf field {
+              type string { length "1..max"; }
+            }
+            leaf value {
+              type string { length "1..max"; }
+              description "Field value and optional mask. Omit for protocol keywords.";
+            }
+          }
+          must "not(match and (in-port or ether-type or raw-match))";
+          uses ovs-actions;
+          must "not(action and (output or group-id or raw-instruction))";
           leaf-list raw-instruction {
             type binary { length "8..65000"; }
             ordered-by user;
