@@ -30,6 +30,7 @@ func TestLoadOVSGroupBucketCount(t *testing.T) {
 	const wantError = "An indirect OpenFlow group requires exactly one bucket."
 
 	base := readFile(t, "testdata/ovs.json")
+
 	tests := []struct {
 		name  string
 		group string
