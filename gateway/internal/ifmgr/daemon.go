@@ -85,7 +85,6 @@ type DaemonConfig struct {
 	// daemon's own logger; no email).
 	Notifier notify.Notifier
 
-	// ModuleConfigs holds per-module runtime configs keyed by module name.
 	// Each module's Constructor receives ModuleConfigs[Name()].
 	ModuleConfigs ModuleConfigSet
 
@@ -721,12 +720,8 @@ func (d *Daemon) persistDHCPLease(
 	}
 }
 
-// requestReconcile asks the main loop to run a reconcile pass promptly. The
-// send is non-blocking: reconcileReq is buffered with capacity 1, so when a
-// pass is already queued the request coalesces into it rather than blocking the
-// caller. Modules call this via Env.RequestReconcile after a state change that
-// downstream modules must act on now, for example a health transition that
-// should drive an immediate wan.routes failover instead of waiting for the tick.
+// A health transition can require failover before the next tick.
+// The buffered channel combines concurrent requests without blocking callers.
 func (d *Daemon) requestReconcile(reason string) {
 	select {
 	case d.reconcileReq <- struct{}{}:
@@ -736,9 +731,7 @@ func (d *Daemon) requestReconcile(reason string) {
 	}
 }
 
-// reconcileAll runs Reconcile on every module in role order. A module
-// returning an error is logged at WARN; the loop continues so that one
-// flaky module does not silence the others.
+// The remaining modules still run after one module reports an error.
 func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
 	var routingGeneration uint64
 	if d.cfg.LiveState != nil {
@@ -761,6 +754,11 @@ func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
 				failed.IPv6 = failed.IPv6 || impact.IPv6
 			}
 		}
+	}
+
+	// An interrupted check cannot establish that forwarding failed. Keep the last verdict.
+	if ctx.Err() != nil {
+		return
 	}
 
 	if d.role != "wan" {

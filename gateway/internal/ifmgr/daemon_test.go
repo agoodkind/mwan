@@ -2,6 +2,7 @@ package ifmgr
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/tracing"
+	"goodkind.io/mwan/internal/wanstate"
 )
 
 // fakeModule is a Module implementation that records every dispatch the
@@ -156,6 +158,75 @@ func TestDaemonInitAndReconcile(t *testing.T) {
 
 	if mod.lastEnv.Monitor == nil {
 		t.Error("env.Monitor is nil")
+	}
+}
+
+type failedRoutingCheck struct {
+	fakeModule
+	cancel context.CancelFunc
+}
+
+func (m *failedRoutingCheck) Reconcile(ctx context.Context, _ *slog.Logger) error {
+	if m.cancel != nil {
+		m.cancel()
+		return ctx.Err()
+	}
+
+	return errors.New("routing check failed")
+}
+
+func TestReconcileRoutingFailureDuringShutdown(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		shutdown bool
+		want     wanstate.PathState
+	}{
+		{"shutdown cancels the check", true, wanstate.PathReady},
+		{"routing fails while running", false, wanstate.PathUnavailable},
+	} {
+		t.Run(
+			tc.name,
+			func(t *testing.T) {
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				routes := &failedRoutingCheck{fakeModule: fakeModule{name: "wan.routes"}}
+				if tc.shutdown {
+					routes.cancel = cancel
+				}
+
+				connections := []interfaceintent.Connection{
+					{
+						ID:    "transit",
+						Roles: interfaceintent.RoleProvider,
+						IPv6:  &interfaceintent.IPv6{},
+					},
+				}
+				store := wanstate.New()
+				store.SetConnections(connections)
+				store.SetFamilyReadiness(
+					"transit",
+					"ipv6",
+					"ready",
+					wanstate.PathVerdict{State: wanstate.PathReady},
+				)
+				daemon := &Daemon{
+					role:    "wan",
+					modules: []Module{routes},
+					cfg:     DaemonConfig{Connections: connections, LiveState: store},
+				}
+				daemon.reconcileAll(ctx, slog.Default())
+				family := store.Snapshot().Connections["transit"].IPv6
+				if family.Path.State != tc.want ||
+					family.Readiness != readinessVerdict(tc.want == wanstate.PathReady) {
+					t.Fatalf(
+						"IPv6 path = %+v, readiness = %q; want %s",
+						family.Path,
+						family.Readiness,
+						tc.want,
+					)
+				}
+			},
+		)
 	}
 }
 

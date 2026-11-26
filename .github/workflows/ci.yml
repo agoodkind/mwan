@@ -55,7 +55,7 @@ jobs:
   test:
     name: go
     needs: compose-config
-    uses: ./.github/workflows/test.yml
+    uses: ./.github/workflows/test.gateway.yml
 
   package:
     name: Gateway packages (${{ matrix.arch }})
@@ -85,7 +85,7 @@ jobs:
           test "$PACKAGES" = success
 
   provider:
-    uses: ./.github/workflows/test-provider.yml
+    uses: ./.github/workflows/test.provider.yml
     permissions:
       contents: read
       id-token: write

@@ -1,0 +1,22 @@
+name: Test provider
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  provider:
+    name: Go
+    uses: agoodkind/go-makefile/.github/workflows/_ci.yml@main
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    secrets: inherit
+    with:
+      working_directory: provider
+      go_version_file: provider/go.mod
+      apt_packages: cmake pkg-config
+      cgo: true

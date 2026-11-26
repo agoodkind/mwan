@@ -3,6 +3,7 @@ package provider_test
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -19,6 +20,19 @@ const (
 	schemaSummary        = "Invalid network schema"
 	rejectedEntrySummary = "Rejected provider entry"
 )
+
+func TestNetworkRoutesFixtureMatchesGateway(t *testing.T) {
+	t.Parallel()
+	gatewayPath := filepath.Join(gatewayInstances, filepath.Base(networkRoutesDocument))
+	gateway, err := os.ReadFile(gatewayPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if readNetworkDocument(t) != string(gateway) {
+		t.Fatalf("fixture mismatch: copy %s to %s", gatewayPath, networkRoutesDocument)
+	}
+}
 
 func TestNetworkAcceptsSchemaValidDocuments(t *testing.T) {
 	t.Parallel()
