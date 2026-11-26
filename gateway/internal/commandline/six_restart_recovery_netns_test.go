@@ -217,7 +217,7 @@ func runOwnedDHCPv6DaemonRestartRecovery(t *testing.T) {
 		if request.MessageType != dhcpv6.MessageTypeRebind || len(request.Options.IAPD()) != 1 {
 			t.Fatalf("validated restart did not send Rebind: %s", request)
 		}
-		time.Sleep(750 * time.Millisecond)
+		waitDHCPv6RuntimeLog(t, daemon.logPath, "ifmgr: entering main loop")
 		assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"), "2001:db8:30::1/128")
 		waitStaticRuntimeAddress(t, daemon, "enatt0", "2001:db8:30::1/128", true)
 		waitDHCPv6RuntimeNPTRule(t, daemon, false)
@@ -682,13 +682,14 @@ func replyDHCPv6Restart(
 	}
 	association := &dhcpv6.OptIAPD{
 		IaId: request.Options.IAPD()[0].IaId,
-		T1:   8 * time.Second,
-		T2:   16 * time.Second,
+		T1:   5 * time.Second,
+		T2:   10 * time.Second,
 	}
+	// Keep the prefix valid through the first 10-second recovery exchange and its retry.
 	association.Options.Add(&dhcpv6.OptIAPrefix{
 		Prefix:            prefix,
-		PreferredLifetime: 16 * time.Second,
-		ValidLifetime:     24 * time.Second,
+		PreferredLifetime: 12 * time.Second,
+		ValidLifetime:     17 * time.Second,
 	})
 	if os.Getenv(dhcpv6RestartCaseEnv) == "prefix-expiry" {
 		association.Options = dhcpv6.PDOptions{}
