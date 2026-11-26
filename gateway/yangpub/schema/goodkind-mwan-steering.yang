@@ -49,6 +49,9 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-11-26 {
+    description "OpenFlow flows and group buckets can depend on an unhealthy connection.";
+  }
   revision 2026-11-25 {
     description "OpenFlow rules and group buckets can depend on connection health.";
   }
@@ -1382,15 +1385,21 @@ module goodkind-mwan-steering {
   grouping ovs-health-condition {
     container condition {
       presence "Apply a health condition to this flow or bucket.";
-      leaf healthy-connection {
-        type string { length "1..max"; }
+      description
+        "While a WAN health verdict is unknown, preserve the entry's current membership in OVS.
+         Identify the WAN by connection-id if present, or by WAN name otherwise.
+         Enable a health probe for this WAN. Restart mwan-ifmgr@wan.service after changing
+         probe definitions. Verdict changes apply during service operation.";
+      choice connection-verdict {
         mandatory true;
-        description
-          "Install this entry when its connection is healthy and remove it when unhealthy.
-           While health is unknown, preserve its current membership in OVS.
-           Use this WAN's connection-id if present, or its name otherwise.
-           This connection requires an enabled health probe. Restart mwan-ifmgr@wan.service
-           after changing probe definitions. Verdict changes apply during service operation.";
+        leaf healthy-connection {
+          type string { length "1..max"; }
+          description "Install this entry while the connection is healthy.";
+        }
+        leaf unhealthy-connection {
+          type string { length "1..max"; }
+          description "Install this entry while the connection is unhealthy.";
+        }
       }
     }
   }

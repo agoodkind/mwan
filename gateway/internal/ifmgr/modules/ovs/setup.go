@@ -42,11 +42,16 @@ var (
 
 // Setup configures an OVS bridge, its ports, and its OpenFlow rules.
 //
-// It installs rules only after ovs-vswitchd assigns OpenFlow port numbers.
+// After ovs-vswitchd assigns ports, Setup replaces mwan's rules and groups
+// in one OpenFlow bundle. Other controllers retain their rules.
 //
-// Example:
+// A bucket gated by healthy-connection "wan-a" stays out of its group while
+// the probe reports that the connection is down.
 //
-//	ovs.Setup(ctx, config, store.Snapshot().Health)
+//	health := map[string]wanstate.MemberHealth{"wan-a": {Verdict: wanstate.HealthUnhealthy}}
+//	if err := ovs.Setup(ctx, settings, health); err != nil {
+//		return fmt.Errorf("configure bridge %s: %w", settings.Bridge, err)
+//	}
 func Setup(
 	parent context.Context,
 	config ovsconfig.Config,

@@ -67,7 +67,23 @@ type Bucket struct {
 // Condition selects a flow or bucket according to connection health.
 // An unknown verdict preserves its current membership in OVS.
 type Condition struct {
-	HealthyConnection string `json:"healthy-connection"`
+	HealthyConnection   string `json:"healthy-connection,omitempty"`
+	UnhealthyConnection string `json:"unhealthy-connection,omitempty"`
+}
+
+// ConnectionID returns the WAN connection to look up in the health snapshot.
+//
+// For a backup route that activates when wan-a fails, read wan-a's verdict
+// even if the route sends traffic through wan-b.
+//
+//	condition := Condition{UnhealthyConnection: "wan-a"}
+//	verdict := snapshot.Health[condition.ConnectionID()].Verdict
+func (condition Condition) ConnectionID() string {
+	if condition.UnhealthyConnection != "" {
+		return condition.UnhealthyConnection
+	}
+
+	return condition.HealthyConnection
 }
 
 // Port configures one OVS interface and its associated port.

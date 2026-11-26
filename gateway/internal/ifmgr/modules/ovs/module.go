@@ -20,11 +20,15 @@ var errLoader = errors.New("OVS requires a network document loader")
 // Loader reads OVS settings from network documents.
 type Loader func() (ovsconfig.Config, error)
 
-// ModuleConfigName identifies this loader's module.
+// ModuleConfigName returns the registry key "ovs" for a WAN settings loader.
 //
-// ifmgr uses this key to construct its OVS module.
+// ifmgr uses the key to select the constructor. It reads the network document
+// later, when the module reconciles the bridge.
 //
-//	key := loader.ModuleConfigName()
+//	loader := ovs.Loader(func() (ovsconfig.Config, error) {
+//		return networkload.LoadOVS(networkPath, schemaDir)
+//	})
+//	fmt.Println(loader.ModuleConfigName()) // ovs
 func (Loader) ModuleConfigName() string { return moduleName }
 
 type module struct {

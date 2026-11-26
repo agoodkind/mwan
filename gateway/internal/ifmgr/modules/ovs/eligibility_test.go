@@ -19,6 +19,11 @@ func TestConditionsFollowHealthWithoutChangingConfiguredRules(t *testing.T) {
 			Flows: []ovsconfig.Flow{
 				{Name: "always", Priority: 1},
 				{Name: "conditional", Priority: 2, Condition: condition},
+				{
+					Name:      "outage",
+					Priority:  3,
+					Condition: &ovsconfig.Condition{UnhealthyConnection: "wan-a"},
+				},
 			},
 			Groups: []ovsconfig.Group{
 				{
@@ -27,6 +32,11 @@ func TestConditionsFollowHealthWithoutChangingConfiguredRules(t *testing.T) {
 					Buckets: []ovsconfig.Bucket{
 						{ID: 0, Output: "wan-a", Condition: condition},
 						{ID: 1, Output: "wan-b"},
+						{
+							ID:        2,
+							Output:    "wan-b",
+							Condition: &ovsconfig.Condition{UnhealthyConnection: "wan-a"},
+						},
 					},
 				},
 			},
@@ -57,6 +67,9 @@ func TestConditionsFollowHealthWithoutChangingConfiguredRules(t *testing.T) {
 		if verdict == wanstate.HealthHealthy {
 			wantFlows = append(wantFlows, 2)
 			wantBuckets = []uint32{0, 1}
+		} else if verdict == wanstate.HealthUnhealthy {
+			wantFlows = append(wantFlows, 3)
+			wantBuckets = []uint32{1, 2}
 		}
 
 		var priorities []uint16
@@ -82,7 +95,7 @@ func TestConditionsFollowHealthWithoutChangingConfiguredRules(t *testing.T) {
 			)
 		}
 
-		if len(config.OpenFlow.Flows) != 2 || len(config.OpenFlow.Groups[0].Buckets) != 2 ||
+		if len(config.OpenFlow.Flows) != 3 || len(config.OpenFlow.Groups[0].Buckets) != 3 ||
 			config.OpenFlow.Flows[1].Condition != condition || config.OpenFlow.Groups[0].Buckets[0].Condition != condition {
 			t.Fatal("health resolution changed its source configuration")
 		}
@@ -156,7 +169,7 @@ func TestCompileOpenFlowRejectsInvalidInactiveEntries(t *testing.T) {
 }
 
 func TestUnknownHealthPreservesOnlyInstalledMembers(t *testing.T) {
-	unknown := &ovsconfig.Condition{HealthyConnection: "unknown"}
+	unknown := &ovsconfig.Condition{UnhealthyConnection: "unknown"}
 	up := &ovsconfig.Condition{HealthyConnection: "up"}
 	down := &ovsconfig.Condition{HealthyConnection: "down"}
 	config := ovsconfig.OpenFlowConfig{

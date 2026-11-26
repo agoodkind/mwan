@@ -90,19 +90,19 @@ func TestLoadOVSHealthConditions(t *testing.T) {
 			name:   "unknown bucket connection",
 			before: `"id": 7, "condition": {"healthy-connection": "uplink-a"}`,
 			after:  `"id": 7, "condition": {"healthy-connection": "unknown"}`,
-			want:   `OpenFlow group 1 bucket 7: healthy-connection requires an enabled WAN health probe: "unknown"`,
+			want:   `OpenFlow group 1 bucket 7: health condition requires an enabled WAN health probe: "unknown"`,
 		},
 		{
 			name:   "disabled flow probe",
 			before: `"enabled": true`,
 			after:  `"enabled": false`,
-			want:   `OpenFlow flow "send-to-uplink": healthy-connection requires an enabled WAN health probe: "uplink-a"`,
+			want:   `OpenFlow flow "send-to-uplink": health condition requires an enabled WAN health probe: "uplink-a"`,
 		},
 		{
 			name:   "empty condition",
 			before: `"id": 7, "condition": {"healthy-connection": "uplink-a"}`,
 			after:  `"id": 7, "condition": {}`,
-			want:   "healthy-connection",
+			want:   "connection-verdict",
 		},
 	}
 	for _, test := range tests {
@@ -116,6 +116,37 @@ func TestLoadOVSHealthConditions(t *testing.T) {
 				}
 			},
 		)
+	}
+}
+
+func TestLoadOVSUnhealthyConnection(t *testing.T) {
+	base := string(readFile(t, "testdata/ovs-health.json"))
+	document := strings.ReplaceAll(base, `"healthy-connection"`, `"unhealthy-connection"`)
+	settings, err := networkload.LoadOVS(writeDocument(t, []byte(document)), "../yangpub/schema")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if settings.OpenFlow.Flows[0].Condition.UnhealthyConnection != "uplink-a" ||
+		settings.OpenFlow.Groups[0].Buckets[0].Condition.UnhealthyConnection != "uplink-a" {
+		t.Fatal("missing unhealthy connection on the configured flow or bucket")
+	}
+
+	both := strings.Replace(
+		document,
+		`"unhealthy-connection":`,
+		`"healthy-connection": "uplink-a", "unhealthy-connection":`,
+		1,
+	)
+	if _, err := networkload.LoadOVS(
+		writeDocument(t, []byte(both)),
+		"../yangpub/schema",
+	); err == nil {
+		t.Fatal("LoadOVS accepted two health conditions on one entry")
+	}
+
+	if _, err := networkjson.Decode([]byte(both)); err == nil {
+		t.Fatal("Decode accepted two health conditions on one entry")
 	}
 }
 

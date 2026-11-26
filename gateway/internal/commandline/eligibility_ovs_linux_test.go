@@ -89,10 +89,6 @@ func TestOVSHealthConditions(t *testing.T) {
 			)
 		}
 		waitForOVSHealth(t, bridge, scenario.active)
-		v6 := scenario.active
-		if !scenario.active[0] {
-			v6 = [2]bool{}
-		}
 		firstPort := layers.UDPPort(20000 + 256*index)
 		checkOVSHealthPackets(
 			t,
@@ -109,7 +105,7 @@ func TestOVSHealthConditions(t *testing.T) {
 			outputs,
 			layers.EthernetTypeIPv6,
 			firstPort,
-			v6,
+			scenario.active,
 			scenario.name,
 		)
 	}
@@ -193,7 +189,8 @@ func waitForOVSHealth(t *testing.T, bridge string, active [2]bool) {
 			strings.Contains(groups, "bucket_id:1,") == active[0] &&
 			strings.Contains(groups, "bucket_id:2,") == active[1] {
 			flows, err = query("dump-flows", bridge, "ipv6")
-			if err == nil && strings.Contains(flows, "actions=group:") == active[0] {
+			if err == nil && strings.Contains(flows, "priority=100,") == active[0] &&
+				strings.Contains(flows, "priority=90,") == !active[0] {
 				return
 			}
 		}

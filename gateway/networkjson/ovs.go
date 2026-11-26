@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	errConditionProbe = errors.New(
-		"healthy-connection requires an enabled WAN health probe",
+	errConditionProbe  = errors.New("health condition requires an enabled WAN health probe")
+	errConditionChoice = errors.New(
+		"select exactly one healthy-connection or unhealthy-connection",
 	)
 	errIndirectCondition = errors.New(
 		"an indirect group requires an unconditional bucket. Apply health conditions to referring flows",
@@ -112,16 +113,9 @@ func validateOVSConditions(loaded *Config) error {
 		return nil
 	}
 
-	unprobed := func(condition *ovsconfig.Condition) bool {
-		return condition != nil && !loaded.Health[condition.HealthyConnection].Enabled
-	}
-
 	for _, flow := range settings.Flows {
-		if unprobed(flow.Condition) {
-			return invalidOVSCondition(
-				fmt.Sprintf("OpenFlow flow %q", flow.Name),
-				flow.Condition.HealthyConnection,
-			)
+		if err := checkOVSCondition(loaded, flow.Condition); err != nil {
+			return fmt.Errorf("OpenFlow flow %q: %w", flow.Name, err)
 		}
 	}
 
@@ -146,11 +140,8 @@ func validateOVSConditions(loaded *Config) error {
 				)
 			}
 
-			if unprobed(bucket.Condition) {
-				return invalidOVSCondition(
-					fmt.Sprintf("OpenFlow group %d bucket %d", group.ID, bucket.ID),
-					bucket.Condition.HealthyConnection,
-				)
+			if err := checkOVSCondition(loaded, bucket.Condition); err != nil {
+				return fmt.Errorf("OpenFlow group %d bucket %d: %w", group.ID, bucket.ID, err)
 			}
 		}
 	}
@@ -158,16 +149,26 @@ func validateOVSConditions(loaded *Config) error {
 	return nil
 }
 
-func invalidOVSCondition(entry, connectionID string) error {
-	slog.Error(
-		"Invalid OpenFlow health condition",
-		"entry",
-		entry,
-		"connection_id",
-		connectionID,
-		"err",
-		errConditionProbe,
-	)
+func checkOVSCondition(loaded *Config, condition *ovsconfig.Condition) error {
+	if condition == nil {
+		return nil
+	}
 
-	return fmt.Errorf("%s: %w: %q", entry, errConditionProbe, connectionID)
+	if (condition.HealthyConnection == "") == (condition.UnhealthyConnection == "") {
+		return errConditionChoice
+	}
+
+	if !loaded.Health[condition.ConnectionID()].Enabled {
+		slog.Error(
+			"OVS condition requires a WAN probe",
+			"connection_id",
+			condition.ConnectionID(),
+			"err",
+			errConditionProbe,
+		)
+
+		return fmt.Errorf("%w: %q", errConditionProbe, condition.ConnectionID())
+	}
+
+	return nil
 }

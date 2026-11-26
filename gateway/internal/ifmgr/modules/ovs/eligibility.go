@@ -75,13 +75,13 @@ func entryActive(
 		return true
 	}
 
-	verdict := health[condition.HealthyConnection].Verdict
-	if verdict == wanstate.HealthHealthy {
-		return true
-	}
-
-	if verdict == wanstate.HealthUnhealthy {
-		return false
+	switch health[condition.ConnectionID()].Verdict {
+	case wanstate.HealthHealthy:
+		return condition.HealthyConnection != ""
+	case wanstate.HealthUnhealthy:
+		return condition.UnhealthyConnection != ""
+	case wanstate.HealthUnknown:
+		return installed
 	}
 
 	return installed

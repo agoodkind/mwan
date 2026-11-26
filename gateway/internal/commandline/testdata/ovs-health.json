@@ -58,11 +58,18 @@
             {"id": 1, "weight": 200, "output": "hc-a", "condition": {"healthy-connection": "wan-a"}},
             {"id": 2, "weight": 100, "output": "hc-b", "condition": {"healthy-connection": "wan-b"}}
           ]
+        }, {
+          "id": 8, "type": "select",
+          "bucket": [
+            {"id": 3, "output": "hc-b", "condition": {"healthy-connection": "wan-b"}}
+          ]
         }],
         "flow": [
           {"name": "ipv4", "priority": 100, "in-port": "hc-in", "ether-type": 2048, "group-id": 7},
           {"name": "ipv6", "priority": 100, "in-port": "hc-in", "ether-type": 34525, "group-id": 7,
-           "condition": {"healthy-connection": "wan-a"}}
+           "condition": {"healthy-connection": "wan-a"}},
+          {"name": "ipv6-outage", "priority": 90, "in-port": "hc-in", "ether-type": 34525, "group-id": 8,
+           "condition": {"unhealthy-connection": "wan-a"}}
         ]
       }
     }
