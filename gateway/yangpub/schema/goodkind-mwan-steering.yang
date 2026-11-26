@@ -50,7 +50,7 @@ module goodkind-mwan-steering {
      internal link the members route toward.";
 
   revision 2026-11-25 {
-    description "Add connection health conditions to OpenFlow rules and group buckets.";
+    description "OpenFlow rules and group buckets can depend on connection health.";
   }
   revision 2026-11-22 {
     description "Add OVS bridge, port, and OpenFlow configuration.";
