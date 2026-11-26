@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -21,9 +20,8 @@ import (
 )
 
 const (
-	dhcpv6WakeSolicitMaxRT  = 60
-	dhcpv6WakeSolicitBound  = 5 * time.Second
-	dhcpv6WakeSolicitWithin = 3 * time.Minute
+	dhcpv6WakeSolicitMaxRT = 60
+	dhcpv6WakeSolicitBound = 5 * time.Second
 )
 
 func TestOwnedDHCPv6PDSolicitWakeRuntime(t *testing.T) {
@@ -42,7 +40,7 @@ func TestOwnedDHCPv6PDSolicitWakeRuntime(t *testing.T) {
 	}
 }
 
-// A managed router advertisement restarts Solicit acquisition after the lease expires.
+// A managed router advertisement starts a new Solicit exchange on the provider link.
 func runOwnedDHCPv6PDSolicitWakeRuntime(t *testing.T) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -58,20 +56,11 @@ func runOwnedDHCPv6PDSolicitWakeRuntime(t *testing.T) {
 		"dhcpv6pd-solicit-wake",
 	)
 	defer stopRuntimeDaemon(t, daemon)
-	waitStaticRuntimeAddress(t, daemon, "enatt0", dhcpv6TimerAddress, true)
-	request := observations.wait(
+	first := observations.wait(
 		t,
-		dhcpv6TimerValid,
-		func(observation dhcpv6WakeObservation) bool {
-			return observation.messageType == dhcpv6.MessageTypeRequest && observation.answered
-		},
-	)
-	observations.wait(
-		t,
-		time.Until(request.validUntil)+dhcpv6WakeSolicitWithin,
-		func(observation dhcpv6WakeObservation) bool {
-			return observation.messageType == dhcpv6.MessageTypeSolicit &&
-				observation.received.After(request.validUntil)
+		15*time.Second,
+		func(observation dhcpv6TimerObservation) bool {
+			return observation.messageType == dhcpv6.MessageTypeSolicit
 		},
 	)
 	answering.Store(true)
@@ -81,8 +70,9 @@ func runOwnedDHCPv6PDSolicitWakeRuntime(t *testing.T) {
 	solicit := observations.wait(
 		t,
 		dhcpv6WakeSolicitBound,
-		func(observation dhcpv6WakeObservation) bool {
+		func(observation dhcpv6TimerObservation) bool {
 			return observation.messageType == dhcpv6.MessageTypeSolicit &&
+				observation.transactionID != first.transactionID &&
 				observation.received.After(advertised)
 		},
 	)
@@ -93,7 +83,7 @@ func runOwnedDHCPv6PDSolicitWakeRuntime(t *testing.T) {
 	observations.wait(
 		t,
 		dhcpv6WakeSolicitBound,
-		func(observation dhcpv6WakeObservation) bool {
+		func(observation dhcpv6TimerObservation) bool {
 			return observation.messageType == dhcpv6.MessageTypeRequest && observation.answered &&
 				observation.received.After(advertised)
 		},
@@ -101,61 +91,7 @@ func runOwnedDHCPv6PDSolicitWakeRuntime(t *testing.T) {
 	waitDHCPv6RuntimeAddress(t, daemon, dhcpv6TimerAddress)
 }
 
-type dhcpv6WakeObservation struct {
-	dhcpv6TimerObservation
-}
-
-type dhcpv6WakeLog struct {
-	mu      sync.Mutex
-	entries []dhcpv6WakeObservation
-	changed chan struct{}
-}
-
-func (log *dhcpv6WakeLog) add(observation dhcpv6WakeObservation) {
-	log.mu.Lock()
-	log.entries = append(log.entries, observation)
-	log.mu.Unlock()
-	select {
-	case log.changed <- struct{}{}:
-	default:
-	}
-}
-
-func (log *dhcpv6WakeLog) snapshot() []dhcpv6WakeObservation {
-	log.mu.Lock()
-	defer log.mu.Unlock()
-	return append([]dhcpv6WakeObservation(nil), log.entries...)
-}
-
-func (log *dhcpv6WakeLog) wait(
-	t *testing.T,
-	timeout time.Duration,
-	match func(dhcpv6WakeObservation) bool,
-) dhcpv6WakeObservation {
-	t.Helper()
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	for {
-		for _, observation := range log.snapshot() {
-			if match(observation) {
-				return observation
-			}
-		}
-		select {
-		case <-log.changed:
-		case <-timer.C:
-			t.Fatalf(
-				"expected DHCPv6 message did not arrive within %s: messages=%v",
-				timeout,
-				log.snapshot(),
-			)
-		}
-	}
-}
-
-// Answer the first Solicit with SOL_MAX_RT set to 60 seconds. Ignore later Solicit messages
-// until the test reenables replies.
-func startDHCPv6WakeServer(t *testing.T, answering *atomic.Bool) *dhcpv6WakeLog {
+func startDHCPv6WakeServer(t *testing.T, answering *atomic.Bool) *dhcpv6TimerLog {
 	t.Helper()
 	listener, err := net.ListenPacket("udp6", "[::]:547")
 	if err != nil {
@@ -180,9 +116,9 @@ func startDHCPv6WakeServer(t *testing.T, answering *atomic.Bool) *dhcpv6WakeLog 
 	if err != nil {
 		t.Fatal(err)
 	}
-	observations := &dhcpv6WakeLog{mu: sync.Mutex{}, entries: nil, changed: make(chan struct{}, 1)}
+	observations := &dhcpv6TimerLog{changed: make(chan struct{}, 1)}
 	go func() {
-		leased := false
+		var first *dhcpv6.TransactionID
 		buffer := make([]byte, 1500)
 		for {
 			count, peer, err := listener.ReadFrom(buffer)
@@ -194,24 +130,24 @@ func startDHCPv6WakeServer(t *testing.T, answering *atomic.Bool) *dhcpv6WakeLog 
 				continue
 			}
 			received := time.Now()
-			observation := dhcpv6WakeObservation{
-				dhcpv6TimerObservation: dhcpv6TimerObservation{
-					messageType:   request.MessageType,
-					transactionID: request.TransactionID,
-					elapsed:       dhcpv6TimerElapsed(request),
-					received:      received,
-					answered:      false,
-					validUntil:    time.Time{},
-				},
+			observation := dhcpv6TimerObservation{
+				messageType:   request.MessageType,
+				transactionID: request.TransactionID,
+				elapsed:       dhcpv6TimerElapsed(request),
+				received:      received,
+				answered:      false,
+				validUntil:    time.Time{},
 			}
 			switch request.MessageType {
 			case dhcpv6.MessageTypeSolicit:
-				if leased && !answering.Load() {
+				if first == nil {
+					first = &request.TransactionID
+				}
+				if request.TransactionID == *first || !answering.Load() {
 					observations.add(observation)
 					continue
 				}
 			case dhcpv6.MessageTypeRequest:
-				leased = true
 			case dhcpv6.MessageTypeRenew, dhcpv6.MessageTypeRebind:
 				observations.add(observation)
 				continue

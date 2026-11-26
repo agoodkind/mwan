@@ -110,14 +110,7 @@ func leaseState(state LeaseState, acquired time.Time, err error) LeaseInfo {
 
 // MatchesLink reports whether this lease originated on the current interface.
 func (l LeaseInfo) MatchesLink(iface string) (bool, error) {
-	link, err := net.InterfaceByName(iface)
-	if err != nil {
-		slog.Warn("dhcp: interface lookup failed", "iface", iface, "err", err)
-		return false, fmt.Errorf("find DHCP interface %s: %w", iface, err)
-	}
-
-	return l.LinkIndex > 0 && l.LinkIndex == link.Index &&
-		bytes.Equal(l.LinkHardwareAddr, link.HardwareAddr), nil
+	return l.matchesLink(iface, net.InterfaceByName)
 }
 
 // String returns a compact representation suitable for log fields.
@@ -137,6 +130,20 @@ func (l LeaseInfo) String() string {
 	)
 }
 
+func (l LeaseInfo) matchesLink(
+	iface string,
+	lookup func(string) (*net.Interface, error),
+) (bool, error) {
+	link, err := lookup(iface)
+	if err != nil {
+		slog.Warn("dhcp: interface lookup failed", "iface", iface, "err", err)
+		return false, fmt.Errorf("find DHCP interface %s: %w", iface, err)
+	}
+
+	return l.LinkIndex > 0 && l.LinkIndex == link.Index &&
+		bytes.Equal(l.LinkHardwareAddr, link.HardwareAddr), nil
+}
+
 // DHCPClient runs a long-lived DHCPv4 state machine in its own goroutine.
 // Events publishes the current assignment or its withdrawal.
 type DHCPClient struct {
@@ -151,7 +158,8 @@ type DHCPClient struct {
 	linkDownSeen   bool
 	linkChanged    chan struct{}
 	recoveryLoader func(context.Context) (*LeaseInfo, error)
-	openRenewal    func(LeaseInfo, LeaseState, ...nclient4.ClientOpt) (*nclient4.Client, error)
+	lookupLink     func(string) (*net.Interface, error)
+	openClient     func(*LeaseInfo, ...nclient4.ClientOpt) (*nclient4.Client, error)
 
 	Events chan LeaseInfo
 }
@@ -253,7 +261,8 @@ func startDHCPClient(
 		linkDownSeen:   false,
 		linkChanged:    make(chan struct{}, 1),
 		recoveryLoader: loader,
-		openRenewal:    dhcpRenewalClient(cfg.Iface),
+		lookupLink:     net.InterfaceByName,
+		openClient:     dhcpPacketClient(cfg.Iface),
 		Events:         make(chan LeaseInfo, 1),
 	}
 	go func() {
@@ -349,7 +358,7 @@ func (c *DHCPClient) emit(info LeaseInfo) {
 }
 
 func (c *DHCPClient) captureOrigin() error {
-	link, err := net.InterfaceByName(c.cfg.Iface)
+	link, err := c.lookupLink(c.cfg.Iface)
 	if err != nil {
 		c.log.Warn("dhcp: interface lookup failed", "err", err)
 		return fmt.Errorf("find DHCP interface: %w", err)
@@ -367,7 +376,7 @@ func (c *DHCPClient) originMatches() bool {
 	c.mu.Lock()
 	origin := c.origin
 	c.mu.Unlock()
-	matches, err := origin.MatchesLink(c.cfg.Iface)
+	matches, err := origin.matchesLink(c.cfg.Iface, c.lookupLink)
 
 	return err == nil && matches
 }
@@ -426,7 +435,7 @@ func (c *DHCPClient) run(ctx context.Context) {
 }
 
 func (c *DHCPClient) linkReady() bool {
-	link, err := net.InterfaceByName(c.cfg.Iface)
+	link, err := c.lookupLink(c.cfg.Iface)
 	return err == nil && link.Flags&net.FlagUp != 0 && link.Flags&net.FlagRunning != 0
 }
 
@@ -589,8 +598,8 @@ func (c *DHCPClient) refreshExpiryOrigin(ctx context.Context) {
 }
 
 func (c *DHCPClient) restartAttempt(ctx context.Context, cached LeaseInfo) (*dhcpLease, error) {
-	client, err := nclient4.New(
-		c.cfg.Iface,
+	client, err := c.openClient(
+		nil,
 		nclient4.WithTimeout(c.cfg.RequestTimeout),
 		nclient4.WithLogger(newSlogDHCPLogger(c.log)),
 	)
@@ -688,8 +697,8 @@ func (c *DHCPClient) acquire(ctx context.Context) (*dhcpLease, error) {
 
 	c.emit(leaseState(LeaseInit, time.Time{}, nil))
 
-	client, err := nclient4.New(
-		c.cfg.Iface,
+	client, err := c.openClient(
+		nil,
 		nclient4.WithTimeout(c.cfg.DiscoverTimeout),
 		nclient4.WithLogger(newSlogDHCPLogger(c.log)),
 	)
@@ -764,7 +773,12 @@ func (c *DHCPClient) renewAttempt(
 		nclient4.WithRetry(1),
 		nclient4.WithLogger(newSlogDHCPLogger(c.log)),
 	}
-	client, err := c.openRenewal(current, state, options...)
+	var unicast *LeaseInfo
+	if state == LeaseRenewing {
+		unicast = &current
+	}
+
+	client, err := c.openClient(unicast, options...)
 	if err != nil {
 		c.log.WarnContext(ctx, "dhcp: renewal socket open failed", "err", err)
 		return nil, fmt.Errorf("open DHCP renewal client: %w", err)
@@ -801,22 +815,22 @@ func (c *DHCPClient) renewAttempt(
 	return &dhcpLease{lease: renewed, requestedAt: requestedAt}, nil
 }
 
-func dhcpRenewalClient(
+func dhcpPacketClient(
 	iface string,
-) func(LeaseInfo, LeaseState, ...nclient4.ClientOpt) (*nclient4.Client, error) {
-	return func(current LeaseInfo, state LeaseState, options ...nclient4.ClientOpt) (
+) func(*LeaseInfo, ...nclient4.ClientOpt) (*nclient4.Client, error) {
+	return func(unicast *LeaseInfo, options ...nclient4.ClientOpt) (
 		*nclient4.Client,
 		error,
 	) {
-		if state == LeaseRenewing {
+		if unicast != nil {
 			options = append(
 				options,
 				nclient4.WithUnicast(&net.UDPAddr{
-					IP:   current.IP,
+					IP:   unicast.IP,
 					Port: nclient4.ClientPort,
 				}),
 				nclient4.WithServerAddr(&net.UDPAddr{
-					IP:   current.Server,
+					IP:   unicast.Server,
 					Port: nclient4.ServerPort,
 				}),
 			)

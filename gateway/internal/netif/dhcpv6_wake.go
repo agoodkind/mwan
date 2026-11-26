@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"time"
+
+	"github.com/mdlayher/ndp"
 )
 
 const (
@@ -24,7 +26,7 @@ const (
 // The client ignores the signal while it has a lease.
 func (client *DHCPv6PDClient) Wake() {
 	select {
-	case client.wake <- struct{}{}:
+	case client.wake.signal <- struct{}{}:
 	default:
 	}
 }
@@ -36,16 +38,27 @@ func (client *DHCPv6PDClient) solicitWake(lease DHCPv6PDLease) <-chan struct{} {
 	}
 
 	select {
-	case <-client.wake:
+	case <-client.wake.signal:
 	default:
 	}
 
-	return client.wake
+	return client.wake.signal
 }
 
 type dhcpv6RAWake struct {
 	cancel context.CancelFunc
 	done   chan struct{}
+}
+
+type dhcpv6RAListener func(context.Context, *slog.Logger, string, func(*ndp.RouterAdvertisement))
+
+type dhcpv6WakeSource struct {
+	signal   chan struct{}
+	listenRA dhcpv6RAListener
+}
+
+func newDHCPv6WakeSource(listenRA dhcpv6RAListener) dhcpv6WakeSource {
+	return dhcpv6WakeSource{signal: make(chan struct{}, 1), listenRA: listenRA}
 }
 
 func (client *DHCPv6PDClient) updateDHCPv6RAWake(
@@ -80,7 +93,23 @@ func (client *DHCPv6PDClient) updateDHCPv6RAWake(
 				)
 			}
 		}()
-		client.watchDHCPv6RAWake(watchCtx, log, config)
+		var lastConfigured time.Time
+		client.wake.listenRA(
+			watchCtx,
+			log,
+			config.Iface,
+			func(advertisement *ndp.RouterAdvertisement) {
+				if advertisement.ManagedConfiguration || advertisement.OtherConfiguration {
+					lastConfigured = client.wakeAfterQuiet(
+						watchCtx,
+						log,
+						config,
+						advertisement.ManagedConfiguration,
+						lastConfigured,
+					)
+				}
+			},
+		)
 	}()
 
 	return watch
@@ -95,35 +124,24 @@ func (watch *dhcpv6RAWake) stop() {
 	<-watch.done
 }
 
-// watchDHCPv6RAWake wakes the client on a router advertisement with the M or O flag
-// after a quiet period. Every RAClient opens its own raw socket. The kernel delivers
-// each advertisement to every raw socket on the link, and another reader on the
-// link receives the same advertisements.
-func (client *DHCPv6PDClient) watchDHCPv6RAWake(
+func receiveDHCPv6Advertisements(
 	ctx context.Context,
 	log *slog.Logger,
-	config DHCPv6PDConfig,
+	iface string,
+	receive func(*ndp.RouterAdvertisement),
 ) {
 	// NewRAClient fails until the link has a link-local address.
-	raClient, openErr := NewRAClient(config.Iface, log)
+	raClient, openErr := NewRAClient(iface, log)
 	for openErr != nil {
-		log.DebugContext(
-			ctx,
-			"dhcpv6: RA wake watcher unavailable",
-			"iface",
-			config.Iface,
-			"err",
-			openErr,
-		)
+		log.DebugContext(ctx, "dhcpv6: RA wake watcher unavailable", "iface", iface, "err", openErr)
 		if !waitDHCPv6(ctx) {
 			return
 		}
 
-		raClient, openErr = NewRAClient(config.Iface, log)
+		raClient, openErr = NewRAClient(iface, log)
 	}
 
 	defer raClient.Close()
-	var lastConfigured time.Time
 
 	for ctx.Err() == nil {
 		advertisement, _, err := raClient.ReceiveRA(ctx, dhcpv6RAWakeRead, false)
@@ -137,7 +155,7 @@ func (client *DHCPv6PDClient) watchDHCPv6RAWake(
 					ctx,
 					"dhcpv6: RA wake watcher read failed",
 					"iface",
-					config.Iface,
+					iface,
 					"err",
 					err,
 				)
@@ -146,15 +164,7 @@ func (client *DHCPv6PDClient) watchDHCPv6RAWake(
 			return
 		}
 
-		if advertisement.ManagedConfiguration || advertisement.OtherConfiguration {
-			lastConfigured = client.wakeAfterQuiet(
-				ctx,
-				log,
-				config,
-				advertisement.ManagedConfiguration,
-				lastConfigured,
-			)
-		}
+		receive(advertisement)
 	}
 }
 

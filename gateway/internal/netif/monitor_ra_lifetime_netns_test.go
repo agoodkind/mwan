@@ -42,6 +42,7 @@ func TestMonitorObservesRALifetimes(t *testing.T) {
 func runMonitorRALifetimeChild(t *testing.T) {
 	const clientName = "ra-life-client"
 	const routerName = "ra-life-router"
+	const routerAddress = "fe80::1"
 	clientVeth := &netlink.Veth{
 		LinkAttrs: netlink.LinkAttrs{
 			Name:         clientName,
@@ -78,7 +79,7 @@ func runMonitorRALifetimeChild(t *testing.T) {
 	if err := netlink.LinkSetUp(client); err != nil {
 		t.Fatal(err)
 	}
-	setRALinkLocal(t, router, "fe80::1/64")
+	setRALinkLocal(t, router, routerAddress+"/64")
 	setRALinkLocal(t, client, "fe80::2/64")
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -96,7 +97,7 @@ func runMonitorRALifetimeChild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn, _, err := ndp.Listen(routerInterface, ndp.LinkLocal)
+	conn, _, err := ndp.Listen(routerInterface, routerAddress)
 	if err != nil {
 		t.Fatal(err)
 	}

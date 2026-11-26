@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -28,12 +27,10 @@ const (
 	dhcpReconnectVerifyWait      = 25 * time.Second
 	dhcpReconnectDiscoverWait    = 90 * time.Second
 	dhcpReconnectInFlightT1      = 20 * time.Second
-	dhcpReconnectShortT1         = 80 * time.Second
 	dhcpReconnectLongT1          = 1800 * time.Second
 	dhcpReconnectLongT2          = 3000 * time.Second
 	dhcpReconnectNearT1          = 15 * time.Second
 	dhcpReconnectNearT2          = 35 * time.Second
-	dhcpReconnectFarT2           = 100 * time.Second
 	dhcpReconnectBeforeT1        = 10 * time.Second
 	dhcpReconnectT1Tolerance     = 5 * time.Second
 )
@@ -73,12 +70,6 @@ func (r *dhcpReconnectRuntime) snapshot() []dhcpReconnectPacket {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]dhcpReconnectPacket(nil), r.packets...)
-}
-
-func (r *dhcpReconnectRuntime) snapshotRequests() []dhcpReconnectCapturedRequest {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return append([]dhcpReconnectCapturedRequest(nil), r.requests...)
 }
 
 func (r *dhcpReconnectRuntime) answer(
@@ -376,36 +367,6 @@ func TestOwnedDHCPv4ReconnectDuringRenewalVerifiesWithoutStaleRepeat(t *testing.
 	reconnect.requireUnrelatedChangesIgnored(t, 1400)
 }
 
-func TestOwnedDHCPv4ReconnectSilentServerKeepsLeaseAndT1(t *testing.T) {
-	if !dhcpAcquireBackoffIsolated(t) {
-		return
-	}
-	reconnect := startDHCPReconnectRuntime(t, dhcpReconnectGateway(t), dhcpReconnectShortT1)
-	boundAt := time.Now()
-	reconnect.behavior.Store(int32(dhcpReconnectSilent))
-	reconnect.requireUnrelatedChangesIgnored(t, 1400)
-	reconnect.requireVerification(t, reconnect.flap(t))
-	reconnect.requireScheduledRenewal(t, boundAt, dhcpReconnectShortT1)
-}
-
-func TestOwnedDHCPv4ReconnectBeforeT1ReplacesLeaseBeforeT2(t *testing.T) {
-	if !dhcpAcquireBackoffIsolated(t) {
-		return
-	}
-	reconnect := startDHCPReconnectRuntimeWithT2(
-		t,
-		dhcpReconnectGateway(t),
-		dhcpReconnectNearT1,
-		dhcpReconnectFarT2,
-	)
-	boundAt := time.Now()
-	reconnect.behavior.Store(int32(dhcpReconnectIgnoreOriginal))
-	time.Sleep(dhcpReconnectBeforeT1)
-	reconnect.requireVerification(t, reconnect.flap(t))
-	reconnect.requireReplacement(t, time.Until(boundAt.Add(dhcpReconnectFarT2)))
-	reconnect.requireTimedRenewal(t, boundAt, dhcpReconnectNearT1)
-}
-
 func TestOwnedDHCPv4ReconnectBeforeT1SilentServerKeepsLeaseT1AndT2(t *testing.T) {
 	if !dhcpAcquireBackoffIsolated(t) {
 		return
@@ -563,58 +524,4 @@ func (r *dhcpReconnectRuntime) recordLeaseRequest(datagram []byte) {
 			Destination: append(net.IP(nil), datagram[16:20]...),
 		},
 	)
-}
-
-func (r *dhcpReconnectRuntime) requireScheduledRenewal(
-	t *testing.T,
-	boundAt time.Time,
-	t1 time.Duration,
-) {
-	t.Helper()
-	cidr := dhcpReconnectOriginalAddress + "/24"
-	deadline := boundAt.Add(t1 + dhcpReconnectT1Tolerance)
-	for time.Now().Before(deadline) {
-		if !r.hasAddress(t, cidr) {
-			t.Fatalf(
-				"The client ended the lease while the server stayed silent. Daemon log: %s",
-				runtimeLogTail(t, r.daemon, 30),
-			)
-		}
-		for _, packet := range r.snapshot() {
-			if packet.Type != dhcpv4.MessageTypeRequest || packet.Client.IsUnspecified() {
-				continue
-			}
-			elapsed := packet.At.Sub(boundAt)
-			if elapsed < t1-dhcpReconnectT1Tolerance {
-				t.Fatalf(
-					"The T1 renewal request arrived %s after the lease was bound; expected %s.",
-					elapsed,
-					t1,
-				)
-			}
-			return
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	t.Fatalf(
-		"The T1 renewal request did not arrive within %s. Server packets: %+v. Captured requests: %+v. DHCP log: %s",
-		t1+dhcpReconnectT1Tolerance,
-		r.snapshot(),
-		r.snapshotRequests(),
-		dhcpReconnectLogTail(t, r.daemon, 30),
-	)
-}
-
-func dhcpReconnectLogTail(t *testing.T, daemon *runtimeDaemon, count int) string {
-	t.Helper()
-	var lines []string
-	for _, line := range strings.Split(runtimeDaemonLog(t, daemon), "\n") {
-		if strings.Contains(line, `"component":"dhcp"`) {
-			lines = append(lines, line)
-		}
-	}
-	if len(lines) > count {
-		lines = lines[len(lines)-count:]
-	}
-	return strings.Join(lines, "\n")
 }

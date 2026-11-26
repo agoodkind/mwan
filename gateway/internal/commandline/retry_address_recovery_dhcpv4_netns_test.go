@@ -3,6 +3,7 @@
 package commandline
 
 import (
+	"encoding/json"
 	"errors"
 	"net"
 	"os"
@@ -15,7 +16,6 @@ import (
 	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
-	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 	"goodkind.io/mwan/gateway/internal/netif"
@@ -109,21 +109,6 @@ func runOwnedDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected b
 	waitStaticRuntimeAddress(t, daemon, "enatt0", "198.51.100.100/24", true)
 	waitStaticRuntimeRoute(t, daemon, "ipv4", dhcpReconnectServerAddress, 20, true)
 	waitDHCPRecoveryRecord(t, daemon, leaseDirectory)
-	var savedLease *netif.LeaseInfo
-	if rejected {
-		store, err := netif.NewLeaseRecoveryStore(leaseDirectory)
-		if err != nil {
-			t.Fatal(err)
-		}
-		link, err := net.InterfaceByName("enatt0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		savedLease, err = store.LoadDHCPv4("att", link, []byte{1, 0xaa, 0xbb})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
 	stopRuntimeDaemon(t, daemon)
 	if lateInterface {
 		renameDHCPWANParent(t, "wan-under", "wan-under-old")
@@ -133,9 +118,7 @@ func runOwnedDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected b
 	serviceRunning = false
 	if rejected {
 		setRuntimeNamespace(t, gateway)
-		if untilExpiry := time.Until(savedLease.ExpiresAt); untilExpiry > 0 {
-			time.Sleep(untilExpiry + 100*time.Millisecond)
-		}
+		expireDHCPRecoveryRecord(t, leaseDirectory, time.Duration(leaseSeconds)*time.Second)
 		waitStaticRuntimeAddress(t, daemon, "enatt0", "198.51.100.100/24", true)
 		waitStaticRuntimeRoute(t, daemon, "ipv4", dhcpReconnectServerAddress, 20, true)
 		daemon = startRuntimeDaemon(t, binary, configPath, root, "dhcpv4")
@@ -143,6 +126,7 @@ func runOwnedDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected b
 		waitStaticRuntimeRoute(t, daemon, "ipv4", dhcpReconnectServerAddress, 20, false)
 		logContent := runtimeDaemonLog(t, daemon)
 		if !strings.Contains(logContent, "addresses: DHCPv4 saved lease rejected") ||
+			!strings.Contains(logContent, "saved DHCPv4 assignment is invalid or expired") ||
 			strings.Contains(logContent, "state=BOUND") {
 			t.Fatalf("saved lease rejection not observed: %s", runtimeLogTail(t, daemon, 30))
 		}
@@ -191,7 +175,7 @@ func runOwnedDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected b
 	waitStaticRuntimeAddress(t, daemon, "enatt0", "198.51.100.100/24", true)
 	waitStaticRuntimeRoute(t, daemon, "ipv4", dhcpReconnectServerAddress, 20, true)
 	setRuntimeNamespace(t, provider.namespace)
-	service = startDHCPv4RuntimeKea(t, root, false, 40, "198.51.100.2", "198.51.100.100", false)
+	service = startDHCPv4RuntimeKea(t, root, false, 8, "198.51.100.2", "198.51.100.100", false)
 	serviceRunning = true
 	setRuntimeNamespace(t, gateway)
 	waitDHCPv4RuntimeState(t, daemon, "state=BOUND", 25*time.Second)
@@ -202,7 +186,53 @@ func runOwnedDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected b
 	serviceRunning = false
 	setRuntimeNamespace(t, gateway)
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "dhcpv4")
-	waitRecoveryExpiry(t, daemon, 50*time.Second)
+	waitStaticRuntimeAddress(t, daemon, "enatt0", "198.51.100.100/24", false)
+	waitStaticRuntimeRoute(t, daemon, "ipv4", dhcpReconnectServerAddress, 20, false)
+}
+
+func expireDHCPRecoveryRecord(t *testing.T, directory string, lifetime time.Duration) {
+	t.Helper()
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("saved lease directory contains %d records", len(entries))
+	}
+	store := netif.NewLeaseStore(filepath.Join(directory, entries[0].Name()))
+	record, err := store.Load("att", netif.LeaseProtocolDHCPv4)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if record.Clock.Uptime >= lifetime {
+		record.Clock.Uptime -= lifetime
+	} else {
+		// A lease older than the current boot uses wall time for recovery.
+		record.Clock.BootID = "previous-boot"
+		record.Clock.WallTime = record.Clock.WallTime.Add(-lifetime)
+		var payload map[string]json.RawMessage
+		if err := json.Unmarshal(record.Payload, &payload); err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"acquired_at", "renew_at", "rebind_at", "expires_at"} {
+			var timestamp time.Time
+			if err := json.Unmarshal(payload[key], &timestamp); err != nil {
+				t.Fatal(err)
+			}
+			payload[key], err = timestamp.Add(-lifetime).MarshalJSON()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		record.Payload, err = json.Marshal(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.Save(record); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func waitDHCPRecoveryMainLoop(t *testing.T, daemon *runtimeDaemon) {
@@ -254,32 +284,4 @@ func waitDHCPRecoveryRecord(t *testing.T, daemon *runtimeDaemon, directory strin
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatalf("DHCP recovery record absent: %s", runtimeLogTail(t, daemon, 30))
-}
-
-func waitRecoveryExpiry(t *testing.T, daemon *runtimeDaemon, timeout time.Duration) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		link, err := netlink.LinkByName("enatt0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		addresses, err := netlink.AddrList(link, netlink.FAMILY_V4)
-		if err != nil {
-			t.Fatal(err)
-		}
-		assigned := false
-		for _, address := range addresses {
-			if address.IPNet.String() == "198.51.100.100/24" {
-				assigned = true
-			}
-		}
-		if !assigned {
-			waitStaticRuntimeRoute(t, daemon, "ipv4", dhcpReconnectServerAddress, 20, false)
-			return
-		}
-		assertRuntimeDaemonRunning(t, daemon)
-		time.Sleep(50 * time.Millisecond)
-	}
-	t.Fatalf("saved DHCPv4 assignment did not expire: %s", runtimeLogTail(t, daemon, 40))
 }

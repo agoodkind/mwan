@@ -14,49 +14,43 @@ import (
 
 	"github.com/insomniacslk/dhcp/dhcpv6"
 	"github.com/insomniacslk/dhcp/dhcpv6/nclient6"
+	"github.com/mdlayher/ndp"
 )
 
 func TestDeclineAddressWaitsForQueueCapacity(t *testing.T) {
-	address := netip.MustParseAddr("2001:db8::4")
-	var client DHCPv6PDClient
-	client.lease.Addresses = []DelegatedAddress{
-		{Address: address, PreferredUntil: time.Time{}, ValidUntil: time.Time{}},
-	}
-	client.declines = make(chan netip.Addr, 1)
-	client.pending = make(map[netip.Addr]bool)
-	client.declines <- netip.MustParseAddr("2001:db8::5")
-	result := make(chan bool, 1)
-	go func() {
-		result <- client.DeclineAddress(address)
-	}()
-	select {
-	case accepted := <-result:
-		t.Fatalf("full queue returned before capacity was available: accepted=%t", accepted)
-	case <-time.After(20 * time.Millisecond):
-	}
+	synctest.Test(
+		t,
+		func(t *testing.T) {
+			address := netip.MustParseAddr("2001:db8::4")
+			var client DHCPv6PDClient
+			client.lease.Addresses = []DelegatedAddress{
+				{Address: address, PreferredUntil: time.Time{}, ValidUntil: time.Time{}},
+			}
+			client.declines = make(chan netip.Addr, 1)
+			client.pending = make(map[netip.Addr]bool)
+			client.declines <- netip.MustParseAddr("2001:db8::5")
+			result := make(chan bool, 1)
+			go func() {
+				result <- client.DeclineAddress(address)
+			}()
+			synctest.Wait()
+			select {
+			case accepted := <-result:
+				t.Fatalf("full queue returned before capacity was available: accepted=%t", accepted)
+			default:
+			}
 
-	snapshot := make(chan DHCPv6PDLease, 1)
-	go func() {
-		snapshot <- client.LastLease()
-	}()
-	select {
-	case lease := <-snapshot:
-		if len(lease.Addresses) != 1 || lease.Addresses[0].Address != address {
-			t.Fatalf("client lease changed while decline waited: %+v", lease)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("client lease read blocked behind the full decline queue")
-	}
+			lease := client.LastLease()
+			if len(lease.Addresses) != 1 || lease.Addresses[0].Address != address {
+				t.Fatalf("client lease changed while decline waited: %+v", lease)
+			}
 
-	<-client.declines
-	select {
-	case accepted := <-result:
-		if !accepted {
-			t.Fatal("decline was rejected after queue capacity became available")
-		}
-	case <-time.After(time.Second):
-		t.Fatal("decline did not queue after capacity became available")
-	}
+			<-client.declines
+			if !<-result {
+				t.Fatal("decline was rejected after queue capacity became available")
+			}
+		},
+	)
 }
 
 func TestDHCPv6RestartConfirmRetransmission(t *testing.T) {
@@ -189,7 +183,7 @@ func testDHCPv6RestartRetransmission(t *testing.T, requestPrefix bool) {
 				declines:     make(chan netip.Addr, 1),
 				done:         ctx.Done(),
 				recoveryDone: make(chan struct{}),
-				wake:         make(chan struct{}, 1),
+				wake:         newDHCPv6WakeSource(testDHCPv6RAListener(nil)),
 				Events:       make(chan struct{}, 1),
 			}
 			go client.run(
@@ -203,6 +197,108 @@ func testDHCPv6RestartRetransmission(t *testing.T, requestPrefix bool) {
 			)
 			assertDHCPv6RestartRetransmission(t, recoveryServer, client, cached)
 			assertDHCPv6AcquisitionAfterRestartTimeout(t, acquisitionServer, client, cached)
+		},
+	)
+}
+
+func testDHCPv6RAListener(advertisements <-chan *ndp.RouterAdvertisement) dhcpv6RAListener {
+	return func(
+		ctx context.Context,
+		_ *slog.Logger,
+		_ string,
+		receive func(*ndp.RouterAdvertisement),
+	) {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case advertisement := <-advertisements:
+				receive(advertisement)
+			}
+		}
+	}
+}
+
+func TestDHCPv6SolicitWakesAfterDelegationExpires(t *testing.T) {
+	synctest.Test(
+		t,
+		func(t *testing.T) {
+			link := &net.Interface{
+				Name:         "wan0",
+				Index:        2,
+				HardwareAddr: net.HardwareAddr{2, 3, 4, 5, 6, 7},
+			}
+			config := dhcpv6RestartTestConfig(link, true)
+			lease := *config.CachedLease
+			lease.LinkIndex = link.Index
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			wire, server := net.Pipe()
+			defer server.Close()
+			transport, err := nclient6.NewWithConn(
+				dhcpv6TestPacketConn{Conn: wire},
+				link.HardwareAddr,
+				dhcpv6TransportOptions()...,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer transport.Close()
+			if err := server.SetReadDeadline(time.Now().Add(2 * time.Minute)); err != nil {
+				t.Fatal(err)
+			}
+
+			advertisements := make(chan *ndp.RouterAdvertisement)
+			client := &DHCPv6PDClient{
+				lease:  lease,
+				wake:   newDHCPv6WakeSource(testDHCPv6RAListener(advertisements)),
+				Events: make(chan struct{}, 1),
+			}
+			go client.negotiate(ctx, slog.Default(), transport, config, link, lease, time.Minute)
+
+			for {
+				packet := readDHCPv6TestMessage(t, server)
+				if packet.MessageType == dhcpv6.MessageTypeSolicit {
+					break
+				}
+
+				if packet.MessageType != dhcpv6.MessageTypeRenew &&
+					packet.MessageType != dhcpv6.MessageTypeRebind {
+					t.Fatalf("unexpected packet before lease expiry: %s", packet.Summary())
+				}
+			}
+
+			if time.Now().Before(
+				latestDHCPv6Validity(lease),
+			) || len(client.LastLease().Prefixes) != 0 {
+				t.Fatal("client sent Solicit before its delegation expired")
+			}
+
+			retry := readDHCPv6TestMessage(t, server)
+			advertisements <- &ndp.RouterAdvertisement{}
+			next := readDHCPv6TestMessage(t, server)
+			if next.MessageType != dhcpv6.MessageTypeSolicit ||
+				next.TransactionID != retry.TransactionID {
+				t.Fatalf(
+					"router advertisement without M or O restarted Solicit: %s",
+					next.Summary(),
+				)
+			}
+
+			sent := time.Now()
+			advertisements <- &ndp.RouterAdvertisement{ManagedConfiguration: true}
+			restarted := readDHCPv6TestMessage(t, server)
+			if restarted.MessageType != dhcpv6.MessageTypeSolicit ||
+				restarted.TransactionID == next.TransactionID ||
+				time.Since(sent) > time.Second {
+				t.Fatalf(
+					"managed router advertisement did not restart Solicit within one second: %s after %s",
+					restarted.Summary(),
+					time.Since(sent),
+				)
+			}
+
+			cancel()
 		},
 	)
 }

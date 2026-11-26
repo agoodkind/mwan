@@ -82,7 +82,7 @@ type DHCPv6PDClient struct {
 	done         <-chan struct{}
 	recoveryDone chan struct{}
 	recoveryOnce sync.Once
-	wake         chan struct{}
+	wake         dhcpv6WakeSource
 	Events       chan struct{}
 }
 
@@ -234,7 +234,7 @@ func StartDHCPv6PDClient(
 		done:         ctx.Done(),
 		recoveryDone: make(chan struct{}),
 		recoveryOnce: sync.Once{},
-		wake:         make(chan struct{}, 1),
+		wake:         newDHCPv6WakeSource(receiveDHCPv6Advertisements),
 		Events:       make(chan struct{}, 1),
 	}
 	go func() {

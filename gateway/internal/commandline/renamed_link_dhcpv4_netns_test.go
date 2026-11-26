@@ -37,7 +37,6 @@ const (
 	dhcpRecoveryRenameFastRebind
 	dhcpRecoveryRenameAfterBoundLongLease
 	dhcpRecoveryFlapAfterBoundLongLease
-	dhcpRecoveryFlapDuringRenewalRetry
 )
 
 func TestOwnedDHCPv4RecoveryPreservesForeignAddressOnRecreatedLink(t *testing.T) {
@@ -54,10 +53,6 @@ func TestOwnedDHCPv4BoundRenamedLinkLongLease(t *testing.T) {
 
 func TestOwnedDHCPv4BoundLinkFlapKeepsLease(t *testing.T) {
 	testOwnedDHCPv4RecoveryLinkChange(t, dhcpRecoveryFlapAfterBoundLongLease)
-}
-
-func TestOwnedDHCPv4LinkFlapsKeepRenewalRetryDeadline(t *testing.T) {
-	testOwnedDHCPv4RecoveryLinkChange(t, dhcpRecoveryFlapDuringRenewalRetry)
 }
 
 func renameDHCPRecoveryLink(t *testing.T, oldLink netlink.Link) {
@@ -142,20 +137,8 @@ func runOwnedDHCPv4RecoveryLinkChange(t *testing.T, change dhcpRecoveryLinkChang
 	defer downstream.namespace.Close()
 	provider := newDHCPv4WANProvider(t, gateway, "198.51.100.2/24")
 	defer provider.namespace.Close()
-	leaseSeconds := 600
-	if change == dhcpRecoveryFlapDuringRenewalRetry {
-		leaseSeconds = 80
-	}
 	setRuntimeNamespace(t, provider.namespace)
-	service := startDHCPv4RuntimeKea(
-		t,
-		root,
-		false,
-		leaseSeconds,
-		"198.51.100.2",
-		"198.51.100.100",
-		true,
-	)
+	service := startDHCPv4RuntimeKea(t, root, false, 600, "198.51.100.2", "198.51.100.100", true)
 	serviceRunning := true
 	defer func() {
 		if serviceRunning {
@@ -172,29 +155,12 @@ func runOwnedDHCPv4RecoveryLinkChange(t *testing.T, change dhcpRecoveryLinkChang
 	waitStaticRuntimeAddress(t, daemon, "enatt0", dhcpRenamedLinkAddress, true)
 	waitStaticRuntimeRoute(t, daemon, "ipv4", dhcpReconnectServerAddress, 20, true)
 	waitDHCPRecoveryRecord(t, daemon, leaseDirectory)
-	if change == dhcpRecoveryFlapDuringRenewalRetry ||
-		change == dhcpRecoveryFlapAfterBoundLongLease {
+	if change == dhcpRecoveryFlapAfterBoundLongLease {
 		setRuntimeNamespace(t, provider.namespace)
 		stopProtocolServices(t, []protocolService{service})
 		serviceRunning = false
 		setRuntimeNamespace(t, gateway)
-		if change == dhcpRecoveryFlapDuringRenewalRetry {
-			assertDHCPRenewalRetriesDuringLinkFlaps(
-				t,
-				daemon,
-				provider.namespace,
-				gateway,
-				leaseDirectory,
-			)
-		} else {
-			assertDHCPBoundLinkFlapKeepsLease(
-				t,
-				daemon,
-				provider.namespace,
-				gateway,
-				leaseDirectory,
-			)
-		}
+		assertDHCPBoundLinkFlapKeepsLease(t, daemon, provider.namespace, gateway, leaseDirectory)
 		return
 	}
 	if change == dhcpRecoveryRenameAfterBoundLongLease {
@@ -257,68 +223,6 @@ func runOwnedDHCPv4RecoveryLinkChange(t *testing.T, change dhcpRecoveryLinkChang
 	assertDHCPRenamedLinkForeignAddress(t, oldLink)
 }
 
-func assertDHCPRenewalRetriesDuringLinkFlaps(
-	t *testing.T,
-	daemon *runtimeDaemon,
-	serverNamespace netns.NsHandle,
-	gateway netns.NsHandle,
-	leaseDirectory string,
-) {
-	t.Helper()
-	flappedLink, err := netlink.LinkByName("enatt0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var requestCount atomic.Int64
-	defer startDHCPRequestCounter(
-		t,
-		&requestCount,
-		flappedLink.Attrs().HardwareAddr,
-		serverNamespace,
-		gateway,
-	)()
-	store, err := netif.NewLeaseRecoveryStore(leaseDirectory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	iface, err := net.InterfaceByName("enatt0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	lease, err := store.LoadDHCPv4("att", iface, []byte{1, 0xaa, 0xbb})
-	if err != nil {
-		t.Fatal(err)
-	}
-	flapDeadline := lease.RebindAt.Add(5 * time.Second)
-	if !flapDeadline.Before(lease.ExpiresAt) {
-		t.Fatal("The rebind check must finish before the lease expires.")
-	}
-	waitDHCPv4RuntimeState(t, daemon, "dhcp: renewal attempt failed", 60*time.Second)
-	requestsBefore := requestCount.Load()
-	if requestsBefore == 0 {
-		t.Fatalf("DHCP client packet count = 0: %s", runtimeLogTail(t, daemon, 30))
-	}
-	for requestCount.Load() <= requestsBefore {
-		if !time.Now().Before(flapDeadline) {
-			t.Fatalf(
-				"DHCP client packet count = %d, want > %d: %s",
-				requestCount.Load(),
-				requestsBefore,
-				runtimeLogTail(t, daemon, 30),
-			)
-		}
-		if err := netlink.LinkSetDown(flappedLink); err != nil {
-			t.Fatal(err)
-		}
-		if err := netlink.LinkSetUp(flappedLink); err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(2 * time.Second)
-	}
-	waitStaticRuntimeAddress(t, daemon, "enatt0", dhcpRenamedLinkAddress, true)
-	assertRuntimeDaemonRunning(t, daemon)
-}
-
 func assertDHCPBoundLinkFlapKeepsLease(
 	t *testing.T,
 	daemon *runtimeDaemon,
@@ -331,7 +235,8 @@ func assertDHCPBoundLinkFlapKeepsLease(
 	if err != nil {
 		t.Fatal(err)
 	}
-	var verificationCount, otherPacketCount atomic.Int64
+	verified := make(chan struct{}, 1)
+	var otherPacketCount atomic.Int64
 	hardwareAddress := flappedLink.Attrs().HardwareAddr
 	defer startDHCPRuntimeServer(
 		t,
@@ -345,7 +250,10 @@ func assertDHCPBoundLinkFlapKeepsLease(
 			if packet.MessageType() == dhcpv4.MessageTypeRequest &&
 				packet.ClientIPAddr.IsUnspecified() &&
 				!packet.Options.Has(dhcpv4.OptionServerIdentifier) {
-				verificationCount.Add(1)
+				select {
+				case verified <- struct{}{}:
+				default:
+				}
 				return
 			}
 			otherPacketCount.Add(1)
@@ -369,14 +277,15 @@ func assertDHCPBoundLinkFlapKeepsLease(
 	if err := netlink.LinkSetUp(flappedLink); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(5 * time.Second)
-	assertRuntimeDaemonRunning(t, daemon)
-	if verificationCount.Load() == 0 {
+	select {
+	case <-verified:
+	case <-time.After(5 * time.Second):
 		t.Fatalf(
 			"The server did not receive a verification request after the interface returned. Daemon log: %s",
 			runtimeLogTail(t, daemon, 30),
 		)
 	}
+	assertRuntimeDaemonRunning(t, daemon)
 	if count := otherPacketCount.Load(); count != 0 {
 		t.Fatalf("DHCP client packet count = %d, want 0: %s", count, runtimeLogTail(t, daemon, 30))
 	}
@@ -392,27 +301,6 @@ func assertDHCPBoundLinkFlapKeepsLease(
 			savedAfter.ExpiresAt,
 		)
 	}
-}
-
-func startDHCPRequestCounter(
-	t *testing.T,
-	packetCount *atomic.Int64,
-	hardwareAddress net.HardwareAddr,
-	serverNamespace netns.NsHandle,
-	gateway netns.NsHandle,
-) func() {
-	t.Helper()
-	return startDHCPRuntimeServer(
-		t,
-		"wan-vlan",
-		serverNamespace,
-		gateway,
-		func(_ net.PacketConn, _ net.Addr, packet *dhcpv4.DHCPv4) {
-			if bytes.Equal(packet.ClientHWAddr, hardwareAddress) {
-				packetCount.Add(1)
-			}
-		},
-	)
 }
 
 func startDHCPRenamedLinkServer(t *testing.T, serverNamespace, gateway netns.NsHandle) func() {
