@@ -24,13 +24,19 @@ func TestCompileFlowsRejectsDuplicateSwitchMatches(t *testing.T) {
 	second.Output = []string{"wan"}
 
 	ports := map[string]uint32{"lan": 1, "wan": 2}
-	_, err := compileFlows(t.Context(), []ovsconfig.Flow{first, second}, ports)
+	_, err := compileFlows(t.Context(), []ovsconfig.Flow{first, second}, ports, nil, nil)
 	if !errors.Is(err, errDuplicateFlow) || !strings.Contains(err.Error(), second.Name) {
 		t.Fatalf("expected duplicate rule %q, got %v", second.Name, err)
 	}
 
 	second.Priority++
-	if _, err := compileFlows(t.Context(), []ovsconfig.Flow{first, second}, ports); err != nil {
+	if _, err := compileFlows(
+		t.Context(),
+		[]ovsconfig.Flow{first, second},
+		ports,
+		nil,
+		nil,
+	); err != nil {
 		t.Fatalf("rules with different priorities: %v", err)
 	}
 }

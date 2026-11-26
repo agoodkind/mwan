@@ -46,6 +46,7 @@ func TestConditionsFollowHealthWithoutChangingConfiguredRules(t *testing.T) {
 			map[string]wanstate.MemberHealth{
 				"wan-a": {Verdict: verdict},
 			},
+			installedEntries{},
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -115,9 +116,11 @@ func TestCompileOpenFlowRejectsInvalidInactiveEntries(t *testing.T) {
 			config: ovsconfig.OpenFlowConfig{
 				Groups: []ovsconfig.Group{
 					{
-						ID:      1,
-						Type:    ovsconfig.GroupSelect,
-						Buckets: []ovsconfig.Bucket{{ID: 1, Output: "missing", Condition: condition}},
+						ID:   1,
+						Type: ovsconfig.GroupSelect,
+						Buckets: []ovsconfig.Bucket{
+							{ID: 1, Output: "missing", Condition: condition},
+						},
 					},
 				},
 			},
@@ -137,12 +140,93 @@ func TestCompileOpenFlowRejectsInvalidInactiveEntries(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				_, _, err := compileOpenFlow(t.Context(), &test.config, ports, nil)
+				_, _, err := compileOpenFlow(
+					t.Context(),
+					&test.config,
+					ports,
+					nil,
+					installedEntries{},
+				)
 				if !errors.Is(err, test.want) {
 					t.Fatalf("compileOpenFlow returned %v, want %v", err, test.want)
 				}
 			},
 		)
+	}
+}
+
+func TestUnknownHealthPreservesOnlyInstalledMembers(t *testing.T) {
+	unknown := &ovsconfig.Condition{HealthyConnection: "unknown"}
+	up := &ovsconfig.Condition{HealthyConnection: "up"}
+	down := &ovsconfig.Condition{HealthyConnection: "down"}
+	config := ovsconfig.OpenFlowConfig{
+		Flows: []ovsconfig.Flow{
+			{Name: "retained", Priority: 1, Condition: unknown},
+			{Name: "absent", Priority: 2, Condition: unknown},
+			{Name: "foreign", Priority: 3, Condition: unknown},
+			{Name: "activate", Priority: 4, Condition: up},
+			{Name: "remove", Priority: 5, Condition: down},
+		},
+		Groups: []ovsconfig.Group{
+			{
+				ID:   1,
+				Type: ovsconfig.GroupSelect,
+				Buckets: []ovsconfig.Bucket{
+					{ID: 1, Condition: unknown},
+					{ID: 2, Condition: unknown},
+					{ID: 4, Condition: up},
+					{ID: 5, Condition: down},
+				},
+			},
+			{
+				ID:      2,
+				Type:    ovsconfig.GroupSelect,
+				Buckets: []ovsconfig.Bucket{{ID: 2, Condition: unknown}},
+			},
+		},
+	}
+	installed := installedEntries{
+		flows: map[flowIdentity]flowContents{
+			{priority: 1}: {cookie: mwanFlowCookie, instructions: "previous instructions"},
+			{priority: 3}: {cookie: 42},
+			{priority: 5}: {cookie: mwanFlowCookie},
+		},
+		groups: map[uint32]installedGroup{
+			groupNamespace | 1: {buckets: map[uint32]bool{1: true, 5: true}},
+			groupNamespace | 2: {buckets: map[uint32]bool{2: true}},
+		},
+	}
+	health := map[string]wanstate.MemberHealth{
+		"up":   {Verdict: wanstate.HealthHealthy},
+		"down": {Verdict: wanstate.HealthUnhealthy},
+	}
+	flows, groups, err := compileOpenFlow(t.Context(), &config, nil, health, installed)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var priorities []uint16
+
+	for _, flow := range flows[1:] {
+		priorities = append(priorities, flow.Priority)
+	}
+
+	if !slices.Equal(priorities, []uint16{1, 4}) {
+		t.Fatalf("active priorities = %v, want [1 4]", priorities)
+	}
+
+	wanted := [][]uint32{{1, 4}, {2}}
+
+	for index, group := range groups {
+		var ids []uint32
+
+		for _, bucket := range group.Buckets {
+			ids = append(ids, bucket.BucketId)
+		}
+
+		if !slices.Equal(ids, wanted[index]) {
+			t.Errorf("group %d buckets = %v, want %v", group.GroupId, ids, wanted[index])
+		}
 	}
 }
 

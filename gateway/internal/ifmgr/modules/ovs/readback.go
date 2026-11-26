@@ -32,16 +32,34 @@ var errForeignFlow = errors.New(
 	"configured OpenFlow rule conflicts with a rule owned by another application",
 )
 
-type flowKey struct {
+type flowIdentity struct {
+	table    uint8
+	priority uint16
+	match    string
+}
+
+type flowContents struct {
 	cookie       uint64
-	table        uint8
-	priority     uint16
-	match        string
 	instructions string
 }
 
-func readGroups(ctx context.Context, conn net.Conn) (map[uint32]string, error) {
-	current := make(map[uint32]string)
+type flowKey struct {
+	identity flowIdentity
+	contents flowContents
+}
+
+type installedGroup struct {
+	key     string
+	buckets map[uint32]bool
+}
+
+type installedEntries struct {
+	flows  map[flowIdentity]flowContents
+	groups map[uint32]installedGroup
+}
+
+func readGroups(ctx context.Context, conn net.Conn) (map[uint32]installedGroup, error) {
+	current := make(map[uint32]installedGroup)
 	filter := openflow15.NewGroupMultipartRequest(openflow15.OFPG_ALL)
 	err := readDescriptions(
 		ctx,
@@ -52,12 +70,13 @@ func readGroups(ctx context.Context, conn net.Conn) (map[uint32]string, error) {
 		func(record []byte) error {
 			groupID := binary.BigEndian.Uint32(record[4:8])
 			if groupID&groupMask == groupNamespace {
-				key, err := groupDescriptionKey(record)
+				buckets := make(map[uint32]bool)
+				key, err := groupDescriptionKey(record, buckets)
 				if err != nil {
 					return err
 				}
 
-				current[groupID] = key
+				current[groupID] = installedGroup{key: key, buckets: buckets}
 			}
 
 			return nil
@@ -68,7 +87,7 @@ func readGroups(ctx context.Context, conn net.Conn) (map[uint32]string, error) {
 }
 
 func groupChanges(
-	current map[uint32]string,
+	current map[uint32]installedGroup,
 	desired []*openflow15.GroupMod,
 ) ([]*openflow15.GroupMod, error) {
 	remaining := maps.Clone(current)
@@ -93,12 +112,12 @@ func groupChanges(
 				return nil, err
 			}
 
-			key, err := groupDescriptionKey(wire)
+			key, err := groupDescriptionKey(wire, nil)
 			if err != nil {
 				return nil, err
 			}
 
-			if existing == key {
+			if existing.key == key {
 				continue
 			}
 
@@ -118,7 +137,7 @@ func groupChanges(
 	return changes, nil
 }
 
-func groupDescriptionKey(record []byte) (string, error) {
+func groupDescriptionKey(record []byte, bucketIDs map[uint32]bool) (string, error) {
 	if len(record) < groupDescriptionLength || len(record) != int(binary.BigEndian.Uint16(record)) {
 		return "", errFlowDescription
 	}
@@ -141,6 +160,10 @@ func groupDescriptionKey(record []byte) (string, error) {
 		actionsEnd := bucketHeaderLength + int(binary.BigEndian.Uint16(buckets[2:]))
 		if actionsEnd > size || size > len(buckets) {
 			return "", errFlowDescription
+		}
+
+		if bucketIDs != nil {
+			bucketIDs[binary.BigEndian.Uint32(buckets[4:8])] = true
 		}
 
 		start := len(key)
@@ -218,30 +241,11 @@ func defaultBucketProperty(groupType uint8, property []byte) bool {
 	return false
 }
 
-func rulesMatch(
-	ctx context.Context,
-	conn net.Conn,
-	wanted []*openflow15.FlowMod,
-) (bool, error) {
+func readFlows(ctx context.Context, conn net.Conn) (map[flowIdentity]flowContents, error) {
 	filter := openflow15.NewFlowStatsRequest()
 	filter.TableId = openflow15.OFPTT_ALL
 
-	expected := make(map[flowKey]int, len(wanted))
-
-	identities := make(map[flowKey]bool, len(wanted))
-	for _, flow := range wanted {
-		key, err := ruleKey(flow.Cookie, flow.TableId, flow.Priority, flow.Match, flow.Instructions)
-		if err != nil {
-			return false, err
-		}
-
-		expected[key]++
-		key.cookie, key.instructions = 0, ""
-		identities[key] = true
-	}
-
-	matches := true
-	remaining := len(wanted)
+	current := make(map[flowIdentity]flowContents)
 	err := readDescriptions(
 		ctx,
 		conn,
@@ -254,29 +258,43 @@ func rulesMatch(
 				return err
 			}
 
-			if key.cookie&mwanFlowMask != mwanFlowCookie {
-				key.cookie, key.instructions = 0, ""
-				if identities[key] {
-					return errForeignFlow
-				}
-
-				return nil
-			}
-
-			if expected[key] == 0 {
-				matches = false
-
-				return nil
-			}
-
-			expected[key]--
-			remaining--
+			current[key.identity] = key.contents
 
 			return nil
 		},
 	)
 
-	return matches && remaining == 0, err
+	return current, err
+}
+
+func rulesMatch(current map[flowIdentity]flowContents, wanted []*openflow15.FlowMod) (bool, error) {
+	var managed int
+
+	for _, flow := range current {
+		if flow.cookie&mwanFlowMask == mwanFlowCookie {
+			managed++
+		}
+	}
+
+	matches := managed == len(wanted)
+
+	for _, flow := range wanted {
+		key, err := ruleKey(flow.Cookie, flow.TableId, flow.Priority, flow.Match, flow.Instructions)
+		if err != nil {
+			return false, err
+		}
+
+		installed, found := current[key.identity]
+		if found && installed.cookie&mwanFlowMask != mwanFlowCookie {
+			return false, errForeignFlow
+		}
+
+		if !found || installed != key.contents {
+			matches = false
+		}
+	}
+
+	return matches, nil
 }
 
 // Preserve vendor instructions and actions that libOpenflow cannot decode.
@@ -364,11 +382,15 @@ func readFlowKey(description []byte) (flowKey, error) {
 	slices.Sort(fields)
 
 	return flowKey{
-		cookie:       binary.BigEndian.Uint64(description[flowDescriptionCookie:]),
-		table:        description[flowDescriptionTable],
-		priority:     binary.BigEndian.Uint16(description[flowDescriptionPriority:]),
-		match:        strings.Join(fields, ""),
-		instructions: string(instructions),
+		identity: flowIdentity{
+			table:    description[flowDescriptionTable],
+			priority: binary.BigEndian.Uint16(description[flowDescriptionPriority:]),
+			match:    strings.Join(fields, ""),
+		},
+		contents: flowContents{
+			cookie:       binary.BigEndian.Uint64(description[flowDescriptionCookie:]),
+			instructions: string(instructions),
+		},
 	}, nil
 }
 
@@ -422,11 +444,8 @@ func ruleKey(
 	}
 
 	return flowKey{
-		cookie:       cookie,
-		table:        table,
-		priority:     priority,
-		match:        strings.Join(fields, ""),
-		instructions: actions.String(),
+		identity: flowIdentity{table: table, priority: priority, match: strings.Join(fields, "")},
+		contents: flowContents{cookie: cookie, instructions: actions.String()},
 	}, nil
 }
 

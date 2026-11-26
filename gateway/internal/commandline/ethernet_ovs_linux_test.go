@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -52,7 +53,7 @@ func TestOVSRuleUpdateMovesPackets(t *testing.T) {
 	)
 	path := filepath.Join(t.TempDir(), "network.json")
 	writeOVSPacketDocument(t, path, configuration)
-	logPath := startOVSPacketService(t, path, "mwan-of-in", 100*time.Millisecond)
+	service := startOVSPacketService(t, path, "mwan-of-in", 100*time.Millisecond)
 	checkOVSIPPacket(t, input, first, second, layers.EthernetTypeIPv4, "initial IPv4")
 	checkOVSIPPacket(t, input, second, first, layers.EthernetTypeIPv6, "initial IPv6")
 	bridge := "unix:" + filepath.Join(filepath.Dir(socket), "br-mwan-of.mgmt")
@@ -105,7 +106,7 @@ func TestOVSRuleUpdateMovesPackets(t *testing.T) {
 		1,
 	)
 	writeOVSPacketDocument(t, path, rejected)
-	waitForOVSBundleRejection(t, logPath)
+	waitForOVSBundleRejection(t, service.logs)
 	checkOVSIPPacket(t, input, second, first, layers.EthernetTypeIPv4, "retained IPv4")
 	checkOVSIPPacket(t, input, first, second, layers.EthernetTypeIPv6, "retained IPv6")
 	writeOVSPacketDocument(t, path, configuration)
@@ -326,7 +327,18 @@ func writeOVSPacketDocument(t *testing.T, path, configuration string) {
 	}
 }
 
-func startOVSPacketService(t *testing.T, networkPath, iface string, interval time.Duration) string {
+type ovsPacketService struct {
+	config string
+	logs   string
+	stop   func()
+}
+
+func startOVSPacketService(
+	t *testing.T,
+	networkPath string,
+	iface string,
+	interval time.Duration,
+) ovsPacketService {
 	t.Helper()
 
 	root := t.TempDir()
@@ -342,6 +354,8 @@ state_file = %q
 state_file = %q
 [ifmgr.modules.autoconfiguration]
 state_file = %q
+[ifmgr.modules.health]
+state_file = %q
 `,
 		interval.String(),
 		root,
@@ -349,11 +363,17 @@ state_file = %q
 		filepath.Join(root, "links.json"),
 		filepath.Join(root, "addresses.json"),
 		filepath.Join(root, "policy.json"),
+		filepath.Join(root, "health.state"),
 	)
 	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
+	return launchOVSPacketService(t, networkPath, configPath)
+}
+
+func launchOVSPacketService(t *testing.T, networkPath, configPath string) ovsPacketService {
+	t.Helper()
 	logs, err := os.CreateTemp(t.TempDir(), "ifmgr.log")
 	if err != nil {
 		t.Fatal(err)
@@ -377,10 +397,13 @@ state_file = %q
 		t.Fatal(err)
 	}
 
-	t.Cleanup(func() {
+	stop := sync.OnceFunc(func() {
 		_ = command.Process.Signal(unix.SIGTERM)
 		_ = command.Wait()
 		_ = logs.Close()
+	})
+	t.Cleanup(func() {
+		stop()
 		if t.Failed() {
 			data, err := os.ReadFile(logs.Name())
 			if err != nil {
@@ -390,7 +413,7 @@ state_file = %q
 			}
 		}
 	})
-	return logs.Name()
+	return ovsPacketService{config: configPath, logs: logs.Name(), stop: stop}
 }
 
 func ovsPacketLink(t *testing.T, iface, peerName string) int {

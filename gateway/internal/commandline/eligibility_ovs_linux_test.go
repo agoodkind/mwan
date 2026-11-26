@@ -61,7 +61,7 @@ func TestOVSHealthConditions(t *testing.T) {
 	config = strings.Replace(config, filepath.Join(dir, "db.sock"), socket, 1)
 	path := filepath.Join(t.TempDir(), "network.json")
 	writeOVSPacketDocument(t, path, config)
-	startOVSPacketService(t, path, "hc-in", time.Hour)
+	service := startOVSPacketService(t, path, "hc-in", time.Hour)
 	bridge := "unix:" + filepath.Join(dir, "br-hc.mgmt")
 	scenarios := []struct {
 		name   string
@@ -113,6 +113,50 @@ func TestOVSHealthConditions(t *testing.T) {
 			scenario.name,
 		)
 	}
+
+	blockProbe := func(change, target string) {
+		probeFilter(change, "element", "ip", "ovs_health_test", "blocked", "{", target, "}")
+	}
+	blockProbe("add", secondTarget)
+	waitForOVSHealth(t, bridge, [2]bool{true, false})
+	stream := startOVSRestartTraffic(t, input, outputs[0])
+	started := stream.sample(t)
+	service.stop()
+	stoppedAt := stream.received.Load()
+	whileStopped := stream.sample(t) - stoppedAt
+	blockProbe("add", firstTarget)
+	config = strings.ReplaceAll(config, `"failure-threshold": 1`, `"failure-threshold": 6`)
+	config = strings.Replace(
+		config,
+		`"flow": [`,
+		`"flow": [
+          {"name":"restart-witness","priority":321,"ether-type":34997,"output":["hc-b"]},`,
+		1,
+	)
+	writeOVSPacketDocument(t, path, config)
+	launchOVSPacketService(t, path, service.config)
+	waitForOVSRestartFlow(t, bridge)
+	statePath := filepath.Join(filepath.Dir(service.config), "health.state")
+	checkOVSProbeState(t, statePath, "unknown", "unknown")
+	waitForOVSHealth(t, bridge, [2]bool{true, false})
+	unknownAt := stream.received.Load()
+	startedUnknown := time.Now()
+	whileUnknown := stream.sample(t) - unknownAt
+	checkOVSProbeState(t, statePath, "unknown", "unknown")
+	unknownDuration := time.Since(startedUnknown)
+	blockProbe("delete", firstTarget)
+	checkOVSProbeState(t, statePath, "healthy", "unhealthy")
+	waitForOVSHealth(t, bridge, [2]bool{true, false})
+	stream.stop()
+	t.Logf(
+		"restart: sent %d IPv6 packets, received %d on hc-a, %d before shutdown, %d while stopped, %d in %s of confirmed unknown health",
+		stream.sent,
+		stream.received.Load(),
+		started,
+		whileStopped,
+		whileUnknown,
+		unknownDuration,
+	)
 }
 
 func addOVSProbeAddress(t *testing.T, name, ip string) {

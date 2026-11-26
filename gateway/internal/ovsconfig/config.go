@@ -64,7 +64,8 @@ type Bucket struct {
 	RawProperties [][]byte   `json:"raw-property"`
 }
 
-// Condition enables an entry only while its referenced connection is healthy.
+// Condition selects a flow or bucket according to connection health.
+// An unknown verdict preserves its current membership in OVS.
 type Condition struct {
 	HealthyConnection string `json:"healthy-connection"`
 }

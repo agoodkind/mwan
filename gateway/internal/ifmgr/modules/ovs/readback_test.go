@@ -70,7 +70,12 @@ func TestRulesMatchExperimenterInstruction(t *testing.T) {
 					reply.Body = []util.Message{desc}
 					result <- sendOpenFlow(ctx, peer, reply)
 				}()
-				same, err := rulesMatch(ctx, reader, []*openflow15.FlowMod{rule})
+				current, err := readFlows(ctx, reader)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				same, err := rulesMatch(current, []*openflow15.FlowMod{rule})
 				if !errors.Is(err, tt.wantError) {
 					t.Fatalf("rulesMatch error = %v, want %v", err, tt.wantError)
 				}

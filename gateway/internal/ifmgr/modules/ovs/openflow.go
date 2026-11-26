@@ -54,23 +54,20 @@ func installOpenFlow(
 		}
 	}
 
-	flows, groups, err := compileOpenFlow(ctx, config.OpenFlow, numbers, health)
-	if err != nil {
-		return err
-	}
-
 	bridgeID, err := readBridgeID(ctx, database, config.Bridge)
 	if err != nil {
 		return err
 	}
 
-	return installOnSwitch(ctx, config.OpenFlow.Socket, bridgeID, flows, groups)
+	return installOnSwitch(ctx, config.OpenFlow, bridgeID, numbers, health)
 }
 
 func compileFlows(
 	ctx context.Context,
 	rules []ovsconfig.Flow,
 	numbers map[string]uint32,
+	health map[string]wanstate.MemberHealth,
+	installed map[flowIdentity]flowContents,
 ) ([]*openflow15.FlowMod, error) {
 	flows := make([]*openflow15.FlowMod, 0, len(rules)+1)
 	removeOwned := openflow15.NewFlowMod()
@@ -80,7 +77,7 @@ func compileFlows(
 	removeOwned.CookieMask = mwanFlowMask
 	flows = append(flows, removeOwned)
 
-	seen := make(map[flowKey]string, len(rules))
+	seen := make(map[flowIdentity]string, len(rules))
 	for _, rule := range rules {
 		flow, err := marshalFlow(ctx, rule, numbers)
 		if err != nil {
@@ -96,17 +93,20 @@ func compileFlows(
 			return nil, fmt.Errorf("compile OpenFlow rule %q: %w", rule.Name, err)
 		}
 
-		identity, err := ruleKey(0, flow.TableId, flow.Priority, flow.Match, nil)
+		key, err := ruleKey(0, flow.TableId, flow.Priority, flow.Match, nil)
 		if err != nil {
 			return nil, fmt.Errorf("encode match for OpenFlow rule %q: %w", rule.Name, err)
 		}
 
-		if original, found := seen[identity]; found {
+		if original, found := seen[key.identity]; found {
 			return nil, fmt.Errorf("%w: %q and %q", errDuplicateFlow, original, rule.Name)
 		}
 
-		seen[identity] = rule.Name
-		flows = append(flows, flow)
+		seen[key.identity] = rule.Name
+		entry := installed[key.identity]
+		if entryActive(rule.Condition, health, entry.cookie&mwanFlowMask == mwanFlowCookie) {
+			flows = append(flows, flow)
+		}
 	}
 
 	return flows, nil
@@ -142,17 +142,17 @@ func readBridgeID(ctx context.Context, database databaseClient, bridgeName strin
 
 func installOnSwitch(
 	ctx context.Context,
-	socket string,
+	config *ovsconfig.OpenFlowConfig,
 	bridgeID string,
-	flows []*openflow15.FlowMod,
-	groups []*openflow15.GroupMod,
+	numbers map[string]uint32,
+	health map[string]wanstate.MemberHealth,
 ) error {
 	var dialer net.Dialer
-	conn, err := dialer.DialContext(ctx, "unix", socket)
+	conn, err := dialer.DialContext(ctx, "unix", config.Socket)
 	if err != nil {
-		slog.ErrorContext(ctx, "OpenFlow connection failed", "socket", socket, "err", err)
+		slog.ErrorContext(ctx, "OpenFlow connection failed", "socket", config.Socket, "err", err)
 
-		return fmt.Errorf("connect to OpenFlow socket %s: %w", socket, err)
+		return fmt.Errorf("connect to OpenFlow socket %s: %w", config.Socket, err)
 	}
 
 	defer func() {
@@ -182,17 +182,28 @@ func installOnSwitch(
 		return err
 	}
 
-	same, err := rulesMatch(ctx, conn, flows[1:])
+	var installed installedEntries
+	installed.flows, err = readFlows(ctx, conn)
 	if err != nil {
 		return err
 	}
 
-	current, err := readGroups(ctx, conn)
+	installed.groups, err = readGroups(ctx, conn)
 	if err != nil {
 		return err
 	}
 
-	changes, err := groupChanges(current, groups)
+	flows, groups, err := compileOpenFlow(ctx, config, numbers, health, installed)
+	if err != nil {
+		return err
+	}
+
+	same, err := rulesMatch(installed.flows, flows[1:])
+	if err != nil {
+		return err
+	}
+
+	changes, err := groupChanges(installed.groups, groups)
 	if err != nil || (same && len(changes) == 0) {
 		return err
 	}

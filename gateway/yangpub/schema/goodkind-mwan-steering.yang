@@ -1386,9 +1386,11 @@ module goodkind-mwan-steering {
         type string { length "1..max"; }
         mandatory true;
         description
-          "Include this flow or bucket only while its connection is healthy.
+          "Install this entry when its connection is healthy and remove it when unhealthy.
+           While health is unknown, preserve its current membership in OVS.
            Use this WAN's connection-id if present, or its name otherwise.
-           This connection requires an enabled health probe.";
+           This connection requires an enabled health probe. Restart mwan-ifmgr@wan.service
+           after changing probe definitions. Verdict changes apply during service operation.";
       }
     }
   }
