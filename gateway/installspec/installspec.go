@@ -14,7 +14,7 @@ import (
 // Add new install assets to the explicit embed list.
 //
 //go:embed mwan-agent.service mwan-ifmgr@.service
-//go:embed rousette.service nghttpx-wanconfig.service systemd-networkd-override.conf mwan-ifmgr-wan.conf
+//go:embed rousette.service nghttpx-wanconfig.service mwan-ifmgr-wan.conf
 //go:embed 99-quiet-console.conf nacm-anonymous.xml
 var unitFS embed.FS
 
@@ -90,14 +90,6 @@ func specs() map[Role]Spec {
 				unit(rousetteUnit),
 				unit("nghttpx-wanconfig.service"),
 				{
-					Embedded: "systemd-networkd-override.conf",
-					Dest: filepath.Join(
-						SystemdUnitDir,
-						"systemd-networkd.service.d",
-						"override.conf",
-					),
-				},
-				{
 					Embedded: "99-quiet-console.conf",
 					Dest:     filepath.Join(SysctlDir, "99-quiet-console.conf"),
 				},
@@ -110,16 +102,6 @@ func specs() map[Role]Spec {
 			},
 			Schema: true,
 			NotOwned: []NotOwnedUnit{
-				{
-					Name: "systemd-networkd.service",
-					Files: []string{
-						filepath.Join(
-							SystemdUnitDir,
-							"systemd-networkd.service.d",
-							"override.conf",
-						),
-					},
-				},
 				{
 					Name:  "systemd-sysctl.service",
 					Files: []string{filepath.Join(SysctlDir, "99-quiet-console.conf")},
