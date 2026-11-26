@@ -19,6 +19,7 @@ func runCombinedPathsDaemonRuntime(t *testing.T, run *bgpRuntimeRun) {
 		provider: provider,
 	}
 	combined.network = writeCombinedNetwork(t, run.networkDir, provider)
+	countCombinedConnectionAttempts(t, combined)
 	started := time.Now()
 	combined.daemon = run.start(t, "combined-first")
 	waitRuntimeTable(t, combined.daemon, "inet", "filter", 10*time.Second)

@@ -27,7 +27,7 @@ const (
 	combinedPort             = 18513
 	combinedConnectRetry     = 2
 	combinedCheckInterval    = 1
-	combinedFailureThreshold = 2
+	combinedFailureThreshold = 1
 	combinedSessionLeaf      = `"keepalive":`
 	combinedInternalEntry    = `{"name":"enmwanbr0"`
 )

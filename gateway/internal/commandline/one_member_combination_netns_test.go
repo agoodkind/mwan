@@ -37,7 +37,7 @@ func setCombinedOrdinaryLink(t *testing.T, c *combinedRun, up bool) {
 	setCombinedOrdinaryFault(t, c, "inet", !up)
 }
 
-func waitCombinedConnectionAttempt(t *testing.T, c *combinedRun) {
+func countCombinedConnectionAttempts(t *testing.T, c *combinedRun) {
 	t.Helper()
 	setRuntimeNamespace(t, c.run.topology.routers[c.provider.id])
 	defer setRuntimeNamespace(t, c.run.gateway)
@@ -63,6 +63,12 @@ func waitCombinedConnectionAttempt(t *testing.T, c *combinedRun) {
 		"179",
 		"counter",
 	)
+}
+
+func waitCombinedConnectionAttempt(t *testing.T, c *combinedRun) {
+	t.Helper()
+	setRuntimeNamespace(t, c.run.topology.routers[c.provider.id])
+	defer setRuntimeNamespace(t, c.run.gateway)
 	waitBGPRuntime(
 		t,
 		c.daemon,
