@@ -236,6 +236,8 @@ func ovsIPFrame(
 		DstMAC:       net.HardwareAddr{2, 0, 0, 0, 0, 1},
 		EthernetType: family,
 	}
+	// Give each UDP flow a different source address for OVS symmetric hashing.
+	host := byte(sourcePort%126) + 1
 	var ip interface {
 		gopacket.NetworkLayer
 		gopacket.SerializableLayer
@@ -243,15 +245,17 @@ func ovsIPFrame(
 		Version:  4,
 		TTL:      64,
 		Protocol: layers.IPProtocolUDP,
-		SrcIP:    net.IPv4(192, 0, 2, 2),
+		SrcIP:    net.IPv4(192, 0, 2, host),
 		DstIP:    net.IPv4(192, 0, 2, 128),
 	}
 	if family == layers.EthernetTypeIPv6 {
+		source := net.ParseIP("2001:db8:b01::")
+		source[len(source)-1] = host
 		ip = &layers.IPv6{
 			Version:    6,
 			HopLimit:   64,
 			NextHeader: layers.IPProtocolUDP,
-			SrcIP:      net.ParseIP("2001:db8:b01::10"),
+			SrcIP:      source,
 			DstIP:      net.ParseIP("2001:db8:ffff::1"),
 		}
 	}

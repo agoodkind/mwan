@@ -53,10 +53,10 @@
       "openflow": {
         "socket": "/run/openvswitch/br-hc.mgmt",
         "group": [{
-          "id": 7, "type": "select", "selection-method": "dp_hash",
+          "id": 7, "type": "select",
           "bucket": [
-            {"id": 1, "output": "hc-a", "condition": {"healthy-connection": "wan-a"}},
-            {"id": 2, "output": "hc-b", "condition": {"healthy-connection": "wan-b"}}
+            {"id": 1, "weight": 200, "output": "hc-a", "condition": {"healthy-connection": "wan-a"}},
+            {"id": 2, "weight": 100, "output": "hc-b", "condition": {"healthy-connection": "wan-b"}}
           ]
         }],
         "flow": [
