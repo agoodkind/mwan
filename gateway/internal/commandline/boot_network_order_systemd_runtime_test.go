@@ -23,7 +23,7 @@ import (
 	"goodkind.io/mwan/gateway/internal/networkd"
 )
 
-func TestNetworkdOrderedDaemonStartup(t *testing.T) {
+func TestSystemdNetworkdOrderedDaemonStartup(t *testing.T) {
 	RequireSystemd(t)
 	requireSystemdOutput(t, "systemctl", "start", "dbus", "systemd-udevd", "systemd-resolved")
 	// Stop the activation socket before stopping networkd. Queued link events can restart it.

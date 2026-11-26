@@ -20,7 +20,7 @@ import (
 	"goodkind.io/mwan/gateway/internal/commandline"
 )
 
-func TestDebugSystemdPublicRuntime(t *testing.T) {
+func TestSystemdDebugPublicRuntime(t *testing.T) {
 	commandline.RequireSystemd(t)
 	binary := testMwanBinary(t)
 	configPath := filepath.Join(t.TempDir(), "config.toml")

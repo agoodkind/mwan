@@ -20,7 +20,7 @@ import (
 	"goodkind.io/mwan/gateway/networkload"
 )
 
-func TestNetworkdResolverDaemonRuntime(t *testing.T) {
+func TestSystemdNetworkdResolverDaemonRuntime(t *testing.T) {
 	RequireSystemd(t)
 	requireSystemdOutput(t, "systemctl", "start", "systemd-udevd", "systemd-resolved")
 	runtime.LockOSThread()

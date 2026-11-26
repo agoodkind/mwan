@@ -30,16 +30,21 @@ jobs:
         with:
           arch: amd64
           cache-go: 'true'
+      - name: Resolve the go-makefile revision
+        id: go-makefile
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api repos/agoodkind/go-makefile/git/ref/heads/main --jq '"revision=" + .object.sha' >> "$GITHUB_OUTPUT"
+      - name: Cache the go-makefile executable
+        uses: actions/cache@v6
+        with:
+          path: gateway/.make/go-mk
+          key: gateway-go-mk-linux-amd64-${{ steps.go-makefile.outputs.revision }}-${{ hashFiles('gateway/Dockerfile') }}
       - name: Run gateway quality checks
         env:
           GH_TOKEN: ${{ github.token }}
+          GO_MK_API_REF: ${{ steps.go-makefile.outputs.revision }}
         run: docker compose -f compose.build.yaml -f compose.amd64.yaml -f compose.test-cache.yaml -f compose.ci.yaml run --pull never --rm check
-      - name: Save Go module downloads and compiled packages
-        if: steps.builder.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ${{ runner.temp }}/gateway-go
-          key: ${{ steps.builder.outputs.cache-key }}
 
   test:
     name: Test
@@ -49,6 +54,13 @@ jobs:
       - *restore-amd64-builder
       - name: Run gateway tests
         run: docker compose run --pull never --rm test
+      - name: Save Go module downloads and compiled packages
+        if: steps.builder.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/gateway-go
+          key: ${{ steps.builder.outputs.cache-key }}
+
   drift:
     name: provider drift
     runs-on: ubuntu-latest
@@ -123,7 +135,7 @@ jobs:
       - name: Run systemd acceptance tests
         run: |
           docker compose up --no-build --pull never --wait systemd
-          docker compose exec -T systemd go test -count=1 -timeout=20m -tags systemd ./internal/commandline
+          docker compose exec -T systemd go test -count=1 -timeout=20m -tags systemd -run ^TestSystemd ./internal/commandline
       - name: Stop systemd container
         if: always()
         run: docker compose down --remove-orphans

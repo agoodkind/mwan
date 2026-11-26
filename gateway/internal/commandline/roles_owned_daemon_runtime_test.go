@@ -31,7 +31,7 @@ import (
 	"goodkind.io/mwan/gateway/internal/yangpub"
 )
 
-func TestOwnedRolesDaemonRuntime(t *testing.T) {
+func TestSystemdOwnedRolesDaemonRuntime(t *testing.T) {
 	RequireSystemd(t)
 	if os.Getenv("MWAN_OWNED_ROLES_TEST_CHILD") == "1" {
 		runOwnedRolesDaemonRuntime(t)

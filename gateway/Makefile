@@ -64,7 +64,7 @@ test-systemd: ## Run systemd tests and remove test environment afterward.
 	trap '$(PLATFORM) down --remove-orphans' EXIT; \
 	$(PLATFORM) up --build --wait systemd; \
 	$(PLATFORM) exec -T systemd \
-		go test -count=1 -timeout=20m -tags systemd ./internal/commandline
+		go test -count=1 -timeout=20m -tags systemd -run ^TestSystemd ./internal/commandline
 
 systemd-stop: ## Stop and remove this checkout's Compose containers and network.
 	$(PLATFORM) down --remove-orphans
