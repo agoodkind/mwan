@@ -96,6 +96,26 @@ func marshalInstructions(
 	rule ovsconfig.Flow,
 	numbers map[string]uint32,
 ) error {
+	if rule.GroupID != nil {
+		if len(rule.Output) > 0 || len(rule.RawInstruction) > 0 {
+			return errFlowActions
+		}
+
+		groupID, err := managedGroupID(*rule.GroupID)
+		if err != nil {
+			return err
+		}
+
+		instruction := openflow15.NewInstrApplyActions()
+		instruction.Actions = append(instruction.Actions, openflow15.NewActionGroup(groupID))
+		instruction.Length = instruction.Len()
+		if int(flow.Len())+int(instruction.Len()) > maxFlowSize {
+			return errFlowSize
+		}
+
+		flow.AddInstruction(instruction)
+	}
+
 	if len(rule.Output) > 0 {
 		if len(rule.RawInstruction) > 0 {
 			return errFlowActions

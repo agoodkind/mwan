@@ -55,24 +55,43 @@ func TestOVSRuleUpdateMovesPackets(t *testing.T) {
 	logPath := startOVSPacketService(t, path)
 	checkOVSIPPacket(t, input, first, second, layers.EthernetTypeIPv4, "initial IPv4")
 	checkOVSIPPacket(t, input, second, first, layers.EthernetTypeIPv6, "initial IPv6")
+	bridge := "unix:" + filepath.Join(filepath.Dir(socket), "br-mwan-of.mgmt")
+	foreign := "cookie=0x4321,table=11,priority=10,actions=group:0x6d770011"
+	if output, err := exec.CommandContext(
+		t.Context(),
+		"ovs-ofctl",
+		"-O",
+		"OpenFlow15",
+		"add-flow",
+		bridge,
+		foreign,
+	).CombinedOutput(); err != nil {
+		t.Fatalf("add independent flow referencing mwan's group: %v: %s", err, output)
+	}
+
 	updated := strings.Replace(
 		configuration,
 		`"output": ["mwan-of-a"]`,
 		`"output": ["mwan-of-b"]`,
 		1,
 	)
-	updated = strings.Replace(
-		updated,
-		`"ether-type": 34525,
-            "output": ["mwan-of-b"]`,
-		`"ether-type": 34525,
-            "output": ["mwan-of-a"]`,
-		1,
-	)
+	updated = strings.Replace(updated, `"output": "mwan-of-b"`, `"output": "mwan-of-a"`, 1)
 	writeOVSPacketDocument(t, path, updated)
 	checkOVSIPPacket(t, input, second, first, layers.EthernetTypeIPv4, "updated IPv4")
 	checkOVSIPPacket(t, input, first, second, layers.EthernetTypeIPv6, "updated IPv6")
 	checkOVSFlowAge(t, socket)
+	output, err := exec.CommandContext(
+		t.Context(),
+		"ovs-ofctl",
+		"-O",
+		"OpenFlow15",
+		"dump-flows",
+		bridge,
+		"cookie=0x4321/-1,table=11",
+	).CombinedOutput()
+	if err != nil || !bytes.Contains(output, []byte("cookie=0x4321,")) {
+		t.Fatalf("group change removed an independently installed flow: %v: %s", err, output)
+	}
 	checkOVSHostFirewall(t)
 
 	// OpenFlow rejects a GOTO_TABLE instruction targeting its current table.

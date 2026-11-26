@@ -27,6 +27,10 @@
       ],
       "openflow": {
         "socket": "/run/openvswitch/br-mwan-of.mgmt",
+        "group": [{
+          "id": 17, "type": "select", "selection-method": "dp_hash",
+          "bucket": [{"id": 0, "output": "mwan-of-b"}]
+        }],
         "flow": [
           {
             "name": "set-ipv4-source-and-continue",
@@ -48,7 +52,7 @@
             "priority": 100,
             "in-port": "mwan-of-in",
             "ether-type": 34525,
-            "output": ["mwan-of-b"]
+            "group-id": 17
           }
         ]
       }

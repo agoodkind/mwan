@@ -62,7 +62,12 @@ func installOpenFlow(
 		return err
 	}
 
-	return installOnSwitch(ctx, config.OpenFlow.Socket, bridgeID, flows)
+	groups, err := compileGroups(ctx, config.OpenFlow.Groups, numbers)
+	if err != nil {
+		return err
+	}
+
+	return installOnSwitch(ctx, config.OpenFlow.Socket, bridgeID, flows, groups)
 }
 
 func compileFlows(
@@ -143,6 +148,7 @@ func installOnSwitch(
 	socket string,
 	bridgeID string,
 	flows []*openflow15.FlowMod,
+	groups []*openflow15.GroupMod,
 ) error {
 	var dialer net.Dialer
 	conn, err := dialer.DialContext(ctx, "unix", socket)
@@ -184,11 +190,17 @@ func installOnSwitch(
 		return err
 	}
 
-	if same {
-		return nil
+	current, err := readGroups(ctx, conn)
+	if err != nil {
+		return err
 	}
 
-	if err := replaceEntries(ctx, conn, flows); err != nil {
+	changes, err := groupChanges(current, groups)
+	if err != nil || (same && len(changes) == 0) {
+		return err
+	}
+
+	if err := replaceEntries(ctx, conn, flows, changes); err != nil {
 		slog.ErrorContext(ctx, "OpenFlow bundle failed", "bridge", bridgeID, "err", err)
 
 		return fmt.Errorf("apply OpenFlow bundle: %w", err)
@@ -245,6 +257,7 @@ func replaceEntries(
 	ctx context.Context,
 	conn net.Conn,
 	flows []*openflow15.FlowMod,
+	groups []*openflow15.GroupMod,
 ) error {
 	if err := exchangeBundleControl(
 		ctx,
@@ -255,7 +268,7 @@ func replaceEntries(
 		return err
 	}
 
-	if err := stageBundle(ctx, conn, flows); err != nil {
+	if err := stageBundle(ctx, conn, flows, groups); err != nil {
 		// Closing this connection discards its pending bundle if OVS cannot confirm a discard.
 		if errors.Is(err, errOpenFlowRejected) {
 			discardErr := exchangeBundleControl(
@@ -286,6 +299,7 @@ func stageBundle(
 	ctx context.Context,
 	conn net.Conn,
 	flows []*openflow15.FlowMod,
+	groups []*openflow15.GroupMod,
 ) error {
 	add := func(xid uint32, message util.Message) error {
 		entry := openflow15.NewBndleAdd(bundleID, bundleFlags)
@@ -293,8 +307,17 @@ func stageBundle(
 
 		return sendOpenFlow(ctx, conn, entry)
 	}
+	if err := add(flows[0].Xid, flows[0]); err != nil {
+		return err
+	}
 
-	for _, flow := range flows {
+	for _, group := range groups {
+		if err := add(group.Xid, group); err != nil {
+			return err
+		}
+	}
+
+	for _, flow := range flows[1:] {
 		if err := add(flow.Xid, flow); err != nil {
 			return err
 		}

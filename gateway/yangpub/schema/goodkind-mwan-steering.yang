@@ -1469,6 +1469,65 @@ module goodkind-mwan-steering {
           mandatory true;
           description "Absolute path to this bridge's OpenFlow management socket.";
         }
+        list group {
+          key "id";
+          description "OpenFlow groups and their packet actions.";
+          leaf id {
+            type uint32 { range "1..65535"; }
+            description "Logical group ID within mwan's reserved OpenFlow ID range.";
+          }
+          leaf type {
+            type enumeration {
+              enum all;
+              enum select;
+              enum indirect;
+              enum fast-failover;
+            }
+            mandatory true;
+            description "OpenFlow group type.";
+          }
+          leaf selection-method {
+            when "../type = 'select'";
+            type string { length "1..15"; }
+            description "OVS selection method, such as hash or dp_hash.";
+          }
+          leaf selection-parameter {
+            when "../selection-method";
+            type uint64;
+            description "Parameter for this group's OVS selection method.";
+          }
+          leaf-list raw-property {
+            type binary { length "8..65000"; }
+            ordered-by user;
+            description "OpenFlow 1.5 group property bytes with headers and padding.";
+          }
+          list bucket {
+            key "id";
+            ordered-by user;
+            leaf id {
+              type uint32 { range "0..4294967039"; }
+              description "Bucket ID within this group.";
+            }
+            leaf weight {
+              type uint16;
+              description "Relative share of traffic assigned to this bucket.";
+            }
+            leaf output {
+              type leafref { path "../../../../port/name"; }
+              description "Output port after bucket actions.";
+            }
+            leaf-list raw-action {
+              type binary { length "8..65000"; }
+              ordered-by user;
+              description "OpenFlow 1.5 action bytes with headers.";
+            }
+            leaf-list raw-property {
+              type binary { length "8..65000"; }
+              ordered-by user;
+              description "OpenFlow 1.5 bucket property bytes with headers and padding.";
+            }
+          }
+        }
         list flow {
           key "name";
           description "An OpenFlow rule.";
@@ -1498,6 +1557,13 @@ module goodkind-mwan-steering {
             type leafref { path "../../../port/name"; }
             ordered-by user;
             description "Send matching packets to these configured OVS ports.";
+          }
+          leaf group-id {
+            type leafref { path "../../group/id"; }
+            description "Select an output bucket from this group.";
+          }
+          must "not(group-id) or (not(output) and not(raw-instruction))" {
+            error-message "A group action cannot also specify output or raw instructions.";
           }
           leaf-list raw-match {
             type binary { length "5..259"; }

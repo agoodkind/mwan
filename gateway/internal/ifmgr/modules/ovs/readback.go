@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"slices"
 	"strings"
@@ -15,9 +16,11 @@ import (
 )
 
 const (
-	multipartHeaderLength = 16
-	flowDescriptionLength = 24
-
+	multipartHeaderLength   = 16
+	flowDescriptionLength   = 24
+	groupDescriptionLength  = 16
+	bucketHeaderLength      = 8
+	propertyHeaderLength    = 4
 	flowDescriptionTable    = 4
 	flowDescriptionPriority = 6
 	flowDescriptionCookie   = 16
@@ -35,6 +38,184 @@ type flowKey struct {
 	priority     uint16
 	match        string
 	instructions string
+}
+
+func readGroups(ctx context.Context, conn net.Conn) (map[uint32]string, error) {
+	current := make(map[uint32]string)
+	filter := openflow15.NewGroupMultipartRequest(openflow15.OFPG_ALL)
+	err := readDescriptions(
+		ctx,
+		conn,
+		openflow15.MultipartType_GroupDesc,
+		filter,
+		groupDescriptionLength,
+		func(record []byte) error {
+			groupID := binary.BigEndian.Uint32(record[4:8])
+			if groupID&groupMask == groupNamespace {
+				key, err := groupDescriptionKey(record)
+				if err != nil {
+					return err
+				}
+
+				current[groupID] = key
+			}
+
+			return nil
+		},
+	)
+
+	return current, err
+}
+
+func groupChanges(
+	current map[uint32]string,
+	desired []*openflow15.GroupMod,
+) ([]*openflow15.GroupMod, error) {
+	remaining := maps.Clone(current)
+	var changes []*openflow15.GroupMod
+
+	for _, group := range desired {
+		change := *group
+		change.Command = openflow15.OFPGC_ADD
+		existing, found := remaining[group.GroupId]
+		delete(remaining, group.GroupId)
+		if found {
+			desc := openflow15.NewGroupDesc()
+			desc.GroupId, desc.Type = group.GroupId, group.Type
+
+			desc.Properties = group.Properties
+			for _, bucket := range group.Buckets {
+				desc.AddBucket(bucket)
+			}
+
+			wire, err := marshalComparison(desc)
+			if err != nil {
+				return nil, err
+			}
+
+			key, err := groupDescriptionKey(wire)
+			if err != nil {
+				return nil, err
+			}
+
+			if existing == key {
+				continue
+			}
+
+			change.Command = openflow15.OFPGC_MODIFY
+		}
+
+		changes = append(changes, &change)
+	}
+
+	for _, id := range slices.Sorted(maps.Keys(remaining)) {
+		remove := openflow15.NewGroupMod()
+		remove.Command = openflow15.OFPGC_DELETE
+		remove.GroupId = id
+		changes = append(changes, remove)
+	}
+
+	return changes, nil
+}
+
+func groupDescriptionKey(record []byte) (string, error) {
+	if len(record) < groupDescriptionLength || len(record) != int(binary.BigEndian.Uint16(record)) {
+		return "", errFlowDescription
+	}
+
+	end := groupDescriptionLength + int(binary.BigEndian.Uint16(record[8:]))
+	if end > len(record) {
+		return "", errFlowDescription
+	}
+
+	key := slices.Clone(record[:groupDescriptionLength])
+	var removedTotal uint16
+
+	buckets := record[groupDescriptionLength:end]
+	for len(buckets) > 0 {
+		if len(buckets) < bucketHeaderLength {
+			return "", errFlowDescription
+		}
+
+		size := int(binary.BigEndian.Uint16(buckets))
+		actionsEnd := bucketHeaderLength + int(binary.BigEndian.Uint16(buckets[2:]))
+		if actionsEnd > size || size > len(buckets) {
+			return "", errFlowDescription
+		}
+
+		start := len(key)
+		key = append(key, buckets[:actionsEnd]...)
+		properties, removed, err := bucketPropertyKeys(record[2], buckets[actionsEnd:size])
+		if err != nil {
+			return "", err
+		}
+
+		for _, property := range properties {
+			key = append(key, property...)
+		}
+
+		removedTotal += removed
+		binary.BigEndian.PutUint16(key[start:], binary.BigEndian.Uint16(buckets)-removed)
+		buckets = buckets[size:]
+	}
+
+	binary.BigEndian.PutUint16(key[8:], binary.BigEndian.Uint16(record[8:])-removedTotal)
+	key = append(key, record[end:]...)
+	binary.BigEndian.PutUint16(key, binary.BigEndian.Uint16(record)-removedTotal)
+
+	return string(key), nil
+}
+
+func bucketPropertyKeys(groupType uint8, wire []byte) ([]string, uint16, error) {
+	var properties []string
+	var removed uint16
+
+	for len(wire) > 0 {
+		if len(wire) < propertyHeaderLength {
+			return nil, 0, errFlowDescription
+		}
+
+		size := int(binary.BigEndian.Uint16(wire[2:]))
+		padded := (size + wireAlignment - 1) &^ (wireAlignment - 1)
+		if size < propertyHeaderLength || padded > len(wire) {
+			return nil, 0, errFlowDescription
+		}
+
+		if defaultBucketProperty(groupType, wire[:size]) {
+			removed += wireAlignment
+		} else {
+			properties = append(properties, string(wire[:padded]))
+		}
+
+		wire = wire[padded:]
+	}
+
+	slices.Sort(properties)
+
+	return properties, removed, nil
+}
+
+// OVS emits SELECT weight 1 and omits unrestricted port and group watches.
+func defaultBucketProperty(groupType uint8, property []byte) bool {
+	if len(property) != wireAlignment {
+		return false
+	}
+
+	switch binary.BigEndian.Uint16(property) {
+	case openflow15.GBPT_WEIGHT:
+		weight := binary.BigEndian.Uint16(property[4:])
+		if groupType == openflow15.GT_SELECT {
+			return weight == 1
+		}
+
+		return weight == 0
+	case openflow15.GBPT_WATCH_PORT:
+		return binary.BigEndian.Uint32(property[4:]) == openflow15.P_ANY
+	case openflow15.GBPT_WATCH_GROUP:
+		return binary.BigEndian.Uint32(property[4:]) == openflow15.OFPG_ANY
+	}
+
+	return false
 }
 
 func rulesMatch(
