@@ -76,6 +76,11 @@ RUN apt-get update \
         iproute2 kea-dhcp4-server kea-dhcp6-server radvd \
     && rm -rf /var/lib/apt/lists/*
 
+FROM builder AS ovs-tests
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openvswitch-switch \
+    && rm -rf /var/lib/apt/lists/*
+
 FROM network-tests AS systemd-tests
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \

@@ -30,6 +30,7 @@ import (
 	"goodkind.io/mwan/gateway/internal/netif"
 	"goodkind.io/mwan/gateway/internal/networkd"
 	"goodkind.io/mwan/gateway/internal/notify"
+	"goodkind.io/mwan/gateway/internal/ovsconfig"
 	"goodkind.io/mwan/gateway/internal/tracing"
 	"goodkind.io/mwan/gateway/internal/wanstate"
 	"goodkind.io/mwan/gateway/networkjson"
@@ -44,12 +45,11 @@ import (
 	_ "goodkind.io/mwan/gateway/internal/ifmgr/modules/health"
 	_ "goodkind.io/mwan/gateway/internal/ifmgr/modules/links"
 	_ "goodkind.io/mwan/gateway/internal/ifmgr/modules/npt"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/ovs"
 	_ "goodkind.io/mwan/gateway/internal/ifmgr/modules/resolver"
 	_ "goodkind.io/mwan/gateway/internal/ifmgr/modules/steering"
 	_ "goodkind.io/mwan/gateway/internal/ifmgr/modules/wanroutes"
 )
-
-var errOVSModuleUnavailable = errors.New("this gateway build cannot start OVS reconciliation")
 
 const ifMgrWANRole = "wan"
 
@@ -190,15 +190,17 @@ func prepareIfMgrDaemon(
 		return nil, ifmgr.DaemonConfig{}, nil, err
 	}
 
-	if loaded != nil && loaded.OVS != nil {
-		return nil, ifmgr.DaemonConfig{}, nil, errOVSModuleUnavailable
-	}
-
 	dcfg, err := buildIfMgrDaemonConfig(cfg, role, cfg.IfMgr.NetworkdTimeout())
 	if err != nil {
 		logger.Warn("ifmgr: build daemon config failed", "err", err)
 
 		return nil, ifmgr.DaemonConfig{}, nil, fmt.Errorf("build daemon config: %w", err)
+	}
+
+	if loaded != nil && loaded.OVS != nil {
+		dcfg.ModuleConfigs["ovs"] = ovs.Loader(func() (ovsconfig.Config, error) {
+			return networkload.LoadOVS(flags.NetworkPath, flags.SchemaDir)
+		})
 	}
 
 	if settings, found := dcfg.ModuleConfigs["addresses"].(addresses.Config); found {
@@ -227,7 +229,7 @@ func prepareIfMgrDaemon(
 		return nil, ifmgr.DaemonConfig{}, nil, err
 	}
 
-	if role == ifMgrWANRole && cfg.OPNsense.NPTv6HairpinAlias != "" {
+	if role == ifMgrWANRole && !cfg.IfMgr.OVSDataplane && cfg.OPNsense.NPTv6HairpinAlias != "" {
 		base, ok := http.DefaultTransport.(*http.Transport)
 		if !ok {
 			logger.ErrorContext(

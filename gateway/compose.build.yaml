@@ -138,6 +138,14 @@ services:
     privileged: true
     command: [go, test, -v, -count=1, -parallel=6, -tags, firewall, ./integration/firewall]
 
+  ovs:
+    <<: *builder
+    build:
+      <<: *build
+      target: ovs-tests
+    privileged: true
+    command: [bash, tools/test-ovs.sh]
+
   netns:
     <<: *network-tests
     environment:

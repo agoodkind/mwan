@@ -25,6 +25,9 @@ services:
   yang-validate: *builder
   yang-validate-instances: *builder
   firewall: *builder
+  ovs:
+    <<: *platform
+    image: mwan-ovs-tests:amd64
   release:
     <<: *platform
     image: mwan-release-builder:amd64
