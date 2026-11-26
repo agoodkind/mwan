@@ -1,3 +1,5 @@
+//go:build !protocol
+
 package commandline
 
 import (
@@ -51,16 +53,6 @@ func assertEmptyClientPresence(t *testing.T, exported []byte) {
 	}
 
 	t.Fatal("internal interface was not published")
-}
-
-func selftestModelsDir(t *testing.T) string {
-	t.Helper()
-	modelsDir := t.TempDir()
-	if _, err := yangpub.WriteSchema(modelsDir); err != nil {
-		t.Fatalf("write the embedded schema: %v", err)
-	}
-
-	return modelsDir
 }
 
 // Run this test serially. Sysrepo reads its repository directory from the process

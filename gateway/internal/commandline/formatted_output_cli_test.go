@@ -1,3 +1,5 @@
+//go:build !protocol
+
 package commandline_test
 
 import (
