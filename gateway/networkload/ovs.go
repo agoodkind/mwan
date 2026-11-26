@@ -10,11 +10,7 @@ import (
 
 var errOVSSelection = errors.New("set dataplane to ovs")
 
-// LoadOVS validates network configuration and requires OVS forwarding.
-//
-// Each reconciliation reads bridge, port, and OpenFlow settings from disk.
-//
-//	settings, err := networkload.LoadOVS(networkPath, schemaDir)
+// LoadOVS loads and validates the supplied network configuration and requires OVS settings.
 func LoadOVS(path, schemaDir string) (ovsconfig.Config, error) {
 	loaded, err := Load(path, schemaDir)
 	if err != nil {
