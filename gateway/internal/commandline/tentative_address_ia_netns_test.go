@@ -15,7 +15,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/networkload"
+	"goodkind.io/mwan/gateway/networkload"
 )
 
 const (
@@ -60,7 +60,7 @@ func runOwnedDHCPv6IATentativeAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 	bindStartupDirectory(t, networkDir, "/etc/mwan")
-	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
+	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "yangpub", "schema"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,8 +152,9 @@ func runOwnedDHCPv6IATentativeAddress(t *testing.T) {
 		setRuntimeNamespace(t, gateway)
 	}()
 	setRuntimeNamespace(t, gateway)
-	// Make the DHCPv6 reply arrive while the static address is tentative. Waiting for
-	// link-local detection would hide the condition under test.
+	// The DHCPv6 client needs a link-local address before duplicate address
+	// detection finishes on the static address. The test adds that link-local
+	// address without duplicate address detection.
 	for name, value := range map[string]string{
 		"dad_transmits": dhcpv6TentativeDADTransmits,
 		"addr_gen_mode": dhcpv6TentativeAddrGenNone,
@@ -210,7 +211,7 @@ func waitNPTEdgeBeforeLeasedAddressReady(t *testing.T, daemon *runtimeDaemon) {
 		leasedReady := leased && leasedFlags&unix.IFA_F_TENTATIVE == 0
 		if leasedReady {
 			t.Fatalf(
-				"IA_NA address %s finished duplicate address detection before NPT edge %s was installed: edge=%t; daemon: %s",
+				"The kernel finished duplicate address detection for IA_NA address %s before the test observed NPT edge %s: edge=%t; daemon: %s",
 				dhcpv6TentativeLeasedAddress,
 				dhcpv6TentativeEdge,
 				edged,

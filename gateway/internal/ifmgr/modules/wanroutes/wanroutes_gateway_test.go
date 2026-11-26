@@ -14,8 +14,8 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 // enterPrivateNetworkNamespace locks the test goroutine to its OS thread and

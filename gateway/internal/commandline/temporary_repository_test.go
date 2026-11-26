@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"testing"
 
-	"goodkind.io/mwan/internal/commandline/commandopts"
-	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/gateway/internal/commandline/commandopts"
+	"goodkind.io/mwan/gateway/internal/yangpub"
 )
 
 func withPrivateRepositoryForTest(

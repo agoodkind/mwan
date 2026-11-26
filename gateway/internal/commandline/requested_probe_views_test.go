@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/commandline/commandopts"
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/ifmgr/modules/npt"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/commandline/commandopts"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/npt"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 type debugProbeTestCall struct {

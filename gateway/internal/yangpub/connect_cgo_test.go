@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/gateway/internal/yangpub"
 )
 
 const (

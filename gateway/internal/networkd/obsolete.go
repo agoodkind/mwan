@@ -1,8 +1,8 @@
 package networkd
 
 import (
-	"goodkind.io/mwan/internal/connectionid"
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/connectionid"
+	"goodkind.io/mwan/gateway/interfaceintent"
 )
 
 // ObsoleteLinkFiles uses the complete render and pruning rules without changing the directory.

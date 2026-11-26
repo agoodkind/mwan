@@ -1,7 +1,7 @@
 # WANCONFIG model
 
 The gateway uses one interface list for provider, tunnel, internal, and
-management links. The [MWAN steering module](../../../gateway/internal/yangpub/schema/goodkind-mwan-steering.yang)
+management links. The [MWAN steering module](../../../gateway/yangpub/schema/goodkind-mwan-steering.yang)
 extends the IETF models with provider selection, interface ownership, link
 configuration, and operational state.
 

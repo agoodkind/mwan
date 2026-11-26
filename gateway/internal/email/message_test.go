@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/email"
-	"goodkind.io/mwan/internal/testsmtp"
+	"goodkind.io/mwan/gateway/internal/email"
+	"goodkind.io/mwan/gateway/internal/testsmtp"
 	"goodkind.io/send-email/mailer"
 )
 

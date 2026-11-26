@@ -17,7 +17,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/nptpolicy"
+	"goodkind.io/mwan/gateway/internal/nptpolicy"
 )
 
 func TestKernelTranslation(t *testing.T) {

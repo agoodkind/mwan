@@ -13,8 +13,8 @@ import (
 	"testing"
 
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/firewall"
-	"goodkind.io/mwan/internal/networkload"
+	"goodkind.io/mwan/gateway/firewall"
+	"goodkind.io/mwan/gateway/networkload"
 )
 
 const (
@@ -38,7 +38,7 @@ func TestCheckFirewallIsolatedKernel(t *testing.T) {
 	}
 	binary := BuildTestBinary(t)
 	fixture := filepath.Join("..", "..", "yang", "instances", "network-min.json")
-	schema := filepath.Join("..", "..", "internal", "yangpub", "schema")
+	schema := filepath.Join("..", "..", "yangpub", "schema")
 	check := exec.Command(binary, "debug", "check-firewall", fixture, schema)
 	output, err := check.CombinedOutput()
 	if err != nil {
@@ -95,7 +95,7 @@ func TestCheckFirewallForcedDSCPReadback(t *testing.T) {
 		t.Skip("network namespace test requires root")
 	}
 	binary := BuildTestBinary(t)
-	schema := filepath.Join("..", "..", "internal", "yangpub", "schema")
+	schema := filepath.Join("..", "..", "yangpub", "schema")
 	for _, dscp := range []int{forcedDSCPUnnamed, forcedDSCPNamed} {
 		fixture := forcedDSCPFixture(t, dscp)
 		output, err := exec.Command(
@@ -122,7 +122,7 @@ func TestCheckFirewallForcedDSCPReadback(t *testing.T) {
 }
 
 func runForcedDSCPMismatchChild(t *testing.T) {
-	schema := filepath.Join("..", "..", "internal", "yangpub", "schema")
+	schema := filepath.Join("..", "..", "yangpub", "schema")
 	loaded, err := networkload.Load(forcedDSCPFixture(t, forcedDSCPUnnamed), schema)
 	if err != nil {
 		t.Fatal(err)
@@ -195,7 +195,7 @@ func TestCheckFirewallUsesConfiguredServices(t *testing.T) {
 	}
 	binary := BuildTestBinary(t)
 	fixture := filepath.Join("..", "..", "yang", "instances", "network-lxc.json")
-	schema := filepath.Join("..", "..", "internal", "yangpub", "schema")
+	schema := filepath.Join("..", "..", "yangpub", "schema")
 	output, err := exec.Command(binary, "debug", "check-firewall", fixture, schema).CombinedOutput()
 	if err != nil {
 		t.Fatalf("public firewall check: %v: %s", err, output)

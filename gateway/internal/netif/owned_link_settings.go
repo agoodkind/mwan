@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/vishvananda/netlink"
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/interfaceintent"
 )
 
 // OwnedLinkPreparer applies per-link settings to a down owned link before the

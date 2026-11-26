@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 func TestSetRoutingRecordsTheFailedDependency(t *testing.T) {

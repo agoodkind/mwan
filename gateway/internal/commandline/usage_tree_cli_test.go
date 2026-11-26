@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/commandline"
-	"goodkind.io/mwan/internal/logging"
-	"goodkind.io/mwan/internal/version"
+	"goodkind.io/mwan/gateway/internal/commandline"
+	"goodkind.io/mwan/gateway/internal/logging"
+	"goodkind.io/mwan/gateway/version"
 )
 
 func runCLIProcess(t *testing.T, binary string, arguments ...string) (string, string, int) {
@@ -386,7 +386,7 @@ func TestCLIDebugCheckEmptyFilePathsPreserveRuntimeFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	schema := filepath.Join("..", "..", "internal", "yangpub", "schema")
+	schema := filepath.Join("..", "..", "yangpub", "schema")
 
 	for _, parent := range []string{"debug"} {
 		for _, test := range []struct {

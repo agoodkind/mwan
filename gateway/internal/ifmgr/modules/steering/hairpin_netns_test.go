@@ -18,8 +18,8 @@ import (
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/ifmgr/modules/npt/bpf"
-	"goodkind.io/mwan/internal/nptpolicy"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/npt/bpf"
+	"goodkind.io/mwan/gateway/internal/nptpolicy"
 )
 
 func TestHairpinPacketKeepsInternalRoute(t *testing.T) {

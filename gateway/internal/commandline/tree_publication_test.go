@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/connectionid"
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/ifmgr/modules/health"
-	"goodkind.io/mwan/internal/ifmgr/modules/npt"
-	"goodkind.io/mwan/internal/ifmgr/modules/wanroutes"
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/wanconfig"
+	"goodkind.io/mwan/gateway/connectionid"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/health"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/npt"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/wanroutes"
+	"goodkind.io/mwan/gateway/internal/wanconfig"
 )
 
 func wanconfigTestConnections() []interfaceintent.Connection {

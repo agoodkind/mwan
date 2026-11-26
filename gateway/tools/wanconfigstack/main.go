@@ -14,7 +14,7 @@ import (
 	"runtime"
 	"strings"
 
-	"goodkind.io/mwan/internal/stackspec"
+	"goodkind.io/mwan/gateway/stackspec"
 )
 
 type packaging int

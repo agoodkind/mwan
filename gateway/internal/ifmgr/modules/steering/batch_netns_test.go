@@ -17,7 +17,7 @@ import (
 
 	"github.com/vishvananda/netns"
 
-	"goodkind.io/mwan/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
 )
 
 const (

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/interfaceintent"
 )
 
 func TestConfigItemsPublishesMWANOwnedDHCPv6RequestModes(t *testing.T) {

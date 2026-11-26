@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/forwardingready"
+	"goodkind.io/mwan/gateway/internal/forwardingready"
 )
 
 const testTimeout = time.Second

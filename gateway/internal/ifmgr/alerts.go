@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/gateway/internal/notify"
 )
 
 // AlertManager is the ifmgr-facing adapter over the notify package.

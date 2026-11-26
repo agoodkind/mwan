@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"goodkind.io/mwan/internal/networkd"
+	"goodkind.io/mwan/gateway/internal/networkd"
 )
 
 const systemBusAddressEnv = "DBUS_SYSTEM_BUS_ADDRESS"

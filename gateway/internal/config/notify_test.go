@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/notify"
 )
 
 const (

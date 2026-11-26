@@ -9,9 +9,9 @@ import (
 	"net/netip"
 	"slices"
 
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/networkjson"
-	"goodkind.io/mwan/internal/networkload"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/networkjson"
+	"goodkind.io/mwan/gateway/networkload"
 )
 
 const (

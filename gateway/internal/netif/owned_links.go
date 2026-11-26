@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/vishvananda/netlink"
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/interfaceintent"
 )
 
 const ownedAliasPrefix = "mwan-link:"

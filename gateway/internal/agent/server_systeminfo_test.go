@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"context"
-	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
+	mwanv1 "goodkind.io/mwan/gateway/gen/mwan/v1"
 )
 
 func TestGetSystemInfo_LiveHost(t *testing.T) {

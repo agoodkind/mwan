@@ -10,9 +10,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"goodkind.io/mwan/internal/networkjson"
-	"goodkind.io/mwan/internal/networkload"
-	"goodkind.io/mwan/internal/yangschema"
+	"goodkind.io/mwan/gateway/networkjson"
+	"goodkind.io/mwan/gateway/networkload"
+	"goodkind.io/mwan/gateway/yangschema"
 )
 
 const (

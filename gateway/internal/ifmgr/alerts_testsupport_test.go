@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"time"
 
-	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/gateway/internal/notify"
 )
 
 // AlertConfig is the test-only entry point for constructing an AlertManager

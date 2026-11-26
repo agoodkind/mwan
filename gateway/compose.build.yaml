@@ -36,7 +36,7 @@ x-builder: &builder
     RELEASE_BINS: mwan:./cmd/mwan:cgo=1,platforms=linux/amd64,platforms=linux/arm64
     GO_MK_API_REPO: ${GO_MK_API_REPO:-agoodkind/go-makefile}
     GO_MK_API_REF: ${GO_MK_API_REF:-main}
-    YANG_SCHEMA_DIR: ${YANG_SCHEMA_DIR:-internal/yangpub/schema}
+    YANG_SCHEMA_DIR: ${YANG_SCHEMA_DIR:-yangpub/schema}
     YANG_DIR: ${YANG_DIR:-yang}
     YANGLINT: ${YANGLINT:-yanglint}
   volumes:

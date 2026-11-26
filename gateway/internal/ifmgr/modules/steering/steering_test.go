@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/notify"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/notify"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 // fakeApplier records the rule set the module hands it, so a test can assert on

@@ -11,10 +11,10 @@ import (
 
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
 
-	"goodkind.io/mwan/internal/commandline/commandopts"
-	"goodkind.io/mwan/internal/installfile"
-	"goodkind.io/mwan/internal/installspec"
-	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/gateway/installspec"
+	"goodkind.io/mwan/gateway/internal/commandline/commandopts"
+	"goodkind.io/mwan/gateway/internal/installfile"
+	"goodkind.io/mwan/gateway/internal/yangpub"
 )
 
 const (

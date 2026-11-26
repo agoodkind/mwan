@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"goodkind.io/mwan/internal/configstate"
+	"goodkind.io/mwan/gateway/internal/configstate"
 )
 
 func TestReadHashesConfigurationAndManifest(t *testing.T) {

@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
-	"goodkind.io/mwan/internal/configstate"
+	mwanv1 "goodkind.io/mwan/gateway/gen/mwan/v1"
+	"goodkind.io/mwan/gateway/internal/configstate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"

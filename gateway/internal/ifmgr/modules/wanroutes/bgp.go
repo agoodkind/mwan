@@ -1,6 +1,6 @@
 package wanroutes
 
-import "goodkind.io/mwan/internal/bgp"
+import "goodkind.io/mwan/gateway/internal/bgp"
 
 const (
 	reasonBGPNotEstablished  = "bgp session not established"

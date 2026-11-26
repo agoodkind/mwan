@@ -18,8 +18,8 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/connectionid"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/connectionid"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 func TestOwnedMappedDaemonRuntime(t *testing.T) {
@@ -54,7 +54,7 @@ func runOwnedMappedDaemonRuntime(t *testing.T) {
 	if err := os.MkdirAll(networkDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
+	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "yangpub", "schema"))
 	if err != nil {
 		t.Fatal(err)
 	}

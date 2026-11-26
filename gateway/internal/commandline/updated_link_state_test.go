@@ -4,9 +4,9 @@ import (
 	"reflect"
 	"testing"
 
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/networkd"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/networkd"
 )
 
 func TestRenamedLinksNamesALinkWhoseNameTheFileDoesNotAsk(t *testing.T) {

@@ -3,7 +3,7 @@ package config
 import (
 	"time"
 
-	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/gateway/internal/notify"
 )
 
 // NotifyConfig uses IfMgr.Alerts.RepeatEvery when Notify.RepeatEvery is

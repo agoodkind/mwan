@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"goodkind.io/mwan/internal/ifmgr/modules/health"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/health"
 )
 
 // Run serializes records while independent WAN workers use their configured intervals.

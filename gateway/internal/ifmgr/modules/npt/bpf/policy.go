@@ -2,7 +2,7 @@
 
 package bpf
 
-import "goodkind.io/mwan/internal/nptpolicy"
+import "goodkind.io/mwan/gateway/internal/nptpolicy"
 
 const (
 	// HairpinMask selects the packet mark bits reserved for translated hairpin traffic.

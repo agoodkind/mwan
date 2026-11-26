@@ -26,9 +26,9 @@ import (
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/clock"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 const (

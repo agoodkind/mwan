@@ -8,7 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"goodkind.io/mwan/internal/stackspec"
+	"goodkind.io/mwan/gateway/stackspec"
 	"goodkind.io/mwan/provider/internal/release"
 )
 

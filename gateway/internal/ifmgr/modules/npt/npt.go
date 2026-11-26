@@ -16,14 +16,14 @@ import (
 
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/ifmgr/modules/npt/bpf"
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/nptpolicy"
-	"goodkind.io/mwan/internal/pd"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/clock"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/npt/bpf"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/nptpolicy"
+	"goodkind.io/mwan/gateway/internal/pd"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 const (

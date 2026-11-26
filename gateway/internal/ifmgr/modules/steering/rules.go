@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 // hashMode selects how a new connection is assigned to a provider of the active

@@ -1,6 +1,6 @@
 package ifmgr
 
-import "goodkind.io/mwan/internal/connectionid"
+import "goodkind.io/mwan/gateway/connectionid"
 
 // WANRef identifies one connection. Name is its provider display label.
 // ID selects state, routing, translation, and health records.

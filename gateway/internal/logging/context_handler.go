@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"goodkind.io/mwan/internal/tracing"
+	"goodkind.io/mwan/gateway/internal/tracing"
 )
 
 // ContextHandler copies the trace attributes held on a context onto every

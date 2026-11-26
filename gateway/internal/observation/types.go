@@ -4,7 +4,7 @@ import (
 	"slices"
 	"time"
 
-	"goodkind.io/mwan/internal/observation/contract"
+	"goodkind.io/mwan/gateway/internal/observation/contract"
 )
 
 // Operation selects the production probe or provider observation.

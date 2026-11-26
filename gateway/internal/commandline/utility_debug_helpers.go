@@ -7,7 +7,7 @@ import (
 	"net/netip"
 	"sort"
 
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/gateway/internal/config"
 )
 
 var (

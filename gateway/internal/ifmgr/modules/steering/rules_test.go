@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 // membersForTest is three providers in two tiers with equal weights: the shape

@@ -13,9 +13,9 @@ import (
 	"testing"
 
 	"github.com/vishvananda/netns"
-	"goodkind.io/mwan/internal/firewall"
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/firewall"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 func TestReconcileRepairsDeletedRulesAndRetriesFailedRefresh(t *testing.T) {

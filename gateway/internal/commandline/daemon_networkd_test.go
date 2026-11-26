@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/connectionid"
-	"goodkind.io/mwan/internal/networkd"
-	"goodkind.io/mwan/internal/networkload"
+	"goodkind.io/mwan/gateway/connectionid"
+	"goodkind.io/mwan/gateway/internal/networkd"
+	"goodkind.io/mwan/gateway/networkload"
 )
 
 func runCheckNetworkdCommand(t *testing.T, arguments ...string) (int, string) {

@@ -9,9 +9,9 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/bgp"
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/networkload"
+	"goodkind.io/mwan/gateway/internal/bgp"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/networkload"
 )
 
 const staleSweepReconcileInterval = time.Minute

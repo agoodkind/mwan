@@ -1242,7 +1242,7 @@ const file_mwan_v1_mwan_proto_rawDesc = "" +
 	"\vWatchEvents\x12\x1b.mwan.v1.WatchEventsRequest\x1a\x13.mwan.v1.AgentEvent0\x01\x12K\n" +
 	"\fGetBGPStatus\x12\x1c.mwan.v1.GetBGPStatusRequest\x1a\x1d.mwan.v1.GetBGPStatusResponse\x12Q\n" +
 	"\x0eAnnounceRoutes\x12\x1e.mwan.v1.AnnounceRoutesRequest\x1a\x1f.mwan.v1.AnnounceRoutesResponse\x12Q\n" +
-	"\x0eWithdrawRoutes\x12\x1e.mwan.v1.WithdrawRoutesRequest\x1a\x1f.mwan.v1.WithdrawRoutesResponseB%Z#goodkind.io/mwan/gen/mwan/v1;mwanv1b\x06proto3"
+	"\x0eWithdrawRoutes\x12\x1e.mwan.v1.WithdrawRoutesRequest\x1a\x1f.mwan.v1.WithdrawRoutesResponseB-Z+goodkind.io/mwan/gateway/gen/mwan/v1;mwanv1b\x06proto3"
 
 var (
 	file_mwan_v1_mwan_proto_rawDescOnce sync.Once

@@ -4,9 +4,9 @@ package main
 import (
 	"os"
 
-	"goodkind.io/mwan/internal/commandline"
-	"goodkind.io/mwan/internal/logging"
-	"goodkind.io/mwan/internal/version"
+	"goodkind.io/mwan/gateway/internal/commandline"
+	"goodkind.io/mwan/gateway/internal/logging"
+	"goodkind.io/mwan/gateway/version"
 )
 
 func main() {

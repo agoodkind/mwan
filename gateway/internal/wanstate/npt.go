@@ -7,7 +7,7 @@ import (
 	"maps"
 	"slices"
 
-	"goodkind.io/mwan/internal/nptpolicy"
+	"goodkind.io/mwan/gateway/internal/nptpolicy"
 )
 
 // BeginNPTChange keeps registration stable until the returned completion runs.

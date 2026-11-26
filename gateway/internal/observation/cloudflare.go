@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"goodkind.io/mwan/internal/observation/contract"
+	"goodkind.io/mwan/gateway/internal/observation/contract"
 
 	"github.com/cloudflare/cloudflare-go/v7"
 	"github.com/cloudflare/cloudflare-go/v7/load_balancers"

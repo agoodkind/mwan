@@ -1,6 +1,6 @@
 package wanroutes
 
-import "goodkind.io/mwan/internal/wanstate"
+import "goodkind.io/mwan/gateway/internal/wanstate"
 
 const (
 	dependencyConfiguration = "configuration"

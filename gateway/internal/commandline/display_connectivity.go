@@ -7,8 +7,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"goodkind.io/mwan/internal/commandline/commandopts"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/commandline/commandopts"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 const (

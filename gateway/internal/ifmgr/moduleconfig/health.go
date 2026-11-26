@@ -6,9 +6,9 @@ import (
 	"net/netip"
 	"time"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/ifmgr/modules/health"
-	"goodkind.io/mwan/internal/observation"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/health"
+	"goodkind.io/mwan/gateway/internal/observation"
 )
 
 // HealthConfig adds daemon observation and state settings to the probe policy.

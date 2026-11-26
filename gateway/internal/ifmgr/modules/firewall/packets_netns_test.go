@@ -21,8 +21,8 @@ import (
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/firewall"
-	"goodkind.io/mwan/internal/ifmgr"
+	"goodkind.io/mwan/gateway/firewall"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
 )
 
 type packetPeer struct {

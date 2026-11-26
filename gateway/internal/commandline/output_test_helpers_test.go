@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/gateway/internal/config"
 )
 
 const (

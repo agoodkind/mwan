@@ -6,9 +6,9 @@ import (
 	"net/netip"
 	"slices"
 
-	"goodkind.io/mwan/internal/bgp"
-	"goodkind.io/mwan/internal/connectionid"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/connectionid"
+	"goodkind.io/mwan/gateway/internal/bgp"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 const readinessReady = "ready"

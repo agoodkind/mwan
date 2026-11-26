@@ -7,7 +7,7 @@ import (
 	"slices"
 	"time"
 
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 var errDistributionRequiresLocalObservation = errors.New(

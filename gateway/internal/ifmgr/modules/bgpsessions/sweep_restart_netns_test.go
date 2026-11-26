@@ -16,10 +16,10 @@ import (
 
 	"github.com/vishvananda/netlink"
 
-	"goodkind.io/mwan/internal/bgp"
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/ifmgr/modules/bgpsessions"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/bgp"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/bgpsessions"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 const (

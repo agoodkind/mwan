@@ -12,13 +12,13 @@ import (
 	"sync"
 	"time"
 
-	internalclock "goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/forwardingready"
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/notify"
-	"goodkind.io/mwan/internal/tracing"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	internalclock "goodkind.io/mwan/gateway/internal/clock"
+	"goodkind.io/mwan/gateway/internal/forwardingready"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/notify"
+	"goodkind.io/mwan/gateway/internal/tracing"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 // Daemon is the long-lived ifmgr process. One Daemon serves one role on

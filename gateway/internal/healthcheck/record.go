@@ -3,10 +3,10 @@ package healthcheck
 import (
 	"time"
 
-	"goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/ifmgr/modules/health"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/clock"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/health"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 // Options shares daemon provider policy without initializing daemon state.

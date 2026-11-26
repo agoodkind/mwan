@@ -8,17 +8,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"goodkind.io/mwan/internal/commandline/agentcmd"
-	"goodkind.io/mwan/internal/commandline/commandui"
-	"goodkind.io/mwan/internal/commandline/debugcmd"
-	"goodkind.io/mwan/internal/commandline/healthcmd"
-	"goodkind.io/mwan/internal/commandline/ifmgrcmd"
-	"goodkind.io/mwan/internal/commandline/installcmd"
-	"goodkind.io/mwan/internal/commandline/pdcmd"
-	"goodkind.io/mwan/internal/commandline/selftestcmd"
-	"goodkind.io/mwan/internal/commandline/statuscmd"
-	"goodkind.io/mwan/internal/commandline/versioncmd"
-	"goodkind.io/mwan/internal/version"
+	"goodkind.io/mwan/gateway/internal/commandline/agentcmd"
+	"goodkind.io/mwan/gateway/internal/commandline/commandui"
+	"goodkind.io/mwan/gateway/internal/commandline/debugcmd"
+	"goodkind.io/mwan/gateway/internal/commandline/healthcmd"
+	"goodkind.io/mwan/gateway/internal/commandline/ifmgrcmd"
+	"goodkind.io/mwan/gateway/internal/commandline/installcmd"
+	"goodkind.io/mwan/gateway/internal/commandline/pdcmd"
+	"goodkind.io/mwan/gateway/internal/commandline/selftestcmd"
+	"goodkind.io/mwan/gateway/internal/commandline/statuscmd"
+	"goodkind.io/mwan/gateway/internal/commandline/versioncmd"
+	"goodkind.io/mwan/gateway/version"
 )
 
 type commandName string

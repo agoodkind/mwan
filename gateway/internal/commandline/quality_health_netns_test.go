@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/vishvananda/netlink"
-	"goodkind.io/mwan/internal/healthcheck"
+	"goodkind.io/mwan/gateway/internal/healthcheck"
 )
 
 type healthFixture struct {
@@ -80,7 +80,7 @@ func newHealthFixture(t *testing.T) *healthFixture {
 		t.Fatal(err)
 	}
 	bindDebugProbePath(t, root, "/etc/mwan")
-	schema, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
+	schema, err := filepath.Abs(filepath.Join("..", "..", "yangpub", "schema"))
 	if err != nil {
 		t.Fatal(err)
 	}

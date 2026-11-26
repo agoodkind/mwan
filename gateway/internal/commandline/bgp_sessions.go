@@ -1,8 +1,8 @@
 package commandline
 
 import (
-	"goodkind.io/mwan/internal/bgp"
-	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/gateway/internal/bgp"
+	"goodkind.io/mwan/gateway/internal/yangpub"
 )
 
 func bgpSessionLiveItems(name string, sessions []bgp.SessionState) []yangpub.Item {

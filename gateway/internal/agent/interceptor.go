@@ -6,7 +6,7 @@ import (
 	"path"
 	"strings"
 
-	"goodkind.io/mwan/internal/tracing"
+	"goodkind.io/mwan/gateway/internal/tracing"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"

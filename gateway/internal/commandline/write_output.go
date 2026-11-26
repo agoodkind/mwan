@@ -8,12 +8,12 @@ import (
 	"sort"
 	"text/tabwriter"
 
-	"goodkind.io/mwan/internal/healthcheck"
-	"goodkind.io/mwan/internal/ifmgr/modules/npt"
-	"goodkind.io/mwan/internal/logging"
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/statuspush"
-	"goodkind.io/mwan/internal/version"
+	"goodkind.io/mwan/gateway/internal/healthcheck"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/npt"
+	"goodkind.io/mwan/gateway/internal/logging"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/statuspush"
+	"goodkind.io/mwan/gateway/version"
 )
 
 const (

@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 func TestNPTv6HairpinAliasReconcilesPrefixes(t *testing.T) {

@@ -33,7 +33,7 @@ directory and mode `0600` on lease records. Interrupt a record replacement and c
 that recovery reads a complete record. Reject corrupt or incompatible data. Check that
 an uncertain clock or a new boot does not validate the saved lease without a server
 reply. Inspect the configured state paths and boot dependencies in the
-[installed systemd unit](../../../gateway/internal/installspec/mwan-ifmgr@.service).
+[installed systemd unit](../../../gateway/installspec/mwan-ifmgr@.service).
 Verify writable storage and the recorded deadlines separately from the startup result.
 Check translated downstream traffic in both usable address families after recovery.
 

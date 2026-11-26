@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"strconv"
 
-	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/gateway/internal/yangpub"
 )
 
 func unmarshalObject(

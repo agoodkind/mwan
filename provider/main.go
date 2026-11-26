@@ -10,7 +10,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 
-	"goodkind.io/mwan/internal/version"
+	"goodkind.io/mwan/gateway/version"
 	"goodkind.io/mwan/provider/internal/provider"
 )
 

@@ -8,7 +8,7 @@ import (
 	"slices"
 	"testing"
 
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/gateway/internal/config"
 )
 
 // recordingPublisher captures the one ReplaceConfig call Publish makes.

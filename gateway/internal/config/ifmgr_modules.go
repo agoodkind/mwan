@@ -6,7 +6,7 @@ import (
 	"net/netip"
 	"time"
 
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/interfaceintent"
 )
 
 // IfMgrModulesSection is the explicit TOML schema for [ifmgr.modules].

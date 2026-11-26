@@ -7,10 +7,10 @@ daemon validates configuration, identifies kernel devices, and reports runtime s
 
 Use the production loader and libyang. From the repository root, validate the
 [minimal network example](../../../gateway/yang/instances/network-min.json) with the
-[current YANG models](../../../gateway/internal/yangpub/schema).
+[current YANG models](../../../gateway/yangpub/schema).
 
 ```sh
-mwan debug check-network gateway/yang/instances/network-min.json gateway/internal/yangpub/schema
+mwan debug check-network gateway/yang/instances/network-min.json gateway/yangpub/schema
 ```
 
 1. Check physical parents, providers, internal links, and management links. Verify that

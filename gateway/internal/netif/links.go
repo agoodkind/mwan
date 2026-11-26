@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/vishvananda/netlink"
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/interfaceintent"
 )
 
 // sysClassNet is where the kernel exposes each link's device, whose driver

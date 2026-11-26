@@ -13,7 +13,7 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/nptpolicy"
+	"goodkind.io/mwan/gateway/internal/nptpolicy"
 )
 
 type packetHeader string

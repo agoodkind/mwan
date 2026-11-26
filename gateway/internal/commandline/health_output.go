@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"goodkind.io/mwan/internal/healthcheck"
+	"goodkind.io/mwan/gateway/internal/healthcheck"
 )
 
 func writeHealthText(output io.Writer, logger *slog.Logger, records []healthcheck.Record) error {

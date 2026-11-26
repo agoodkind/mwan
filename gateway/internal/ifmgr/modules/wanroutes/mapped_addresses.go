@@ -4,7 +4,7 @@ import (
 	"net/netip"
 	"slices"
 
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/interfaceintent"
 )
 
 // Callers must lock the module before address reconciliation.

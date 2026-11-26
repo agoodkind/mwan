@@ -24,11 +24,11 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/commandline/commandopts"
-	"goodkind.io/mwan/internal/forwardingready"
-	"goodkind.io/mwan/internal/observation"
-	"goodkind.io/mwan/internal/resolved"
-	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/gateway/internal/commandline/commandopts"
+	"goodkind.io/mwan/gateway/internal/forwardingready"
+	"goodkind.io/mwan/gateway/internal/observation"
+	"goodkind.io/mwan/gateway/internal/resolved"
+	"goodkind.io/mwan/gateway/internal/yangpub"
 )
 
 func TestOwnedRolesDaemonRuntime(t *testing.T) {
@@ -73,7 +73,7 @@ func runOwnedRolesDaemonRuntime(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
+	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "yangpub", "schema"))
 	if err != nil {
 		t.Fatal(err)
 	}

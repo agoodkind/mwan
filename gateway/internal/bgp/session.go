@@ -13,8 +13,8 @@ import (
 	bgppkt "github.com/osrg/gobgp/v4/pkg/packet/bgp"
 	"github.com/osrg/gobgp/v4/pkg/server"
 
-	"goodkind.io/mwan/internal/bgpsession"
-	"goodkind.io/mwan/internal/clock"
+	"goodkind.io/mwan/gateway/internal/bgpsession"
+	"goodkind.io/mwan/gateway/internal/clock"
 )
 
 // sessionListenPort disables the GoBGP listener because a session initiates

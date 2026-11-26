@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
 )
 
 // Build returns settings for each module selected by a supported role.

@@ -59,7 +59,7 @@ func runOwnedLinksDaemonRuntime(t *testing.T) {
 	if err := os.MkdirAll(networkDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
+	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "yangpub", "schema"))
 	if err != nil {
 		t.Fatal(err)
 	}

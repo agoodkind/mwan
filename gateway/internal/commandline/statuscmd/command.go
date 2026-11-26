@@ -6,10 +6,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"goodkind.io/mwan/internal/commandline/commandconfig"
-	"goodkind.io/mwan/internal/commandline/commandopts"
-	"goodkind.io/mwan/internal/commandline/commandui"
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/gateway/internal/commandline/commandconfig"
+	"goodkind.io/mwan/gateway/internal/commandline/commandopts"
+	"goodkind.io/mwan/gateway/internal/commandline/commandui"
+	"goodkind.io/mwan/gateway/internal/config"
 )
 
 // New builds the gateway status inspection command.

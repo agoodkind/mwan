@@ -15,7 +15,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/networkload"
+	"goodkind.io/mwan/gateway/networkload"
 )
 
 const (
@@ -57,7 +57,7 @@ func runOwnedDHCPv6IAShortAddressExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 	bindStartupDirectory(t, networkDir, "/etc/mwan")
-	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
+	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "yangpub", "schema"))
 	if err != nil {
 		t.Fatal(err)
 	}

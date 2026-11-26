@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"net/netip"
 
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 func endpointDestination(wan WAN) string {

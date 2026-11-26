@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 // EnsureTunnelEndpointRoute also fences callers outside WAN reconciliation.

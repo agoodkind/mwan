@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 // BaseModule stores shared ifmgr module state and supplies default no-op hooks.

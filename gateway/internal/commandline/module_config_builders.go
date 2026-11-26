@@ -5,10 +5,10 @@ import (
 	"log/slog"
 	"net/netip"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/ifmgr/moduleconfig"
-	"goodkind.io/mwan/internal/ifmgr/modules/health"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/ifmgr/moduleconfig"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/health"
 )
 
 func buildIfMgrModuleConfigs(

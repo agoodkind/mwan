@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 func TestBaseModuleStoresSharedModuleState(t *testing.T) {

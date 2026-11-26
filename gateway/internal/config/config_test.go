@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/gateway/internal/config"
 )
 
 func writeConfig(t *testing.T, text string) string {

@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"net/netip"
 
-	"goodkind.io/mwan/internal/bgp"
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/gateway/internal/bgp"
+	"goodkind.io/mwan/gateway/internal/config"
 )
 
 func newBGPSpeaker(cfg *config.Config, log *slog.Logger) (*bgp.Speaker, error) {

@@ -10,11 +10,11 @@ import (
 	"strconv"
 	"strings"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/connectionid"
-	"goodkind.io/mwan/internal/firewall"
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/observation/contract"
+	"goodkind.io/mwan/gateway/connectionid"
+	"goodkind.io/mwan/gateway/firewall"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/observation/contract"
 )
 
 // MarshalObservationItems converts a configured check into operational items.

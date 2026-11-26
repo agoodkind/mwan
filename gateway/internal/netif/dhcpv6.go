@@ -17,7 +17,7 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv6"
 	"github.com/insomniacslk/dhcp/dhcpv6/nclient6"
 	"github.com/insomniacslk/dhcp/iana"
-	internalclock "goodkind.io/mwan/internal/clock"
+	internalclock "goodkind.io/mwan/gateway/internal/clock"
 )
 
 // DHCPv6PDConfig identifies the DHCPv6 associations on one link.

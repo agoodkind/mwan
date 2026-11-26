@@ -9,13 +9,13 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/ifmgr"
-	health "goodkind.io/mwan/internal/ifmgr/modules/health"
-	npt "goodkind.io/mwan/internal/ifmgr/modules/npt"
-	steering "goodkind.io/mwan/internal/ifmgr/modules/steering"
-	wanroutes "goodkind.io/mwan/internal/ifmgr/modules/wanroutes"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	health "goodkind.io/mwan/gateway/internal/ifmgr/modules/health"
+	npt "goodkind.io/mwan/gateway/internal/ifmgr/modules/npt"
+	steering "goodkind.io/mwan/gateway/internal/ifmgr/modules/steering"
+	wanroutes "goodkind.io/mwan/gateway/internal/ifmgr/modules/wanroutes"
+	"goodkind.io/mwan/gateway/networkjson"
 )
 
 // sharedWANForTest supplies providers and shared network settings to builder tests.

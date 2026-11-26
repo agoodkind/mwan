@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/logging"
+	"goodkind.io/mwan/gateway/internal/logging"
 )
 
 const (

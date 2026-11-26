@@ -4,9 +4,9 @@ package agentcmd
 import (
 	"github.com/spf13/cobra"
 
-	"goodkind.io/mwan/internal/agent"
-	"goodkind.io/mwan/internal/commandline/commandconfig"
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/gateway/internal/agent"
+	"goodkind.io/mwan/gateway/internal/commandline/commandconfig"
+	"goodkind.io/mwan/gateway/internal/config"
 )
 
 // New builds the gateway API and BGP speaker command.

@@ -14,7 +14,7 @@ package yangpub
 import (
 	"context"
 
-	"goodkind.io/mwan/internal/installspec"
+	"goodkind.io/mwan/gateway/installspec"
 )
 
 // Datastore names a sysrepo datastore a publish targets.

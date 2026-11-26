@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	internalclock "goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/notify"
-	"goodkind.io/mwan/internal/observation/contract"
+	internalclock "goodkind.io/mwan/gateway/internal/clock"
+	"goodkind.io/mwan/gateway/internal/notify"
+	"goodkind.io/mwan/gateway/internal/observation/contract"
 )
 
 const continuousSettingsLimit = 1024 * 1024

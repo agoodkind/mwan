@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"goodkind.io/mwan/internal/nptpolicy"
+	"goodkind.io/mwan/gateway/internal/nptpolicy"
 )
 
 func (m *Module) beginPolicyChange(

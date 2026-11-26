@@ -3,8 +3,8 @@ package moduleconfig
 import (
 	"net/netip"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/config"
 )
 
 func mappedExternals(translation *config.IPv4Translation) []netip.Addr {

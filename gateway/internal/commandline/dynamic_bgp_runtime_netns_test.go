@@ -15,8 +15,8 @@ import (
 
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/commandline/commandopts"
-	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/gateway/internal/commandline/commandopts"
+	"goodkind.io/mwan/gateway/internal/yangpub"
 )
 
 const bgpRuntimeStateFile = "bgp-sessions.json"

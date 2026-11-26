@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/networkjson"
 )
 
 func TestCheckOwnedAddressesReportsPresentAndMissingMappings(t *testing.T) {

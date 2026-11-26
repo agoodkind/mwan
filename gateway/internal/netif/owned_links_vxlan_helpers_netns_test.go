@@ -12,8 +12,8 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
-	clockpkg "goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	clockpkg "goodkind.io/mwan/gateway/internal/clock"
 )
 
 const (

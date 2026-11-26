@@ -11,7 +11,7 @@ import (
 
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/commandline"
+	"goodkind.io/mwan/gateway/internal/commandline"
 )
 
 func TestCLIConnectivityAbsentPrefixSystemd(t *testing.T) {

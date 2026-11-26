@@ -15,8 +15,8 @@ import (
 
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
-	"goodkind.io/mwan/internal/forwardingready"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/forwardingready"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 const (

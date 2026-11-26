@@ -137,7 +137,7 @@ func installDebugProbeNetwork(t *testing.T) string {
 		t.Fatal(err)
 	}
 	bindDebugProbePath(t, root, "/etc/mwan")
-	schema, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
+	schema, err := filepath.Abs(filepath.Join("..", "..", "yangpub", "schema"))
 	if err != nil {
 		t.Fatal(err)
 	}

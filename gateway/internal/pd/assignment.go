@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"net/netip"
 
-	"goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/clock"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 // AssignmentSource selects negotiated leases for owned links and the legacy

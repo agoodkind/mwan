@@ -9,9 +9,9 @@ import (
 
 	"github.com/google/nftables"
 	"github.com/vishvananda/netlink"
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/ifmgr/modules/npt/bpf"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/npt/bpf"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 func edgeLinkCurrent(record ifmgr.NPTEdgeRecord) bool {

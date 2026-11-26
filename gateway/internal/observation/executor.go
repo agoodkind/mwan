@@ -17,9 +17,9 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/clock"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 var errProbeObserverMustBeLocal = errors.New("probe observer must be local")

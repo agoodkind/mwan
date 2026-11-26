@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/bgp"
+	"goodkind.io/mwan/gateway/internal/bgp"
 )
 
 func TestSessionsWithSameASNsReportIndependentState(t *testing.T) {

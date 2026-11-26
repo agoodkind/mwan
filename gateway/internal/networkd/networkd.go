@@ -14,9 +14,9 @@ import (
 
 	"github.com/coreos/go-systemd/v22/unit"
 
-	"goodkind.io/mwan/internal/connectionid"
-	"goodkind.io/mwan/internal/installfile"
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/connectionid"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/installfile"
 )
 
 // Marker opens every file this package writes. Pruning removes a file only

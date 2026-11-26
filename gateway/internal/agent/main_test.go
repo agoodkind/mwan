@@ -6,7 +6,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/gateway/internal/config"
 )
 
 func TestTablesFromConfig(t *testing.T) {

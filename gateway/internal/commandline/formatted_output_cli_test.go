@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 func TestCLIDebugPingJSON(t *testing.T) {

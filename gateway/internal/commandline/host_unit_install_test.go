@@ -12,8 +12,8 @@ import (
 
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
 
-	"goodkind.io/mwan/internal/installspec"
-	"goodkind.io/mwan/internal/yangpub/schema"
+	"goodkind.io/mwan/gateway/installspec"
+	"goodkind.io/mwan/gateway/yangpub/schema"
 )
 
 type recordingEnabler struct {
@@ -42,7 +42,7 @@ func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
 		"mwan-agent.service",
 		"mwan-ifmgr@.service",
 	}
-	const wantChanged = 7
+	const wantChanged = 6
 	if len(outcome.changed) != wantChanged {
 		t.Fatalf("changed = %v, want %d files", outcome.changed, wantChanged)
 	}
@@ -441,11 +441,10 @@ func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 	runInstallChild(t, root)
 
 	wantFiles := map[string]string{
-		"/etc/systemd/system/rousette.service":                         "rousette.service",
-		"/etc/systemd/system/nghttpx-wanconfig.service":                "nghttpx-wanconfig.service",
-		"/etc/systemd/system/mwan-ifmgr@wan.service.d/firewall.conf":   "mwan-ifmgr-wan.conf",
-		"/etc/systemd/system/systemd-networkd.service.d/override.conf": "systemd-networkd-override.conf",
-		"/etc/sysctl.d/99-quiet-console.conf":                          "99-quiet-console.conf",
+		"/etc/systemd/system/rousette.service":                       "rousette.service",
+		"/etc/systemd/system/nghttpx-wanconfig.service":              "nghttpx-wanconfig.service",
+		"/etc/systemd/system/mwan-ifmgr@wan.service.d/firewall.conf": "mwan-ifmgr-wan.conf",
+		"/etc/sysctl.d/99-quiet-console.conf":                        "99-quiet-console.conf",
 	}
 	for hostPath, embeddedName := range wantFiles {
 		path := filepath.Join(root, hostPath)
