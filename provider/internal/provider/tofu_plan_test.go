@@ -916,13 +916,10 @@ func newTofuWorkspace(t *testing.T, moduleFile string) *tofuWorkspace {
 	t.Helper()
 	binary := os.Getenv("TOFU")
 	if binary == "" {
-		t.Fatal("TOFU must contain the path of the OpenTofu binary; run make test-tofu-plan")
+		t.Fatal("Set TOFU to the path of the OpenTofu executable.")
 	}
-	// OpenTofu needs dev_overrides to load the local provider build.
 	if os.Getenv("TF_CLI_CONFIG_FILE") == "" {
-		t.Fatal(
-			"TF_CLI_CONFIG_FILE must contain the dev_overrides configuration; run make test-tofu-plan",
-		)
+		t.Fatal("Set TF_CLI_CONFIG_FILE to the test provider CLI configuration.")
 	}
 	dir := t.TempDir()
 	module, err := os.ReadFile(filepath.Join(tofuFixtureDir, moduleFile))

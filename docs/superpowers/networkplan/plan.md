@@ -24,7 +24,7 @@ configured changes under stable identities.
 2. Compare configured policy rules with the shared gateway derivation. Check
    that runtime selectors remain null when their values depend on leases,
    translation state, or WAN health.
-3. Run `make -C provider test-tofu-plan`. Exercise route and rule additions,
+3. Exercise route and rule additions,
    removals, and field changes. Check that mutable fields update existing
    keys, and that reordering rules changes only the chain order when the
    rule identities stay the same.
@@ -43,14 +43,7 @@ configured changes under stable identities.
 2. Build provider packages on each native release platform. Inspect the
    library dependencies of each artifact.
 3. Test the packages in native runtime environments without a C compiler or
-   separately installed libyang and PCRE2. Place a `checksums.txt` file beside
-   each package archive. Provide the absolute path of each package in
-   `PROVIDER_PACKAGE` and the absolute path of the OpenTofu executable in
-   `TOFU`.
-
-   ```sh
-   make -C provider test-release-package PROVIDER_PACKAGE="$PROVIDER_PACKAGE" TOFU="$TOFU"
-   ```
+   separately installed libyang and PCRE2.
 
 4. Check that the package works after relocation and that its archive
    metadata matches the artifact under test. Verify `tofu init` and
