@@ -178,7 +178,13 @@ func runOwnedDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected b
 	setRuntimeNamespace(t, provider.namespace)
 	const replacementLeaseSeconds = 8
 	service = startDHCPv4RuntimeKea(
-		t, root, false, replacementLeaseSeconds, "198.51.100.2", "198.51.100.100", false,
+		t,
+		root,
+		false,
+		replacementLeaseSeconds,
+		"198.51.100.2",
+		"198.51.100.100",
+		false,
 	)
 	serviceRunning = true
 	setRuntimeNamespace(t, gateway)
@@ -320,7 +326,9 @@ func waitDHCPRecoveryRecord(
 		case <-ctx.Done():
 			t.Fatalf(
 				"waiting for committed %ds lease: last lease=%+v: %s",
-				leaseSeconds, lease, runtimeLogTail(t, daemon, 30),
+				leaseSeconds,
+				lease,
+				runtimeLogTail(t, daemon, 30),
 			)
 		}
 	}
