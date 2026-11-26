@@ -70,4 +70,5 @@ runs:
       uses: actions/cache/restore@v6
       with:
         path: ${{ runner.temp }}/gateway-go
-        key: gateway-go-${{ inputs.arch }}-${{ steps.native.outputs.digest }}-${{ hashFiles('gateway/Dockerfile', 'build/wanconfig.env', 'gateway/go.mod', 'gateway/go.sum', 'provider/go.mod', 'provider/go.sum') }}
+        key: gateway-go-quality-${{ inputs.arch }}-${{ steps.native.outputs.digest }}-${{ hashFiles('gateway/Dockerfile', 'build/wanconfig.env', 'gateway/go.mod', 'gateway/go.sum', 'provider/go.mod', 'provider/go.sum') }}
+        restore-keys: gateway-go-${{ inputs.arch }}-${{ steps.native.outputs.digest }}-${{ hashFiles('gateway/Dockerfile', 'build/wanconfig.env', 'gateway/go.mod', 'gateway/go.sum', 'provider/go.mod', 'provider/go.sum') }}
