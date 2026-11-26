@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
+	"goodkind.io/mwan/gateway/internal/clock"
 	"goodkind.io/mwan/gateway/internal/ifmgr"
 	"goodkind.io/mwan/gateway/internal/ovsconfig"
 	"goodkind.io/mwan/gateway/internal/wanstate"
@@ -35,6 +37,7 @@ type module struct {
 	ifmgr.BaseModule
 
 	load      Loader
+	clock     clock.Clock
 	lastError error
 }
 
@@ -55,6 +58,7 @@ func newModule(settings ifmgr.ModuleConfig) (*module, error) {
 	return &module{
 		BaseModule: ifmgr.NewBaseModule(moduleName),
 		load:       load,
+		clock:      clock.Real{},
 		lastError:  nil,
 	}, nil
 }
@@ -82,11 +86,23 @@ func (m *module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	var health map[string]wanstate.MemberHealth
 
 	if err == nil {
-		if m.Env.LiveState != nil && hasConditions(settings) {
-			health = m.Env.LiveState.Snapshot().Health
+		var snapshot wanstate.Snapshot
+		bind := hasLeaseValues(settings.OpenFlow)
+		if m.Env.LiveState != nil && (bind || hasConditions(settings)) {
+			snapshot = m.Env.LiveState.Snapshot()
+			health = snapshot.Health
 		}
 
-		err = Setup(ctx, settings, health)
+		if bind {
+			values := leaseValues{connections: snapshot.Connections, now: m.clock.Now()}
+			var rules ovsconfig.OpenFlowConfig
+			rules, err = values.openFlow(ctx, *settings.OpenFlow)
+			settings.OpenFlow = &rules
+		}
+
+		if err == nil {
+			err = Setup(ctx, settings, health)
+		}
 	}
 
 	m.lastError = err
@@ -97,6 +113,44 @@ func (m *module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	}
 
 	return nil
+}
+
+func hasLeaseValues(config *ovsconfig.OpenFlowConfig) bool {
+	if config == nil {
+		return false
+	}
+
+	for _, flow := range config.Flows {
+		for _, entry := range flow.Match {
+			if strings.Contains(entry.Value, "${") {
+				return true
+			}
+		}
+
+		if actionsUseLeases(flow.Actions) {
+			return true
+		}
+	}
+
+	for _, group := range config.Groups {
+		for _, bucket := range group.Buckets {
+			if actionsUseLeases(bucket.Actions) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func actionsUseLeases(actions []ovsconfig.Action) bool {
+	for _, action := range actions {
+		if strings.Contains(action.Argument, "${") {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (m *module) EvaluateAlerts(ctx context.Context, _ *slog.Logger, now time.Time) {

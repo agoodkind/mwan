@@ -67,6 +67,29 @@ settings also provide default route shorthand. A connection cannot define
 a default in both forms. The loader checks IPv6 metric collisions using
 Linux's effective metric of 1024 when the configured metric is zero.
 
+## DHCP values in OpenFlow rules
+
+An OpenFlow match value or action argument can refer to a DHCP assignment
+on an MWAN connection. Use the connection ID inside the reference.
+
+| Reference | Value |
+| --- | --- |
+| `${dhcpv4:uplink}` | The IPv4 host address that DHCPv4 assigned to `uplink`. |
+| `${dhcpv6-pd:uplink}` | The IPv6 network prefix and length that DHCPv6 delegated to `uplink`. |
+
+For example, the match entry
+`{"field":"ipv6_dst","value":"${dhcpv6-pd:uplink}"}` matches packets
+addressed to the delegated network. The action entry
+`{"id":1,"name":"set_field","argument":"${dhcpv4:uplink}->ip_src"}` writes
+the acquired IPv4 address into the source address field.
+
+MWAN updates the affected rules when a lease changes. A reference needs
+one distinct valid value. If the connection lacks that value, its valid
+lifetime expires, or multiple distinct values qualify, MWAN logs the
+reason and withdraws the dependent flow or bucket. An indirect group
+requires one bucket, so MWAN keeps that bucket and removes its actions
+to drop packets until the value becomes available.
+
 ## Direct connections and tunnels
 
 A WAN can use configured routes or BGP sessions. A session can use a
