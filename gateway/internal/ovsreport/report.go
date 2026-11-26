@@ -133,6 +133,13 @@ func dumpRules(ctx context.Context, socket string, params []string) ([]Rule, err
 		return nil, fmt.Errorf("connect to ovs-vswitchd: %w", err)
 	}
 	defer conn.Close()
+	cancelRead := context.AfterFunc(
+		ctx,
+		func() {
+			_ = conn.Close()
+		},
+	)
+	defer cancelRead()
 	if err := conn.SetDeadline(deadline); err != nil {
 		slog.ErrorContext(ctx, "OVS control socket deadline failed", "err", err)
 
@@ -160,6 +167,10 @@ func dumpRules(ctx context.Context, socket string, params []string) ([]Rule, err
 		ID     int     `json:"id"`
 	}
 	if err := json.NewDecoder(conn).Decode(&response); err != nil {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return nil, fmt.Errorf("read OVS counters: %w", contextErr)
+		}
+
 		slog.ErrorContext(ctx, "OVS rule counter response failed", "err", err)
 
 		return nil, fmt.Errorf("read OVS rule counters: %w", err)

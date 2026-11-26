@@ -3,6 +3,7 @@ package ovsreport
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -137,5 +138,41 @@ func TestReadOlderSwitch(t *testing.T) {
 
 	if missing.Name != "missing" || missing.Forwarding != "unavailable" || missing.Packets != nil {
 		t.Fatalf("unexpected missing rule: %+v", missing)
+	}
+}
+
+func TestCancelledCounterRead(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "ovs.ctl")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Hour)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := dumpRules(ctx, socket, []string{"br0"})
+		done <- err
+	}()
+	conn, err := listener.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	var request json.RawMessage
+	if err := json.NewDecoder(conn).Decode(&request); err != nil {
+		t.Fatal(err)
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled report returned %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("report did not stop after cancellation")
 	}
 }
