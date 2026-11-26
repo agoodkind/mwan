@@ -153,7 +153,7 @@ func runOwnedDHCPv4RecoveryLinkChange(t *testing.T, change dhcpRecoveryLinkChang
 	defer func() { stopRuntimeDaemon(t, daemon) }()
 	waitStaticRuntimeAddress(t, daemon, "enatt0", dhcpRenamedLinkAddress, true)
 	waitStaticRuntimeRoute(t, daemon, "ipv4", dhcpReconnectServerAddress, 20, true)
-	waitDHCPRecoveryRecord(t, daemon, leaseDirectory)
+	waitDHCPRecoveryRecord(t, daemon, leaseDirectory, 600)
 	if change == dhcpRecoveryFlapAfterBoundLongLease {
 		setRuntimeNamespace(t, provider.namespace)
 		stopProtocolServices(t, []protocolService{service})

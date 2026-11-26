@@ -87,10 +87,6 @@ STOPSIGNAL SIGRTMIN+3
 CMD ["/sbin/init"]
 
 FROM builder AS drift
-RUN --mount=type=bind,source=gateway,target=/src/gateway \
-    --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    go build -trimpath -buildvcs=false -o /usr/local/bin/mwan ./cmd/mwan
 COPY gateway/go.mod /src/gateway/go.mod
 COPY provider/go.mod /src/provider/go.mod
 WORKDIR /tmp

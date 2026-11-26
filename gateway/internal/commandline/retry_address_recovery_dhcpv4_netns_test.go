@@ -3,6 +3,7 @@
 package commandline
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
@@ -107,7 +109,7 @@ func runOwnedDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected b
 	defer func() { stopRuntimeDaemon(t, daemon) }()
 	waitStaticRuntimeAddress(t, daemon, "enatt0", "198.51.100.100/24", true)
 	waitStaticRuntimeRoute(t, daemon, "ipv4", dhcpReconnectServerAddress, 20, true)
-	waitDHCPRecoveryRecord(t, daemon, leaseDirectory)
+	waitDHCPRecoveryRecord(t, daemon, leaseDirectory, leaseSeconds)
 	stopRuntimeDaemon(t, daemon)
 	if lateInterface {
 		renameDHCPWANParent(t, "wan-under", "wan-under-old")
@@ -174,10 +176,13 @@ func runOwnedDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected b
 	waitStaticRuntimeAddress(t, daemon, "enatt0", "198.51.100.100/24", true)
 	waitStaticRuntimeRoute(t, daemon, "ipv4", dhcpReconnectServerAddress, 20, true)
 	setRuntimeNamespace(t, provider.namespace)
-	service = startDHCPv4RuntimeKea(t, root, false, 8, "198.51.100.2", "198.51.100.100", false)
+	const replacementLeaseSeconds = 8
+	service = startDHCPv4RuntimeKea(
+		t, root, false, replacementLeaseSeconds, "198.51.100.2", "198.51.100.100", false,
+	)
 	serviceRunning = true
 	setRuntimeNamespace(t, gateway)
-	waitDHCPv4RuntimeState(t, daemon, "state=BOUND", 25*time.Second)
+	waitDHCPRecoveryRecord(t, daemon, leaseDirectory, replacementLeaseSeconds)
 	waitStaticRuntimeRoute(t, daemon, "ipv4", dhcpReconnectServerAddress, 20, true)
 	stopRuntimeDaemon(t, daemon)
 	setRuntimeNamespace(t, provider.namespace)
@@ -271,16 +276,52 @@ func readDHCPRecoveryPacket(t *testing.T, observer *net.UDPConn) *dhcpv4.DHCPv4 
 	}
 }
 
-func waitDHCPRecoveryRecord(t *testing.T, daemon *runtimeDaemon, directory string) {
+func waitDHCPRecoveryRecord(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	directory string,
+	leaseSeconds int,
+) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		entries, err := os.ReadDir(directory)
-		if err == nil && len(entries) == 1 {
+	store, err := netif.NewLeaseRecoveryStore(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link, err := net.InterfaceByName("enatt0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer watcher.Close()
+	if err := watcher.Add(filepath.Dir(directory)); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 25*time.Second)
+	defer cancel()
+	for {
+		if err := watcher.Add(directory); err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Fatal(err)
+		}
+		lease, err := store.LoadDHCPv4("att", link, []byte{0x01, 0xaa, 0xbb})
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Fatal(err)
+		}
+		if lease != nil && lease.LeaseTime == time.Duration(leaseSeconds)*time.Second {
 			return
 		}
 		assertRuntimeDaemonRunning(t, daemon)
-		time.Sleep(50 * time.Millisecond)
+		select {
+		case <-watcher.Events:
+		case err := <-watcher.Errors:
+			t.Fatal(err)
+		case <-ctx.Done():
+			t.Fatalf(
+				"waiting for committed %ds lease: last lease=%+v: %s",
+				leaseSeconds, lease, runtimeLogTail(t, daemon, 30),
+			)
+		}
 	}
-	t.Fatalf("DHCP recovery record absent: %s", runtimeLogTail(t, daemon, 30))
 }

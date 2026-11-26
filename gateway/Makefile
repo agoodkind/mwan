@@ -54,6 +54,11 @@ test-provider-drift: ## Compare installer with OpenTofu provider output.
 test-netns test-firewall test-provider-drift:
 	$(RUN) $(@:test-%=%)
 
+.PHONY: run-provider-drift
+run-provider-drift:
+	GOWORK=off go build -buildvcs=false -o "$(MWAN_BINARY)" ./cmd/mwan
+	go -C ../provider test -v -count=1 -tags drift ./...
+
 test-protocol-namespace: ## Run protocol namespace tests. Set PROTOCOL_TEST to select a test expression.
 	@set -e; \
 	trap '$(PLATFORM) down --remove-orphans' EXIT; \

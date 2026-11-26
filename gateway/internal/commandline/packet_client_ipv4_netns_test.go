@@ -207,7 +207,7 @@ func runOwnedDHCPv4DaemonRuntime(
 			waitRuntimeOwnershipRead(t, daemon, read, `"valid-until":`)
 			if rejectedRecovery {
 				wanLeaseDirectory := filepath.Join(leaseDirectory, "wan")
-				waitDHCPRecoveryRecord(t, daemon, wanLeaseDirectory)
+				waitDHCPRecoveryRecord(t, daemon, wanLeaseDirectory, leaseSeconds)
 				stopRuntimeDaemon(t, daemon)
 				entries, err := os.ReadDir(wanLeaseDirectory)
 				if err != nil || len(entries) != 1 {
