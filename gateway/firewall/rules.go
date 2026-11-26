@@ -97,6 +97,7 @@ func CompileBaseline(config BaselineConfig) (Ruleset, error) {
 	}), nil
 }
 
+// Ruleset uses only host firewall rules on an OVS gateway.
 func (config Config) Ruleset() (Ruleset, error) {
 	if config.HostBaseline != nil {
 		return CompileBaseline(*config.HostBaseline)
