@@ -1471,6 +1471,9 @@ module goodkind-mwan-steering {
         }
         list group {
           key "id";
+          must "type != 'indirect' or count(bucket) = 1" {
+            error-message "An indirect OpenFlow group requires exactly one bucket.";
+          }
           description "OpenFlow groups and their packet actions.";
           leaf id {
             type uint32 { range "1..65535"; }
