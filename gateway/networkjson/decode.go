@@ -1,8 +1,6 @@
 package networkjson
 
-import (
-	"encoding/json"
-)
+import "encoding/json"
 
 // SyntaxError supports [errors.As] matching in [networkload.Load] for the
 // "decode <path>: <err>" error format.

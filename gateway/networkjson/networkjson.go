@@ -314,53 +314,16 @@ var kernelReservedTables = []int{0, 253, 254, 255}
 // translation.
 func build(doc *document) (*Config, error) {
 	loaded := newWANNetworkConfig(doc)
-
-	group := doc.Interfaces.SteeringGroup
-
-	required := []struct {
-		leaf  string
-		value string
-	}{
-		{leaf: "steering-group/translation/internal-prefix", value: loaded.InternalPrefix},
-		{leaf: "steering-group/translation/opnsense-edge-v6", value: loaded.OpnsenseEdgeV6},
-		{leaf: "steering-group/translation/mwanbr-edge-v6", value: loaded.MwanbrEdgeV6},
-		{leaf: "steering-group/routes/internal-iface", value: loaded.InternalIface},
-		{leaf: "steering-group/routes/internal-net-v4", value: loaded.InternalNetV4},
-		{leaf: "steering-group/hash-mode", value: loaded.HashMode},
-	}
-	for _, leaf := range required {
-		if leaf.value == "" {
-			return nil, fmt.Errorf("%s is required", leaf.leaf)
-		}
-	}
-
-	if group.Health.ProbeTimeout == nil {
-		return nil, errors.New("steering-group/health/probe-timeout is required")
-	}
-
-	loaded.ProbeTimeoutMillis = *group.Health.ProbeTimeout
-	ids, explicitIDs, err := normalizeConnectionIDs(doc.Interfaces.Interface)
-	if err != nil {
+	if err := loadKernelSettings(doc, loaded); err != nil {
 		return nil, err
 	}
 
-	loaded.ConnectionIDs = ids
-	loaded.ExplicitConnectionIDs = explicitIDs
-	connections, rejected, err := compileConnections(
-		doc.Interfaces.Interface,
-		ids,
-		loaded.InternalIface,
-		group.Firewall,
-	)
-	if err != nil {
+	if err := loadConnections(doc, loaded); err != nil {
 		return nil, err
 	}
 
-	loaded.Connections = connections
-	loaded.Rejected = append(loaded.Rejected, rejected...)
-
-	byName := make(map[string]interfaceintent.Connection, len(connections))
-	for _, connection := range connections {
+	byName := make(map[string]interfaceintent.Connection, len(loaded.Connections))
+	for _, connection := range loaded.Connections {
 		byName[connection.Name] = connection
 	}
 
@@ -396,7 +359,15 @@ func build(doc *document) (*Config, error) {
 		return nil, err
 	}
 
-	loaded.Claims, err = compileClaims(loaded.Connections, loaded.WAN)
+	return finishNetwork(doc, loaded, loaded.WAN)
+}
+
+func finishNetwork(
+	doc *document,
+	loaded *Config,
+	policyProviders map[string]config.IfMgrWANEntry,
+) (*Config, error) {
+	claims, err := compileClaims(loaded.Connections, policyProviders)
 	if err != nil {
 		return nil, err
 	}
@@ -407,8 +378,63 @@ func build(doc *document) (*Config, error) {
 	}
 
 	loaded.Firewall = firewallConfig
+	loaded.Claims = claims
 
 	return loaded, nil
+}
+
+func loadKernelSettings(doc *document, loaded *Config) error {
+	group := doc.Interfaces.SteeringGroup
+
+	required := []struct {
+		leaf  string
+		value string
+	}{
+		{leaf: "steering-group/translation/internal-prefix", value: loaded.InternalPrefix},
+		{leaf: "steering-group/translation/opnsense-edge-v6", value: loaded.OpnsenseEdgeV6},
+		{leaf: "steering-group/translation/mwanbr-edge-v6", value: loaded.MwanbrEdgeV6},
+		{leaf: "steering-group/routes/internal-iface", value: loaded.InternalIface},
+		{leaf: "steering-group/routes/internal-net-v4", value: loaded.InternalNetV4},
+		{leaf: "steering-group/hash-mode", value: loaded.HashMode},
+	}
+	for _, leaf := range required {
+		if leaf.value == "" {
+			return fmt.Errorf("%s is required", leaf.leaf)
+		}
+	}
+
+	if group.Health.ProbeTimeout == nil {
+		return errors.New("steering-group/health/probe-timeout is required")
+	}
+
+	loaded.ProbeTimeoutMillis = *group.Health.ProbeTimeout
+
+	return nil
+}
+
+func loadConnections(doc *document, loaded *Config) error {
+	group := doc.Interfaces.SteeringGroup
+	ids, explicitIDs, err := normalizeConnectionIDs(doc.Interfaces.Interface)
+	if err != nil {
+		return err
+	}
+
+	loaded.ConnectionIDs = ids
+	loaded.ExplicitConnectionIDs = explicitIDs
+	connections, rejected, err := compileConnections(
+		doc.Interfaces.Interface,
+		ids,
+		loaded.InternalIface,
+		group.Firewall,
+	)
+	if err != nil {
+		return err
+	}
+
+	loaded.Connections = connections
+	loaded.Rejected = append(loaded.Rejected, rejected...)
+
+	return nil
 }
 
 func acceptedConnections(
