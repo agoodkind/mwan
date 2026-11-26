@@ -18,6 +18,5 @@ jobs:
     with:
       working_directory: provider
       go_version_file: provider/go.mod
-      release_platforms: darwin/arm64 linux/amd64 linux/arm64
       apt_packages: cmake pkg-config
       cgo: true
