@@ -8,7 +8,7 @@ permissions:
 
 env:
   COMPOSE_ENV_FILES: ${{ github.workspace }}/build/wanconfig.env
-  COMPOSE_FILE: compose.build.yaml:compose.amd64.yaml
+  COMPOSE_FILE: compose.build.yaml:compose.amd64.yaml:compose.test-cache.yaml
   WANCONFIG_CACHE_ID: ${{ github.run_id }}
   RELEASE_PLATFORMS: linux/amd64
 
@@ -25,13 +25,21 @@ jobs:
         with:
           fetch-depth: 0
       - &restore-amd64-builder
+        id: builder
         uses: ./.github/actions/gateway-builder
         with:
           arch: amd64
+          cache-go: 'true'
       - name: Run gateway quality checks
         env:
           GH_TOKEN: ${{ github.token }}
-        run: docker compose -f compose.build.yaml -f compose.amd64.yaml -f compose.ci.yaml run --pull never --rm check
+        run: docker compose -f compose.build.yaml -f compose.amd64.yaml -f compose.test-cache.yaml -f compose.ci.yaml run --pull never --rm check
+      - name: Save Go module downloads and compiled packages
+        if: steps.builder.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/gateway-go
+          key: ${{ steps.builder.outputs.cache-key }}
 
   test:
     name: Test
@@ -41,7 +49,6 @@ jobs:
       - *restore-amd64-builder
       - name: Run gateway tests
         run: docker compose run --pull never --rm test
-
   drift:
     name: provider drift
     runs-on: ubuntu-latest
@@ -51,6 +58,7 @@ jobs:
         with:
           arch: amd64
           service: provider-drift
+          cache-go: 'true'
       - name: Compare mwan install with provider data
         run: docker compose run --pull never --rm provider-drift
 
@@ -59,7 +67,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - *restore-amd64-builder
+      - uses: ./.github/actions/gateway-builder
+        with:
+          arch: amd64
       - name: Validate YANG model and its instance documents
         run: docker compose run --pull never --rm check-yang
 
@@ -72,6 +82,7 @@ jobs:
         with:
           arch: amd64
           service: netns
+          cache-go: 'true'
       - name: Set runner socket buffer for nftables batch test
         run: sudo sysctl -w net.core.rmem_default=212992
       - name: Run network namespace tests as root
@@ -95,6 +106,7 @@ jobs:
         with:
           arch: amd64
           service: protocol-namespace
+          cache-go: 'true'
       - name: Run protocol acceptance tests
         run: docker compose run --pull never --rm protocol-namespace
 
@@ -107,6 +119,7 @@ jobs:
         with:
           arch: amd64
           service: systemd
+          cache-go: 'true'
       - name: Run systemd acceptance tests
         run: |
           docker compose up --no-build --pull never --wait systemd

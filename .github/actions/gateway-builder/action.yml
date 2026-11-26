@@ -10,6 +10,16 @@ inputs:
   export-cache:
     description: Export layers to GitHub Actions after building the image.
     default: 'false'
+  cache-go:
+    description: Restore Go module downloads and compiled packages for gateway checks.
+    default: 'false'
+outputs:
+  cache-hit:
+    description: Whether the gateway Go cache exists.
+    value: ${{ steps.go-cache.outputs.cache-hit }}
+  cache-key:
+    description: Cache key for this Go toolchain and its native libraries.
+    value: ${{ steps.go-cache.outputs.cache-primary-key }}
 
 runs:
   using: composite
@@ -28,6 +38,7 @@ runs:
         docker compose build --print "$SERVICE" > "$RUNNER_TEMP/gateway-builder.json"
 
     - name: Build the gateway builder with cached layers
+      id: image
       uses: docker/bake-action@v7.5.0
       with:
         source: .
@@ -37,5 +48,26 @@ runs:
         load: ${{ inputs.export-cache != 'true' }}
         set: |
           ${{ inputs.service }}.cache-from=type=gha,scope=mwan-gateway-builder-${{ inputs.arch }}
-          ${{ inputs.export-cache == 'true' && 'build.output=type=cacheonly' || '' }}
-          ${{ inputs.export-cache == 'true' && format('build.cache-to=type=gha,scope=mwan-gateway-builder-{0},mode=max', inputs.arch) || '' }}
+          ${{ inputs.export-cache == 'true' && format('{0}.output=type=cacheonly', inputs.service) || '' }}
+          ${{ inputs.export-cache == 'true' && format('{0}.cache-to=type=gha,scope=mwan-gateway-builder-{1},mode=max', inputs.service, inputs.arch) || '' }}
+
+    - name: Identify the Go toolchain and native libraries
+      id: native
+      if: inputs.cache-go == 'true'
+      shell: bash
+      env:
+        IMAGE: ${{ fromJSON(steps.image.outputs.metadata)[inputs.service]['image.name'] }}
+      run: |
+        docker run --rm --network none --entrypoint sha256sum "$IMAGE" \
+          /usr/local/go/VERSION /usr/bin/cc /usr/local/lib/libyang.so /usr/local/lib/libsysrepo.so \
+          > "$RUNNER_TEMP/gateway-native.sha256"
+        read -r digest _ < <(sha256sum "$RUNNER_TEMP/gateway-native.sha256")
+        echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+    - name: Restore Go module downloads and compiled packages
+      if: inputs.cache-go == 'true'
+      id: go-cache
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ runner.temp }}/gateway-go
+        key: gateway-go-${{ inputs.arch }}-${{ steps.native.outputs.digest }}-${{ hashFiles('gateway/Dockerfile', 'build/wanconfig.env', 'gateway/go.mod', 'gateway/go.sum', 'provider/go.mod', 'provider/go.sum') }}

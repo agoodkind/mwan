@@ -39,6 +39,7 @@ jobs:
         uses: ./.github/actions/gateway-builder
         with:
           arch: ${{ matrix.arch }}
+          service: ${{ matrix.arch == 'amd64' && 'systemd' || 'build' }}
           export-cache: 'true'
 
   prepare:
