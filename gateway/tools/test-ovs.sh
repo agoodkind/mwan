@@ -10,4 +10,4 @@ ovs-vsctl --db="unix:$MWAN_TEST_OVS_SOCKET" --no-wait init
 ovs-vswitchd --detach --pidfile "unix:$MWAN_TEST_OVS_SOCKET"
 
 go test -tags ovs -count=1 -v ./internal/ifmgr/modules/ovs
-go test -tags ovs -count=1 -v -run '^TestOVS(RuleUpdateMovesPackets|HealthConditions)$' ./internal/commandline
+go test -tags ovs -count=1 -v -run '^TestOVS(RuleUpdateMovesPackets|HealthConditions|Readable.*)$' ./internal/commandline
