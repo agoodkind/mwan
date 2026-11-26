@@ -14,8 +14,12 @@ Run the [hardware evidence verifier](../../../gateway/tools/verify-bluefield.py)
 
 ```sh
 gateway/tools/verify-bluefield.py tcp "$EVIDENCE/hash/host/implicit"
-gateway/tools/verify-bluefield.py udp-500 "$EVIDENCE/echo/udp_500"
-gateway/tools/verify-bluefield.py udp-5000 "$EVIDENCE/echo/udp_5000"
+gateway/tools/verify-bluefield.py udp-500 "$EVIDENCE/echo/udp_500" \
+  --shared-source "$SHARED_V4_1" --shared-source "$SHARED_V4_2" \
+  --ping-source "$STATIC_V4" --ping-destination "$SERVER_V4"
+gateway/tools/verify-bluefield.py udp-5000 "$EVIDENCE/echo/udp_5000" \
+  --shared-source "$SHARED_V4_1" --shared-source "$SHARED_V4_2" \
+  --ping-source "$STATIC_V4" --ping-destination "$SERVER_V4"
 ```
 
 The TCP check reads the two ISP captures and requires both endpoints to report 819,200 bytes per transfer. It counts resets before each trial's cleanup timestamp. The UDP checks read the echo client's per-socket receipts, the independent ping results, and the log interval. Save the inode and byte offsets at both ends of each interval. Repeat the interval if the log rotates during capture.
@@ -40,6 +44,8 @@ For each UDP run, create `peer` and `card` directories under its run directory.
 | UDP file | Required contents |
 | --- | --- |
 | `peer/client_0.csv` through `peer/client_3.csv` | Write one row per attempt under the header `source,source_port,dest_port,send_monotonic_ns,reply_monotonic_ns`. Use distinct socket tuples. Record the reply timestamp only when the socket receives the expected peer address, port, and exact request payload. Write zero for a missing send or matching reply. |
-| `peer/ping_before.txt`, `peer/ping_after.txt` | Save the Linux `ping -c 5` output for the independent static IPv4 path. |
+| `peer/ping_before.txt`, `peer/ping_after.txt` | Save Linux `ping -4 -n -I "$STATIC_V4" -c 5 "$SERVER_V4"` output. The header must identify both endpoints and each reply must come from the expected destination. |
 | `card/log_start.txt`, `card/log_end.txt` | Save Linux `stat -c '%i %s'` output for the active daemon log before and after load. |
 | `card/vswitchd.log` | Copy the bytes from the starting offset through the byte before the ending offset. A zero-byte file is valid only when both snapshots report the same inode and offset. |
+
+Supply the expected addresses from the test configuration. Repeat `--shared-source` once per shared IPv4 client address. Use a separate static client address for `--ping-source`.

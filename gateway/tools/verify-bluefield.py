@@ -7,7 +7,7 @@ import math
 import re
 import subprocess
 import sys
-from ipaddress import ip_address
+from ipaddress import IPv4Address, ip_address
 from pathlib import Path
 
 TRIALS = range(1, 21)
@@ -150,7 +150,17 @@ def verify_log(directory: Path) -> None:
     print(f"Checked {len(interval)} new ovs-vswitchd log bytes.")
 
 
-def verify_udp(directory: Path, expected: int, minimum_rate: int) -> None:
+def verify_udp(
+    directory: Path,
+    expected: int,
+    minimum_rate: int,
+    shared_sources: set[IPv4Address],
+    ping_source: IPv4Address,
+    ping_destination: IPv4Address,
+) -> None:
+    if ping_source in shared_sources:
+        raise ValueError("the independent ping requires a separate static IPv4 source")
+    observed_sources: set[IPv4Address] = set()
     sockets: set[tuple[str, int, int]] = set()
     send_times: list[int] = []
     directory = directory / "peer"
@@ -158,6 +168,10 @@ def verify_udp(directory: Path, expected: int, minimum_rate: int) -> None:
         previous_count = len(sockets)
         with (directory / f"client_{index}.csv").open(newline="") as handle:
             for row in csv.DictReader(handle):
+                source = IPv4Address(row["source"])
+                if source not in shared_sources:
+                    raise ValueError(f"unexpected shared IPv4 source {source}")
+                observed_sources.add(source)
                 socket = row["source"], int(row["source_port"]), int(row["dest_port"])
                 sent = int(row["send_monotonic_ns"])
                 reply = int(row["reply_monotonic_ns"])
@@ -171,8 +185,19 @@ def verify_udp(directory: Path, expected: int, minimum_rate: int) -> None:
             raise ValueError(f"missing echo receipts from client {index}")
     if len(sockets) != expected:
         raise ValueError(f"expected {expected} matching UDP echoes, found {len(sockets)}")
+    if observed_sources != shared_sources:
+        raise ValueError("missing receipts for a configured shared IPv4 source")
     for phase in ("before", "after"):
         ping = (directory / f"ping_{phase}.txt").read_text()
+        header = re.match(r"^PING \S+ \(([^)]+)\) from (\S+)\s*:", ping)
+        if not header or (header[1], header[2]) != (
+            str(ping_destination),
+            str(ping_source),
+        ):
+            raise ValueError(f"unexpected static IPv4 ping endpoints {phase} load")
+        replies = re.findall(r"^\d+ bytes from (\S+): icmp_seq=(\d+) ", ping, re.M)
+        if sorted(replies) != [(str(ping_destination), str(seq)) for seq in range(1, 6)]:
+            raise ValueError(f"unexpected static IPv4 ping replies {phase} load")
         if not re.search(
             r"^5 packets transmitted, 5 received, 0% packet loss,", ping, re.M
         ):
@@ -191,8 +216,16 @@ def verify_udp(directory: Path, expected: int, minimum_rate: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("check", choices=("tcp", "log", "udp-500", "udp-5000"))
-    parser.add_argument("directory", type=Path)
+    commands = parser.add_subparsers(dest="check", required=True)
+    for check in ("tcp", "log", "udp-500", "udp-5000"):
+        command = commands.add_parser(check)
+        command.add_argument("directory", type=Path)
+        if check.startswith("udp-"):
+            command.add_argument(
+                "--shared-source", type=IPv4Address, action="append", required=True
+            )
+            command.add_argument("--ping-source", type=IPv4Address, required=True)
+            command.add_argument("--ping-destination", type=IPv4Address, required=True)
     args = parser.parse_args()
     if args.check == "tcp":
         verify_tcp(args.directory)
@@ -200,7 +233,13 @@ def main() -> None:
         verify_log(args.directory)
     else:
         workload = {"udp-500": (10000, 500), "udp-5000": (60000, 5000)}
-        verify_udp(args.directory, *workload[args.check])
+        verify_udp(
+            args.directory,
+            *workload[args.check],
+            set(args.shared_source),
+            args.ping_source,
+            args.ping_destination,
+        )
         verify_log(args.directory / "card")
 
 
