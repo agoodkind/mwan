@@ -28,6 +28,7 @@ func testOwnedDHCPv6PDTimerRuntime(t *testing.T, mode dhcpv6TimerMode) {
 		runOwnedDHCPv6PDTimerRuntime(t, mode)
 		return
 	}
+	t.Parallel()
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
 	child.SysProcAttr = &syscall.SysProcAttr{

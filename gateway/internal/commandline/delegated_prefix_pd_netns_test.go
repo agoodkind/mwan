@@ -59,6 +59,7 @@ func testOwnedDHCPv6PDDaemonRuntime(t *testing.T, waitForRA bool) {
 		runOwnedDHCPv6PDDaemonRuntime(t, waitForRA)
 		return
 	}
+	t.Parallel()
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
 	child.SysProcAttr = &syscall.SysProcAttr{
@@ -208,9 +209,8 @@ type dhcpv6PDRuntime struct {
 // provider namespace selected.
 func buildDHCPv6PDRuntime(t *testing.T, withoutRA string) dhcpv6PDRuntime {
 	t.Helper()
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		t.Fatal(err)
-	}
+	mountPrivateRuntimeDirectories(t)
+	t.Setenv("SYSREPO_REPOSITORY_PATH", t.TempDir())
 	gateway, err := netns.Get()
 	if err != nil {
 		t.Fatal(err)

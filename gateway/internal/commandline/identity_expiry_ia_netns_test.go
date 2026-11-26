@@ -29,6 +29,7 @@ func TestOwnedDHCPv6IAShortAddressExpiryKeepsRoutesRuntime(t *testing.T) {
 		runOwnedDHCPv6IAShortAddressExpiry(t)
 		return
 	}
+	t.Parallel()
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
 	child.SysProcAttr = &syscall.SysProcAttr{
@@ -41,9 +42,8 @@ func TestOwnedDHCPv6IAShortAddressExpiryKeepsRoutesRuntime(t *testing.T) {
 }
 
 func runOwnedDHCPv6IAShortAddressExpiry(t *testing.T) {
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		t.Fatal(err)
-	}
+	mountPrivateRuntimeDirectories(t)
+	t.Setenv("SYSREPO_REPOSITORY_PATH", t.TempDir())
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	gateway, err := netns.Get()

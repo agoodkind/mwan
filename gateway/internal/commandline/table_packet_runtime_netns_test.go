@@ -29,6 +29,7 @@ func TestWANFirewallRuntimePackets(t *testing.T) {
 		runWANFirewallRuntimeChild(t)
 		return
 	}
+	t.Parallel()
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^TestWANFirewallRuntimePackets$")
 	child.SysProcAttr = &syscall.SysProcAttr{
@@ -41,9 +42,7 @@ func TestWANFirewallRuntimePackets(t *testing.T) {
 }
 
 func runWANFirewallRuntimeChild(t *testing.T) {
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		t.Fatal(err)
-	}
+	mountPrivateRuntimeDirectories(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	gateway, err := netns.Get()

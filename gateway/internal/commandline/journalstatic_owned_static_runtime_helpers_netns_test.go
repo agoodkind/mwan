@@ -242,3 +242,48 @@ func assertStaticRuntimePacket(
 		t.Fatalf("%s packet: count=%d data=%q error=%v", network, count, buffer[:count], err)
 	}
 }
+
+func waitStaticRuntimeRoute(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	family string,
+	gateway string,
+	metric int,
+	present bool,
+) {
+	t.Helper()
+	addressFamily := unix.AF_INET
+	if family == "ipv6" {
+		addressFamily = unix.AF_INET6
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		routes, err := netlink.RouteListFiltered(
+			addressFamily,
+			&netlink.Route{Table: unix.RT_TABLE_MAIN},
+			netlink.RT_FILTER_TABLE,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, route := range routes {
+			if route.Priority == metric && route.Gw.Equal(net.ParseIP(gateway)) &&
+				route.Protocol == netif.OwnedStaticRouteProtocol {
+				found = true
+			}
+		}
+		if found == present {
+			return
+		}
+		assertRuntimeDaemonRunning(t, daemon)
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf(
+		"default route via %s metric %d present=%t not observed: %s",
+		gateway,
+		metric,
+		present,
+		runtimeLogTail(t, daemon, 40),
+	)
+}

@@ -1,4 +1,4 @@
-//go:build linux && (firewall || protocol)
+//go:build linux && firewall
 
 package commandline
 
@@ -31,6 +31,7 @@ func TestSelectionExclusionDaemonRuntime(t *testing.T) {
 		runSelectionExclusionDaemonRuntime(t)
 		return
 	}
+	t.Parallel()
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^TestSelectionExclusionDaemonRuntime$")
 	child.SysProcAttr = &syscall.SysProcAttr{
@@ -47,9 +48,7 @@ func TestSelectionExclusionDaemonRuntime(t *testing.T) {
 }
 
 func runSelectionExclusionDaemonRuntime(t *testing.T) {
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		t.Fatal(err)
-	}
+	mountPrivateRuntimeDirectories(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	gateway, err := netns.Get()

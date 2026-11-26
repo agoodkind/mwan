@@ -1,4 +1,4 @@
-//go:build linux && (firewall || protocol)
+//go:build linux && firewall
 
 package commandline
 
@@ -27,6 +27,7 @@ func TestOwnedMappedDaemonRuntime(t *testing.T) {
 		runOwnedMappedDaemonRuntime(t)
 		return
 	}
+	t.Parallel()
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^TestOwnedMappedDaemonRuntime$")
 	child.SysProcAttr = &syscall.SysProcAttr{
@@ -39,9 +40,7 @@ func TestOwnedMappedDaemonRuntime(t *testing.T) {
 }
 
 func runOwnedMappedDaemonRuntime(t *testing.T) {
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		t.Fatal(err)
-	}
+	mountPrivateRuntimeDirectories(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	gateway, err := netns.Get()

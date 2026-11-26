@@ -1,4 +1,4 @@
-//go:build linux && (firewall || protocol)
+//go:build linux && firewall
 
 package commandline
 
@@ -37,6 +37,7 @@ func TestDistributionObservationDaemonRuntime(t *testing.T) {
 		runDistributionObservationRuntime(t)
 		return
 	}
+	t.Parallel()
 	binary := protocolTestBinary(t)
 	command := exec.Command(
 		os.Args[0],
@@ -59,9 +60,7 @@ func TestDistributionObservationDaemonRuntime(t *testing.T) {
 }
 
 func runDistributionObservationRuntime(t *testing.T) {
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		t.Fatal(err)
-	}
+	mountPrivateRuntimeDirectories(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	host, err := netns.Get()

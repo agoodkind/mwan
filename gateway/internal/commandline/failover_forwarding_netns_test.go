@@ -58,6 +58,7 @@ type forwardingNamespaces struct {
 
 func TestForwardingPeerLossSelectsBestPath(t *testing.T) {
 	if os.Getenv(forwardingChildEnv) != "1" {
+		t.Parallel()
 		binary := protocolTestBinary(t)
 		childContext, cancel := context.WithTimeout(context.Background(), forwardingChildTimeout)
 		defer cancel()
@@ -86,9 +87,8 @@ func TestForwardingPeerLossSelectsBestPath(t *testing.T) {
 		}
 		return
 	}
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		t.Fatal(err)
-	}
+	mountPrivateRuntimeDirectories(t)
+	t.Setenv("SYSREPO_REPOSITORY_PATH", t.TempDir())
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	root, networkDir, _ := prepareRuntimeDirectories(t)

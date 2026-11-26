@@ -97,6 +97,7 @@ func testOwnedDHCPv4RecoveryLinkChange(t *testing.T, change dhcpRecoveryLinkChan
 		runOwnedDHCPv4RecoveryLinkChange(t, change)
 		return
 	}
+	t.Parallel()
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
 	child.SysProcAttr = &syscall.SysProcAttr{
@@ -113,9 +114,7 @@ func testOwnedDHCPv4RecoveryLinkChange(t *testing.T, change dhcpRecoveryLinkChan
 }
 
 func runOwnedDHCPv4RecoveryLinkChange(t *testing.T, change dhcpRecoveryLinkChange) {
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		t.Fatal(err)
-	}
+	mountPrivateRuntimeDirectories(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	gateway, err := netns.Get()

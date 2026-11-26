@@ -19,6 +19,7 @@ import (
 )
 
 func TestObservationExecutorRuntime(t *testing.T) {
+	t.Parallel()
 	binary := protocolTestBinary(t)
 	machineID := "runtime-observation-machine"
 	machineIDPath := filepath.Join(t.TempDir(), "machine-id")
@@ -29,6 +30,7 @@ func TestObservationExecutorRuntime(t *testing.T) {
 		t.Run(
 			string(family),
 			func(t *testing.T) {
+				t.Parallel()
 				network, address := "tcp4", "127.0.0.1:0"
 				if family == observation.FamilyIPv6 {
 					network, address = "tcp6", "[::1]:0"

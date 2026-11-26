@@ -56,8 +56,21 @@ func (run *bgpRuntimeRun) startRouter(t *testing.T, provider bgpRuntimeProvider)
 	return router
 }
 
+func mountPrivateRuntimeDirectories(t *testing.T) {
+	t.Helper()
+	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{"/run", "/dev/shm"} {
+		if err := unix.Mount("tmpfs", target, "tmpfs", 0, ""); err != nil {
+			t.Fatalf("mount private %s: %v", target, err)
+		}
+	}
+}
+
 func runBGPRuntimeIsolated(t *testing.T, body func(*testing.T, *bgpRuntimeRun)) {
 	if os.Getenv(tunnelRuntimeChildEnv) != "1" {
+		t.Parallel()
 		binary := protocolTestBinary(t)
 		child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
 		child.SysProcAttr = &syscall.SysProcAttr{
@@ -73,9 +86,7 @@ func runBGPRuntimeIsolated(t *testing.T, body func(*testing.T, *bgpRuntimeRun)) 
 		}
 		return
 	}
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		t.Fatal(err)
-	}
+	mountPrivateRuntimeDirectories(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	gateway, err := netns.Get()

@@ -29,6 +29,7 @@ func TestOwnedDHCPv6PDSolicitWakeRuntime(t *testing.T) {
 		runOwnedDHCPv6PDSolicitWakeRuntime(t)
 		return
 	}
+	t.Parallel()
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
 	child.SysProcAttr = &syscall.SysProcAttr{

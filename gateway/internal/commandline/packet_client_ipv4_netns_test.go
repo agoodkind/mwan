@@ -64,6 +64,7 @@ func testOwnedDHCPv4DaemonRuntime(
 		runOwnedDHCPv4DaemonRuntime(t, classless, recoverAtT2, replaceAddress, rejectedRecovery)
 		return
 	}
+	t.Parallel()
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
 	child.SysProcAttr = &syscall.SysProcAttr{
@@ -82,9 +83,7 @@ func runOwnedDHCPv4DaemonRuntime(
 	replaceAddress bool,
 	rejectedRecovery bool,
 ) {
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		t.Fatal(err)
-	}
+	mountPrivateRuntimeDirectories(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	gateway, err := netns.Get()

@@ -30,6 +30,9 @@ func runDebugProbeIsolatedTest(t *testing.T, run func(*testing.T, string), clone
 		run(t, os.Getenv(debugProbeNamespaceBinary))
 		return
 	}
+	if cloneFlags&unix.CLONE_NEWNET != 0 {
+		t.Parallel()
+	}
 	binary, supplied := os.LookupEnv("MWAN_PROTOCOL_TEST_BINARY")
 	if supplied {
 		if !filepath.IsAbs(binary) {

@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/vishvananda/netns"
-	"golang.org/x/sys/unix"
 	"goodkind.io/mwan/gateway/internal/commandline/commandopts"
 	"goodkind.io/mwan/gateway/internal/netif"
 	"goodkind.io/mwan/gateway/internal/yangpub"
@@ -121,9 +120,7 @@ func prepareRuntimeDirectories(t *testing.T) (root, networkDir, configPath strin
 }
 
 func runTunnelProviderDaemonRuntime(t *testing.T) {
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		t.Fatal(err)
-	}
+	mountPrivateRuntimeDirectories(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	gateway, err := netns.Get()

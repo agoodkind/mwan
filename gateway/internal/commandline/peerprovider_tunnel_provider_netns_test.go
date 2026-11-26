@@ -16,6 +16,7 @@ func TestTunnelProviderDaemonRuntime(t *testing.T) {
 		runTunnelProviderDaemonRuntime(t)
 		return
 	}
+	t.Parallel()
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^TestTunnelProviderDaemonRuntime$")
 	child.SysProcAttr = &syscall.SysProcAttr{

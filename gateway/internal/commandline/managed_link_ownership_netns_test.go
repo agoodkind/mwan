@@ -1,4 +1,4 @@
-//go:build linux && (firewall || protocol || firewallnetns)
+//go:build linux && (firewall || firewallnetns)
 
 package commandline
 
@@ -32,6 +32,7 @@ func TestOwnedLinksDaemonRuntime(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("network and mount namespaces require root")
 	}
+	t.Parallel()
 	binary := BuildTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^TestOwnedLinksDaemonRuntime$")
 	child.SysProcAttr = &syscall.SysProcAttr{
@@ -44,9 +45,7 @@ func TestOwnedLinksDaemonRuntime(t *testing.T) {
 }
 
 func runOwnedLinksDaemonRuntime(t *testing.T) {
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		t.Fatal(err)
-	}
+	mountPrivateRuntimeDirectories(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	gateway, err := netns.Get()

@@ -44,6 +44,7 @@ func testOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 		runOwnedDHCPv6IARuntime(t, combined, unequal, duplicate)
 		return
 	}
+	t.Parallel()
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
 	child.SysProcAttr = &syscall.SysProcAttr{
@@ -56,9 +57,8 @@ func testOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 }
 
 func runOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		t.Fatal(err)
-	}
+	mountPrivateRuntimeDirectories(t)
+	t.Setenv("SYSREPO_REPOSITORY_PATH", t.TempDir())
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	gateway, err := netns.Get()

@@ -47,6 +47,7 @@ func TestOwnedDHCPv6DaemonRestartRecovery(t *testing.T) {
 		runOwnedDHCPv6DaemonRestartRecovery(t)
 		return
 	}
+	t.Parallel()
 	binary := protocolTestBinary(t)
 	for _, scenario := range []string{
 		"validation-and-expiry",
@@ -84,9 +85,8 @@ func runDHCPv6RestartChild(t *testing.T, binary, scenario string) {
 }
 
 func runOwnedDHCPv6DaemonRestartRecovery(t *testing.T) {
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		t.Fatal(err)
-	}
+	mountPrivateRuntimeDirectories(t)
+	t.Setenv("SYSREPO_REPOSITORY_PATH", t.TempDir())
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	gateway, err := netns.Get()

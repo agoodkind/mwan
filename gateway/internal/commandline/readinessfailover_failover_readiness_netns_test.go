@@ -1,4 +1,4 @@
-//go:build linux && (firewall || protocol)
+//go:build linux && protocol
 
 package commandline
 
@@ -47,6 +47,7 @@ func testFailoverForwardingReadiness(t *testing.T, ipv4Only bool) {
 		runFailoverForwardingReadinessDaemonRuntime(t, ipv4Only)
 		return
 	}
+	t.Parallel()
 	binary := protocolTestBinary(t)
 	childContext, cancel := context.WithTimeout(context.Background(), failoverReadinessTimeout)
 	defer cancel()
@@ -75,9 +76,7 @@ func testFailoverForwardingReadiness(t *testing.T, ipv4Only bool) {
 }
 
 func runFailoverForwardingReadinessDaemonRuntime(t *testing.T, ipv4Only bool) {
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		t.Fatal(err)
-	}
+	mountPrivateRuntimeDirectories(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	gateway, err := netns.Get()

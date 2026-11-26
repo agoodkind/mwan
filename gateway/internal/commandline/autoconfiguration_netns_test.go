@@ -50,6 +50,7 @@ func runAutoconfigurationTest(t *testing.T, run func(*testing.T)) {
 		run(t)
 		return
 	}
+	t.Parallel()
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
 	child.SysProcAttr = &syscall.SysProcAttr{
@@ -72,9 +73,7 @@ type autoconfigurationRuntime struct {
 // to that thread.
 func buildAutoconfigurationRuntime(t *testing.T) autoconfigurationRuntime {
 	t.Helper()
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		t.Fatal(err)
-	}
+	mountPrivateRuntimeDirectories(t)
 	gateway, err := netns.Get()
 	if err != nil {
 		t.Fatal(err)
