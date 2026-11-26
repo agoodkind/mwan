@@ -15,6 +15,7 @@ import (
 )
 
 const (
+	doca           = "doca"
 	secureMode     = "secure"
 	statusInterval = 50 * time.Millisecond
 )
@@ -176,11 +177,12 @@ func readSwitch(
 		return switchRow{}, fmt.Errorf("%w: %q", errDatapath, config.DatapathType)
 	}
 
-	if config.Offload == "doca" {
-		if root.OtherConfig["hw-offload-ct-unidir-udp-enabled"] == "true" {
-			return switchRow{}, errUnidirectionalUDP
-		}
+	if (config.DatapathType == doca || config.Offload == doca) &&
+		root.OtherConfig["hw-offload-ct-unidir-udp-enabled"] == "true" {
+		return switchRow{}, errUnidirectionalUDP
+	}
 
+	if config.Offload == doca {
 		for _, key := range []string{"doca-init", "hw-offload"} {
 			if root.OtherConfig[key] != "true" {
 				return switchRow{}, fmt.Errorf(
