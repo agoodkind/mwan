@@ -40,7 +40,7 @@ func TestSetupWithOVS(t *testing.T) {
 
 	doca := settings
 	doca.Offload = "doca"
-	if err := Setup(ctx, doca); err == nil || !strings.Contains(err.Error(), "doca-init") {
+	if err := Setup(ctx, doca, nil); err == nil || !strings.Contains(err.Error(), "doca-init") {
 		t.Fatalf("missing DOCA setting returned %v", err)
 	}
 
@@ -71,13 +71,13 @@ func TestSetupWithOVS(t *testing.T) {
 		}
 	}
 	setOtherConfig()
-	if err := Setup(ctx, doca); err != errUnidirectionalUDP {
+	if err := Setup(ctx, doca, nil); err != errUnidirectionalUDP {
 		t.Fatalf("unidirectional UDP offload returned %v", err)
 	}
 	root.OtherConfig = original
 	setOtherConfig()
 
-	if err := Setup(ctx, settings); err != nil {
+	if err := Setup(ctx, settings, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -89,7 +89,7 @@ func TestSetupWithOVS(t *testing.T) {
 
 	settings.Ports[1].Options[1].Value = "201"
 	settings.Ports = settings.Ports[1:]
-	if err := Setup(ctx, settings); err != nil {
+	if err := Setup(ctx, settings, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -98,7 +98,7 @@ func TestSetupWithOVS(t *testing.T) {
 		t.Fatalf("Geneve interface UUID changed or key did not match 201: %+v", updated)
 	}
 
-	if err := Setup(ctx, settings); err != nil {
+	if err := Setup(ctx, settings, nil); err != nil {
 		t.Fatal(err)
 	}
 

@@ -10,6 +10,7 @@ import (
 
 	"goodkind.io/mwan/gateway/internal/ifmgr"
 	"goodkind.io/mwan/gateway/internal/ovsconfig"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 const moduleName = "ovs"
@@ -74,8 +75,14 @@ func (m *module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	defer m.Unlock()
 
 	settings, err := m.load()
+	var health map[string]wanstate.MemberHealth
+
 	if err == nil {
-		err = Setup(ctx, settings)
+		if m.Env.LiveState != nil && hasConditions(settings) {
+			health = m.Env.LiveState.Snapshot().Health
+		}
+
+		err = Setup(ctx, settings, health)
 	}
 
 	m.lastError = err

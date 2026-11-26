@@ -44,7 +44,7 @@ func modulesForRole(role string) ([]string, error) {
 
 // ModulesForOVS returns modules that configure OVS and host services.
 //
-// OVS creates local ports before host modules configure those interfaces.
+// OVS reads connection health before installing conditional rules and groups.
 func ModulesForOVS(role string) ([]string, error) {
 	names, err := modulesForRole(role)
 	if err != nil {
@@ -59,7 +59,7 @@ func ModulesForOVS(role string) ([]string, error) {
 		}
 
 		active = append(active, name)
-		if name == "links" {
+		if name == "health" {
 			active = append(active, "ovs")
 		}
 	}

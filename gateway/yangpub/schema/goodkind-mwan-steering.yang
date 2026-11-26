@@ -49,6 +49,9 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-11-25 {
+    description "Add connection health conditions to OpenFlow rules and group buckets.";
+  }
   revision 2026-11-22 {
     description "Add OVS bridge, port, and OpenFlow configuration.";
   }
@@ -1376,6 +1379,20 @@ module goodkind-mwan-steering {
     }
   }
 
+  grouping ovs-health-condition {
+    container condition {
+      presence "Apply a health condition to this flow or bucket.";
+      leaf healthy-connection {
+        type string { length "1..max"; }
+        mandatory true;
+        description
+          "Include this flow or bucket only while its connection is healthy.
+           Use this WAN's connection-id if present, or its name otherwise.
+           This connection requires an enabled health probe.";
+      }
+    }
+  }
+
   augment "/if:interfaces" {
     description
       "Group-wide steering settings.";
@@ -1507,6 +1524,11 @@ module goodkind-mwan-steering {
           list bucket {
             key "id";
             ordered-by user;
+            must "not(condition) or ../type != 'indirect'" {
+              error-message
+                "An indirect group requires an unconditional bucket. Apply health conditions to referring flows.";
+            }
+            uses ovs-health-condition;
             leaf id {
               type uint32 { range "0..4294967039"; }
               description "Bucket ID within this group.";
@@ -1534,6 +1556,7 @@ module goodkind-mwan-steering {
         list flow {
           key "name";
           description "An OpenFlow rule.";
+          uses ovs-health-condition;
           leaf name {
             type string { length "1..max"; }
             description "Identifies this rule in configuration errors.";

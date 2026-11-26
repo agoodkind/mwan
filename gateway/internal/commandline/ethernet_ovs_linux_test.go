@@ -52,7 +52,7 @@ func TestOVSRuleUpdateMovesPackets(t *testing.T) {
 	)
 	path := filepath.Join(t.TempDir(), "network.json")
 	writeOVSPacketDocument(t, path, configuration)
-	logPath := startOVSPacketService(t, path)
+	logPath := startOVSPacketService(t, path, "mwan-of-in", 100*time.Millisecond)
 	checkOVSIPPacket(t, input, first, second, layers.EthernetTypeIPv4, "initial IPv4")
 	checkOVSIPPacket(t, input, second, first, layers.EthernetTypeIPv6, "initial IPv6")
 	bridge := "unix:" + filepath.Join(filepath.Dir(socket), "br-mwan-of.mgmt")
@@ -178,7 +178,7 @@ func checkOVSIPPacket(
 		Protocol: bits.ReverseBytes16(uint16(family)),
 	}
 	marker := gopacket.Payload("mwan OVS " + label)
-	packet := ovsIPFrame(t, family, marker)
+	packet := ovsIPFrame(t, family, 4444, marker)
 	deadline := time.Now().Add(ovsReconcileWait)
 	for time.Now().Before(deadline) {
 		if err := unix.Sendto(sender, packet, 0, address); err != nil {
@@ -223,7 +223,12 @@ func ovsReceivedMarker(t *testing.T, receiver int, marker []byte, timeout int) b
 	return false
 }
 
-func ovsIPFrame(t *testing.T, family layers.EthernetType, marker gopacket.Payload) []byte {
+func ovsIPFrame(
+	t *testing.T,
+	family layers.EthernetType,
+	sourcePort layers.UDPPort,
+	marker gopacket.Payload,
+) []byte {
 	t.Helper()
 	ethernet := &layers.Ethernet{
 		SrcMAC:       net.HardwareAddr{2, 0, 0, 0, 0, 2},
@@ -249,7 +254,7 @@ func ovsIPFrame(t *testing.T, family layers.EthernetType, marker gopacket.Payloa
 			DstIP:      net.ParseIP("2001:db8:ffff::1"),
 		}
 	}
-	udp := &layers.UDP{SrcPort: 4444, DstPort: 5555}
+	udp := &layers.UDP{SrcPort: sourcePort, DstPort: 5555}
 	if err := udp.SetNetworkLayerForChecksum(ip); err != nil {
 		t.Fatal(err)
 	}
@@ -321,16 +326,16 @@ func writeOVSPacketDocument(t *testing.T, path, configuration string) {
 	}
 }
 
-func startOVSPacketService(t *testing.T, networkPath string) string {
+func startOVSPacketService(t *testing.T, networkPath, iface string, interval time.Duration) string {
 	t.Helper()
 
 	root := t.TempDir()
 	configPath := filepath.Join(root, "config.toml")
 	configuration := fmt.Sprintf(
 		`[ifmgr]
-reconcile_interval = "100ms"
+reconcile_interval = %q
 lease_directory = %q
-[ifmgr.iface.mwan-of-in]
+[ifmgr.iface.%s]
 [ifmgr.modules.links]
 state_file = %q
 [ifmgr.modules.addresses]
@@ -338,7 +343,9 @@ state_file = %q
 [ifmgr.modules.autoconfiguration]
 state_file = %q
 `,
+		interval.String(),
 		root,
+		iface,
 		filepath.Join(root, "links.json"),
 		filepath.Join(root, "addresses.json"),
 		filepath.Join(root, "policy.json"),

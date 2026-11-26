@@ -21,15 +21,16 @@ type OpenFlowConfig struct {
 
 // Flow matches packets in one OpenFlow table and defines their actions.
 type Flow struct {
-	Name           string   `json:"name"`
-	Table          uint8    `json:"table"`
-	Priority       uint16   `json:"priority"`
-	InPort         string   `json:"in-port"`
-	EtherType      *uint16  `json:"ether-type"`
-	Output         []string `json:"output"`
-	GroupID        *uint32  `json:"group-id"`
-	RawMatch       [][]byte `json:"raw-match"`
-	RawInstruction [][]byte `json:"raw-instruction"`
+	Condition      *Condition `json:"condition,omitempty"`
+	Name           string     `json:"name"`
+	Table          uint8      `json:"table"`
+	Priority       uint16     `json:"priority"`
+	InPort         string     `json:"in-port"`
+	EtherType      *uint16    `json:"ether-type"`
+	Output         []string   `json:"output"`
+	GroupID        *uint32    `json:"group-id"`
+	RawMatch       [][]byte   `json:"raw-match"`
+	RawInstruction [][]byte   `json:"raw-instruction"`
 }
 
 // Group uses a logical ID that flows reference across OpenFlow tables.
@@ -55,11 +56,17 @@ const (
 
 // Bucket applies actions before sending packets to its output port.
 type Bucket struct {
-	ID            uint32   `json:"id"`
-	RawActions    [][]byte `json:"raw-action"`
-	Weight        *uint16  `json:"weight"`
-	Output        string   `json:"output"`
-	RawProperties [][]byte `json:"raw-property"`
+	Condition     *Condition `json:"condition,omitempty"`
+	ID            uint32     `json:"id"`
+	RawActions    [][]byte   `json:"raw-action"`
+	Weight        *uint16    `json:"weight"`
+	Output        string     `json:"output"`
+	RawProperties [][]byte   `json:"raw-property"`
+}
+
+// Condition enables an entry only while its referenced connection is healthy.
+type Condition struct {
+	HealthyConnection string `json:"healthy-connection"`
 }
 
 // Port configures one OVS interface and its associated port.

@@ -12,6 +12,7 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"goodkind.io/mwan/gateway/internal/ovsconfig"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 const (
@@ -45,8 +46,16 @@ var (
 //
 // Example:
 //
-//	ovs.Setup(ctx, config)
-func Setup(parent context.Context, config ovsconfig.Config) error {
+//	ovs.Setup(ctx, config, store.Snapshot().Health)
+func Setup(
+	parent context.Context,
+	config ovsconfig.Config,
+	health map[string]wanstate.MemberHealth,
+) error {
+	if health == nil && hasConditions(config) {
+		return errHealthStore
+	}
+
 	ctx, cancel := context.WithTimeout(parent, time.Duration(config.TimeoutMillis)*time.Millisecond)
 	defer cancel()
 	database, err := connect(ctx, config.Socket)
@@ -63,7 +72,7 @@ func Setup(parent context.Context, config ovsconfig.Config) error {
 		return nil
 	}
 
-	return installOpenFlow(ctx, database, config)
+	return installOpenFlow(ctx, database, config, health)
 }
 
 func reconcileBridge(ctx context.Context, database databaseClient, config ovsconfig.Config) error {

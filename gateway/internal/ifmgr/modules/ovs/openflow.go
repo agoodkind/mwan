@@ -16,6 +16,7 @@ import (
 	"antrea.io/libOpenflow/openflow15"
 	"antrea.io/libOpenflow/util"
 	"goodkind.io/mwan/gateway/internal/ovsconfig"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 const (
@@ -38,6 +39,7 @@ func installOpenFlow(
 	ctx context.Context,
 	database databaseClient,
 	config ovsconfig.Config,
+	health map[string]wanstate.MemberHealth,
 ) error {
 	var interfaces []*interfaceRow
 	if err := readRows(ctx, database, &interfaces); err != nil {
@@ -52,17 +54,12 @@ func installOpenFlow(
 		}
 	}
 
-	flows, err := compileFlows(ctx, config.OpenFlow.Flows, numbers)
+	flows, groups, err := compileOpenFlow(ctx, config.OpenFlow, numbers, health)
 	if err != nil {
 		return err
 	}
 
 	bridgeID, err := readBridgeID(ctx, database, config.Bridge)
-	if err != nil {
-		return err
-	}
-
-	groups, err := compileGroups(ctx, config.OpenFlow.Groups, numbers)
 	if err != nil {
 		return err
 	}

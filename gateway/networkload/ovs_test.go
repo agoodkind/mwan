@@ -1,9 +1,11 @@
 package networkload_test
 
 import (
+	"os"
 	"strings"
 	"testing"
 
+	"goodkind.io/mwan/gateway/networkjson"
 	"goodkind.io/mwan/gateway/networkload"
 )
 
@@ -23,6 +25,97 @@ func TestLoadOVS(t *testing.T) {
 		"../yangpub/schema",
 	); err == nil {
 		t.Fatal("LoadOVS accepted a kernel network document")
+	}
+}
+
+func TestIndirectGroupHealthCondition(t *testing.T) {
+	const schema = "../yangpub/schema"
+	base, err := os.ReadFile("testdata/ovs-health.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	indirect := replaceOnce(t, base, `"type": "select"`, `"type": "indirect"`)
+	const want = "Apply health conditions to referring flows"
+	if _, err := networkload.LoadOVS(writeDocument(t, indirect), schema); err == nil ||
+		!strings.Contains(err.Error(), want) {
+		t.Fatalf("LoadOVS returned an unexpected result for a conditional indirect bucket: %v", err)
+	}
+
+	if _, err := networkjson.Decode(indirect); err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("Decode returned an unexpected result for a conditional indirect bucket: %v", err)
+	}
+
+	unconditional := replaceOnce(
+		t,
+		indirect,
+		`"id": 7, "condition": {"healthy-connection": "uplink-a"}`,
+		`"id": 7`,
+	)
+	if _, err := networkload.LoadOVS(writeDocument(t, unconditional), schema); err != nil {
+		t.Fatalf("LoadOVS rejected a conditional flow that refers to an indirect group: %v", err)
+	}
+}
+
+func TestLoadOVSHealthConditions(t *testing.T) {
+	const fixture = "testdata/ovs-health.json"
+	const schema = "../yangpub/schema"
+	base, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	settings, err := networkload.LoadOVS(fixture, schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	flow := settings.OpenFlow.Flows[0]
+	bucket := settings.OpenFlow.Groups[0].Buckets[0]
+	if flow.Condition == nil || bucket.Condition == nil ||
+		flow.Condition.HealthyConnection != "uplink-a" ||
+		bucket.Condition.HealthyConnection != "uplink-a" {
+		t.Fatalf("loaded conditions: flow %+v, bucket %+v", flow.Condition, bucket.Condition)
+	}
+
+	// A WAN without an explicit connection ID uses its WAN name instead.
+	implicit := replaceOnce(t, base, `"goodkind-mwan-steering:connection-id": "uplink-a",`, "")
+	implicit = replaceOnce(t, implicit, `"name": "provider-a"`, `"name": "uplink-a"`)
+	if _, err := networkload.LoadOVS(writeDocument(t, implicit), schema); err != nil {
+		t.Fatalf("WAN name condition: %v", err)
+	}
+
+	tests := []struct{ name, before, after, want string }{
+		{
+			name:   "unknown bucket connection",
+			before: `"id": 7, "condition": {"healthy-connection": "uplink-a"}`,
+			after:  `"id": 7, "condition": {"healthy-connection": "unknown"}`,
+			want:   `OpenFlow group 1 bucket 7: healthy-connection requires an enabled WAN health probe: "unknown"`,
+		},
+		{
+			name:   "disabled flow probe",
+			before: `"enabled": true`,
+			after:  `"enabled": false`,
+			want:   `OpenFlow flow "send-to-uplink": healthy-connection requires an enabled WAN health probe: "uplink-a"`,
+		},
+		{
+			name:   "empty condition",
+			before: `"id": 7, "condition": {"healthy-connection": "uplink-a"}`,
+			after:  `"id": 7, "condition": {}`,
+			want:   "healthy-connection",
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				document := replaceOnce(t, base, test.before, test.after)
+				_, err := networkload.LoadOVS(writeDocument(t, document), schema)
+				if err == nil || !strings.Contains(err.Error(), test.want) {
+					t.Fatalf("LoadOVS returned %v, want %q", err, test.want)
+				}
+			},
+		)
 	}
 }
 
