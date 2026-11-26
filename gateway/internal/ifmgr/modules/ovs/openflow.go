@@ -103,6 +103,12 @@ func compileFlows(
 	health map[string]wanstate.MemberHealth,
 	installed map[flowIdentity]flowContents,
 ) ([]*openflow15.FlowMod, error) {
+	if _, err := ovsconfig.RuleCookies(rules); err != nil {
+		slog.ErrorContext(ctx, "OpenFlow rule identification failed", "err", err)
+
+		return nil, fmt.Errorf("identify configured OpenFlow rules: %w", err)
+	}
+
 	flows := make([]*openflow15.FlowMod, 0, len(rules)+1)
 	removeOwned := openflow15.NewFlowMod()
 	removeOwned.Command = openflow15.FC_DELETE

@@ -40,3 +40,14 @@ func TestCompileFlowsRejectsDuplicateSwitchMatches(t *testing.T) {
 		t.Fatalf("rules with different priorities: %v", err)
 	}
 }
+
+func TestCompileFlowsRejectsCollidingRuleCookies(t *testing.T) {
+	rules := []ovsconfig.Flow{
+		{Name: "wan-1f12547414d7f8ec", Priority: 10},
+		{Name: "wan-4796b608b453eb1a", Priority: 20},
+	}
+	flows, err := compileFlows(t.Context(), rules, nil, nil, nil)
+	if err == nil || len(flows) != 0 || !strings.Contains(err.Error(), "cookie conflict") {
+		t.Fatalf("compile rules with colliding cookies: flows=%v, err=%v", flows, err)
+	}
+}

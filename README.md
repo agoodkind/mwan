@@ -65,14 +65,16 @@ validation models, and `--verbose` for diagnostic logs on standard error.
 
 Run `mwan ovs-rule-status "$CONTROL_SOCKET" --network "$NETWORK" --schema-dir "$SCHEMA_DIR"`
 with the Unix control socket of the running `ovs-vswitchd` process. MWAN reads
-the configured bridge and prints one JSON record per installed OpenFlow rule.
-Each record includes the OpenFlow definition, total packet count and offloaded
-packet count since installation or the last counter reset.
+the configured bridge and prints a JSON array with one entry per configured rule.
+Each entry includes the configured name. When OVS reports the matching rule cookie,
+the entry also includes the installed definition and available packet counters.
 
-The forwarding result is `software` when OVS counted packets only in software,
-`hardware` when OVS counted every packet as offloaded, and `mixed` when it
-counted both. A rule with zero packets reports `no-traffic`. A rule missing
-either counter reports `unavailable`.
+The forwarding result reflects the counters OVS has reported. `software` means
+OVS has counted packets only in software, `hardware` means every counted packet
+was offloaded, and `mixed` means OVS has counted both. Zero counted packets
+produce `unobserved`. Hardware counters can update after traffic has passed.
+Missing rules or counters produce `unavailable`. Rules installed with the older
+shared MWAN cookie remain unavailable until the gateway next reconciles them.
 
 ## Installing what the binary owns
 

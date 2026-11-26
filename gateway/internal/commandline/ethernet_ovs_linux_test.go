@@ -59,7 +59,6 @@ func TestOVSRuleUpdateMovesPackets(t *testing.T) {
 	checkOVSIPPacket(t, input, second, first, layers.EthernetTypeIPv6, "initial IPv6")
 	bridge := "unix:" + filepath.Join(filepath.Dir(socket), "br-mwan-of.mgmt")
 	checkWeightedISPGroup(t, bridge)
-	checkSoftwareRuleCounters(t, socket, path)
 	foreign := "cookie=0x4321,table=11,priority=10,actions=group:0x6d770011"
 	if output, err := exec.CommandContext(
 		t.Context(),
@@ -72,6 +71,7 @@ func TestOVSRuleUpdateMovesPackets(t *testing.T) {
 	).CombinedOutput(); err != nil {
 		t.Fatalf("add independent flow referencing mwan's group: %v: %s", err, output)
 	}
+	checkSoftwareRuleCounters(t, socket, path)
 
 	updated := strings.Replace(
 		configuration,
@@ -141,19 +141,26 @@ func checkSoftwareRuleCounters(t *testing.T, socket, network string) {
 		t.Fatalf("read per-rule forwarding counters: %v: %s", err, diagnostics.String())
 	}
 	var rules []struct {
-		Definition string
+		Name       string
 		Forwarding string
 	}
 	if err := json.Unmarshal(output, &rules); err != nil {
 		t.Fatal(err)
 	}
-	for _, rule := range rules {
-		if strings.Contains(rule.Definition, "cookie=0x6d77616e00000000") &&
-			rule.Forwarding == "software" {
-			return
-		}
+	expected := map[string]bool{
+		"forward-ipv4":                 true,
+		"forward-ipv6":                 true,
+		"set-ipv4-source-and-continue": true,
 	}
-	t.Fatalf("did not find software packet counters for the forwarded traffic: %s", output)
+	for _, rule := range rules {
+		if !expected[rule.Name] || rule.Forwarding != "software" {
+			t.Fatalf("unexpected rule evidence: %s", output)
+		}
+		delete(expected, rule.Name)
+	}
+	if len(expected) > 0 {
+		t.Fatalf("missing rule evidence: %v", expected)
+	}
 }
 
 func checkWeightedISPGroup(t *testing.T, bridge string) {

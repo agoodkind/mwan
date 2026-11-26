@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	mwanFlowCookie  = 0x6d77616e00000000
+	mwanFlowCookie  = ovsconfig.FlowCookiePrefix
 	mwanFlowMask    = 0xffffffff00000000
 	flowHeaderSize  = 48
 	oxmHeaderSize   = 4
@@ -45,7 +45,7 @@ func marshalFlow(
 	}
 
 	flow := openflow15.NewFlowMod()
-	flow.Cookie = mwanFlowCookie
+	flow.Cookie = rule.Cookie()
 	flow.Priority = rule.Priority
 	flow.TableId = rule.Table
 	if len(rule.Match) != 0 {
