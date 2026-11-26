@@ -30,6 +30,12 @@
         "group": [{
           "id": 17, "type": "select", "selection-method": "dp_hash",
           "bucket": [{"id": 0, "output": "mwan-of-b"}]
+        }, {
+          "id": 18, "type": "select",
+          "bucket": [
+            {"id": 1, "weight": 200, "output": "mwan-of-a"},
+            {"id": 2, "weight": 100, "output": "mwan-of-b"}
+          ]
         }],
         "flow": [
           {

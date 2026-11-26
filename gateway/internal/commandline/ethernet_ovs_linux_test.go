@@ -56,6 +56,7 @@ func TestOVSRuleUpdateMovesPackets(t *testing.T) {
 	checkOVSIPPacket(t, input, first, second, layers.EthernetTypeIPv4, "initial IPv4")
 	checkOVSIPPacket(t, input, second, first, layers.EthernetTypeIPv6, "initial IPv6")
 	bridge := "unix:" + filepath.Join(filepath.Dir(socket), "br-mwan-of.mgmt")
+	checkWeightedISPGroup(t, bridge)
 	foreign := "cookie=0x4321,table=11,priority=10,actions=group:0x6d770011"
 	if output, err := exec.CommandContext(
 		t.Context(),
@@ -110,6 +111,27 @@ func TestOVSRuleUpdateMovesPackets(t *testing.T) {
 	writeOVSPacketDocument(t, path, configuration)
 	checkOVSIPPacket(t, input, first, second, layers.EthernetTypeIPv4, "restored IPv4")
 	checkOVSIPPacket(t, input, second, first, layers.EthernetTypeIPv6, "restored IPv6")
+}
+
+func checkWeightedISPGroup(t *testing.T, bridge string) {
+	t.Helper()
+	output, err := exec.CommandContext(
+		t.Context(),
+		"ovs-ofctl",
+		"-O",
+		"OpenFlow15",
+		"dump-groups",
+		bridge,
+		"1836515346",
+	).CombinedOutput()
+	if err != nil {
+		t.Fatalf("read ISP select group: %v: %s", err, output)
+	}
+	group := string(output)
+	if !strings.Contains(group, "type=select") || !strings.Contains(group, "weight:200,") ||
+		!strings.Contains(group, "weight:100,") || strings.Contains(group, "selection_method") {
+		t.Fatalf("unexpected ISP select group: %s", group)
+	}
 }
 
 func checkOVSHostFirewall(t *testing.T) {

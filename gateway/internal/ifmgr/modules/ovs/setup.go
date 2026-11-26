@@ -24,7 +24,10 @@ var (
 	errDatapath  = errors.New(
 		"check that ovs-vswitchd is running and supports this datapath",
 	)
-	errDOCASettings   = errors.New("OVS-DOCA setting is required")
+	errDOCASettings      = errors.New("OVS-DOCA setting is required")
+	errUnidirectionalUDP = errors.New(
+		"set Open_vSwitch.other_config:hw-offload-ct-unidir-udp-enabled=false and restart ovs-vswitchd during maintenance",
+	)
 	errBridgeOwner    = errors.New("existing OVS bridge lacks mwan ownership")
 	errBridgeSettings = errors.New(
 		"match datapath-type, use secure fail mode, and leave controllers unset",
@@ -174,6 +177,10 @@ func readSwitch(
 	}
 
 	if config.Offload == "doca" {
+		if root.OtherConfig["hw-offload-ct-unidir-udp-enabled"] == "true" {
+			return switchRow{}, errUnidirectionalUDP
+		}
+
 		for _, key := range []string{"doca-init", "hw-offload"} {
 			if root.OtherConfig[key] != "true" {
 				return switchRow{}, fmt.Errorf(

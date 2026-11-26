@@ -54,6 +54,29 @@ func TestSetupWithOVS(t *testing.T) {
 		t.Fatalf("rejected configuration created bridges %v: %v", bridges, err)
 	}
 
+	root, err := readSwitch(ctx, db, settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := root.OtherConfig
+	root.OtherConfig = map[string]string{"hw-offload-ct-unidir-udp-enabled": "true"}
+	setOtherConfig := func() {
+		t.Helper()
+		operations, err := db.Where(&root).Update(&root, &root.OtherConfig)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := transact(ctx, db, operations); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setOtherConfig()
+	if err := Setup(ctx, doca); err != errUnidirectionalUDP {
+		t.Fatalf("unidirectional UDP offload returned %v", err)
+	}
+	root.OtherConfig = original
+	setOtherConfig()
+
 	if err := Setup(ctx, settings); err != nil {
 		t.Fatal(err)
 	}
