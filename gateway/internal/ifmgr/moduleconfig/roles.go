@@ -27,7 +27,12 @@ func Build(
 	role string,
 ) (ifmgr.ModuleConfigSet, error) {
 	logger := slog.Default().With("component", "ifmgr")
-	names, err := ifmgr.ModulesForRole(role)
+	selectModules := ifmgr.ModulesForRole
+	if ifmgrCfg.OVSDataplane {
+		selectModules = ifmgr.ModulesForOVS
+	}
+
+	names, err := selectModules(role)
 	if err != nil {
 		logger.Warn("ifmgr: ModulesForRole failed", "role", role, "err", err)
 

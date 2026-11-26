@@ -20,6 +20,7 @@ import (
 	"goodkind.io/mwan/gateway/firewall"
 	"goodkind.io/mwan/gateway/interfaceintent"
 	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/ovsconfig"
 	"goodkind.io/mwan/gateway/yangpub/schema"
 )
 
@@ -37,8 +38,10 @@ type document struct {
 }
 
 type interfaces struct {
-	Interface     []ifaceEntry  `json:"interface"`
-	SteeringGroup steeringGroup `json:"goodkind-mwan-steering:steering-group"`
+	OVS           *ovsconfig.Config `json:"goodkind-mwan-steering:ovs"`
+	Dataplane     string            `json:"goodkind-mwan-steering:dataplane"`
+	Interface     []ifaceEntry      `json:"interface"`
+	SteeringGroup steeringGroup     `json:"goodkind-mwan-steering:steering-group"`
 }
 
 type ifaceEntry struct {
@@ -271,6 +274,7 @@ type groupHealth struct {
 // Config is the network tree from one file, in the shape the daemon's
 // configuration struct stores.
 type Config struct {
+	OVS                   *ovsconfig.Config
 	Firewall              firewall.Config
 	PinnedConnectionID    string
 	InternalPrefix        string
@@ -304,6 +308,8 @@ type Rejection struct {
 // the tables this gateway's other software claims.
 var kernelReservedTables = []int{0, 253, 254, 255}
 
+var errMissingOVS = errors.New("dataplane ovs requires OVS settings")
+
 // build turns the decoded document into the daemon's shape, rejecting a value
 // the schema cannot require. The schema makes a provider's name mandatory and
 // bounds the table id and firewall mark; it leaves the rest optional, because a
@@ -314,12 +320,26 @@ var kernelReservedTables = []int{0, 253, 254, 255}
 // translation.
 func build(doc *document) (*Config, error) {
 	loaded := newWANNetworkConfig(doc)
-	if err := loadKernelSettings(doc, loaded); err != nil {
-		return nil, err
+	if doc.Interfaces.Dataplane == "ovs" {
+		if doc.Interfaces.OVS == nil {
+			return nil, errMissingOVS
+		}
+
+		loaded.OVS = doc.Interfaces.OVS
+	}
+
+	if loaded.OVS == nil {
+		if err := loadKernelSettings(doc, loaded); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := loadConnections(doc, loaded); err != nil {
 		return nil, err
+	}
+
+	if loaded.OVS != nil {
+		return buildOVSHost(doc, loaded)
 	}
 
 	byName := make(map[string]interfaceintent.Connection, len(loaded.Connections))
@@ -460,6 +480,7 @@ func newWANNetworkConfig(doc *document) *Config {
 	var zeroFirewall firewall.Config
 
 	return &Config{
+		OVS:                nil,
 		Firewall:           zeroFirewall,
 		PinnedConnectionID: pinnedConnectionID(group.Firewall),
 		InternalPrefix:     group.Translation.InternalPrefix,
@@ -949,6 +970,7 @@ func buildHealth(label string, probe *health) (*config.IfMgrHealthWANSection, er
 // filled before this file owned them. The health and routes sections keep the
 // filesystem paths TOML still owns. Apply writes only the network values.
 func (c *Config) Apply(cfg *config.Config) {
+	cfg.IfMgr.OVSDataplane = c.OVS != nil
 	cfg.IfMgr.Firewall = c.Firewall
 	cfg.IfMgr.PinnedConnectionID = c.PinnedConnectionID
 	cfg.IfMgr.InternalPrefix = c.InternalPrefix

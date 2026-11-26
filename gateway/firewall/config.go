@@ -67,6 +67,7 @@ type Service struct {
 // Config contains only inputs that affect the three firewall-owned tables.
 // Routing and tunnel configuration are projected into permits and paths.
 type Config struct {
+	HostBaseline          *BaselineConfig
 	Enabled               bool
 	InternalInterface     string
 	InternalNetworkIPv4   netip.Prefix
@@ -162,6 +163,10 @@ func (c BaselineConfig) Validate() error {
 
 // Validate checks every value before an applier can modify kernel rules.
 func (c Config) Validate() error {
+	if c.HostBaseline != nil {
+		return c.HostBaseline.Validate()
+	}
+
 	if !c.Enabled {
 		return nil
 	}

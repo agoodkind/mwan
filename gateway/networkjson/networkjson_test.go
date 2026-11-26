@@ -13,6 +13,8 @@ import (
 
 	"goodkind.io/mwan/gateway/interfaceintent"
 	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/ifmgr/moduleconfig"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/addresses"
 	"goodkind.io/mwan/gateway/internal/yangpub"
 	"goodkind.io/mwan/gateway/networkjson"
 	"goodkind.io/mwan/gateway/networkload"
@@ -142,6 +144,67 @@ func writeDocument(t *testing.T, body string) string {
 	}
 
 	return path
+}
+
+func ovsHostDocument(document string) string {
+	return strings.Replace(
+		document,
+		`"interface": [`,
+		`"goodkind-mwan-steering:dataplane": "ovs",
+	    "goodkind-mwan-steering:ovs": {
+	      "database-socket": "/run/openvswitch/db.sock",
+	      "startup-timeout-millis": 1000,
+	      "bridge": "br-wan",
+	      "datapath-type": "system",
+	      "port": [{"name":"enwebpass0","type":"system"}]
+	    }, "interface": [`,
+		1,
+	)
+}
+
+func TestOVSRejectsBGPBackupFor(t *testing.T) {
+	body := ovsHostDocument(string(bgpDocument(t, bgpDirectFixture)))
+	_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err == nil ||
+		!strings.Contains(err.Error(), "backup-for requires kernel ISP forwarding readiness") {
+		t.Fatalf("expected a BGP backup export validation error, got %v", err)
+	}
+}
+
+func TestOVSLoadsHostServicesWithoutKernelTranslation(t *testing.T) {
+	path := writeDocument(t, ovsHostDocument(validDocument))
+	loaded, err := networkload.Load(path, schemaDirForTest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var settings config.Config
+	loaded.Apply(&settings)
+	modules, err := moduleconfig.Build(settings.IfMgr, "wan")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, name := range []string{"npt", "wan.routes", "steering"} {
+		if _, selected := modules[name]; selected {
+			t.Fatalf("OVS mode selected kernel module %s", name)
+		}
+	}
+
+	local, ok := modules["addresses"].(addresses.Config)
+	if !ok || len(local.Connections) != len(loaded.Connections) {
+		t.Fatal("host address module did not receive configured interfaces")
+	}
+
+	for id, provider := range local.Providers {
+		if provider.IPv4 != nil || provider.IPv6 != nil {
+			t.Fatalf("host address module received translation settings for %s", id)
+		}
+	}
+
+	if !loaded.Health["webpass"].Enabled {
+		t.Fatal("OVS mode disabled probing for webpass")
+	}
 }
 
 // The daemon must still be able to use the other provider after Load rejects an entry.

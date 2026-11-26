@@ -49,6 +49,9 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-11-22 {
+    description "Add OVS bridge, port, and OpenFlow configuration.";
+  }
   revision 2026-11-21;
 
   revision 2026-11-15;
@@ -1376,6 +1379,87 @@ module goodkind-mwan-steering {
   augment "/if:interfaces" {
     description
       "Group-wide steering settings.";
+    leaf dataplane {
+      type enumeration {
+        enum kernel;
+        enum ovs;
+      }
+      default "kernel";
+      must ". != 'ovs' or ../ovs" {
+        error-message "Selecting ovs requires an ovs configuration.";
+      }
+      description "Selects a dataplane for forwarded traffic.";
+    }
+    container ovs {
+      when "../dataplane = 'ovs'";
+      presence "Configure OVS forwarding.";
+      description "Configures an OVS bridge and its ports.";
+      leaf database-socket {
+        type string { pattern '/.+'; }
+        mandatory true;
+        description "Absolute path to a local OVSDB Unix socket.";
+      }
+      leaf startup-timeout-millis {
+        type uint32 { range "1..max"; }
+        mandatory true;
+        description "Time allowed for OVS bridge and port setup.";
+      }
+      leaf bridge {
+        type string { length "1..15"; }
+        mandatory true;
+        description "OVS bridge name.";
+      }
+      leaf datapath-type {
+        type enumeration {
+          enum system;
+          enum netdev;
+          enum doca;
+        }
+        mandatory true;
+        description "Selects a datapath advertised by ovs-vswitchd.";
+      }
+      leaf offload {
+        type enumeration {
+          enum none;
+          enum doca;
+        }
+        default "none";
+        must ". != 'doca' or ../datapath-type = 'doca' or ../datapath-type = 'netdev'" {
+          error-message "OVS-DOCA requires datapath-type doca or netdev.";
+        }
+        description "Selects OVS hardware offload requirements.";
+      }
+      list port {
+        key "name";
+        min-elements 1;
+        must "name != ../bridge" {
+          error-message "Port and bridge names must differ.";
+        }
+        description "An OVS port with one interface.";
+        leaf name {
+          type string { length "1..15"; }
+          description "Shared name for this port and its interface.";
+        }
+        leaf type {
+          type string { length "1..max"; }
+          mandatory true;
+          description "Value for OVSDB Interface.type.";
+        }
+        list options {
+          key "name";
+          description "Entries in OVSDB Interface.options.";
+          leaf name {
+            type string { length "1..max"; }
+            description "OVS interface option name.";
+          }
+          leaf value {
+            type string;
+            mandatory true;
+            description "OVS interface option value.";
+          }
+        }
+      }
+    }
     container steering-group {
       description
         "Settings that apply to the member group as a whole.";

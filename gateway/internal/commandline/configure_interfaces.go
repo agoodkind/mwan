@@ -49,6 +49,8 @@ import (
 	_ "goodkind.io/mwan/gateway/internal/ifmgr/modules/wanroutes"
 )
 
+var errOVSModuleUnavailable = errors.New("this gateway build cannot start OVS reconciliation")
+
 const ifMgrWANRole = "wan"
 
 const (
@@ -186,6 +188,10 @@ func prepareIfMgrDaemon(
 		logger.Error("ifmgr: network configuration unusable", "err", err)
 
 		return nil, ifmgr.DaemonConfig{}, nil, err
+	}
+
+	if loaded != nil && loaded.OVS != nil {
+		return nil, ifmgr.DaemonConfig{}, nil, errOVSModuleUnavailable
 	}
 
 	dcfg, err := buildIfMgrDaemonConfig(cfg, role, cfg.IfMgr.NetworkdTimeout())
