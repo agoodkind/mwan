@@ -7,18 +7,31 @@ import math
 import re
 import subprocess
 import sys
+from ipaddress import ip_address
 from pathlib import Path
 
 TRIALS = range(1, 21)
 SERVER_PORTS = (5202, 5203)
 CAPTURES = ("vx42.pcap", "isp.200.pcap")
 TRANSFER_BYTES = 819200
+SOCKET_ADDRESS = re.compile(r"\('([^']+)', (\d+)(?:, \d+, \d+)?\)")
+
+
+def receipt_addresses(data: str, event: str) -> list[tuple[str, int]]:
+    lines = [line for line in data.splitlines() if line.startswith(event + "=")]
+    if len(lines) != 1:
+        raise ValueError(f"expected one {event} entry in endpoint receipt")
+    return [
+        (str(ip_address(address)), int(port))
+        for address, port in SOCKET_ADDRESS.findall(lines[0])
+    ]
 
 
 def verify_tcp(directory: Path) -> None:
     cleanup: dict[int, float] = {}
     paths: dict[tuple[int, str], set[str]] = {}
     failures: set[str] = set()
+    addresses: dict[int, tuple[str, str]] = {}
     for trial in TRIALS:
         deadline = float((directory / f"cleanup_start_{trial}.txt").read_text())
         if not math.isfinite(deadline) or deadline <= 0:
@@ -29,6 +42,22 @@ def verify_tcp(directory: Path) -> None:
         for index, family in enumerate(("v6", "v4")):
             port = 20000 + trial * 2 + index
             cleanup[port] = deadline
+            client = (directory / f"client_{trial}_{family}.log").read_text()
+            server_log = (directory / f"server_{trial}_{family}.log").read_text()
+            local, target = receipt_addresses(client, "connect")
+            (listener,) = receipt_addresses(server_log, "listening")
+            (peer,) = receipt_addresses(server_log, "accepted")
+            if (
+                local[1] != port
+                or peer[1] != port
+                or target != listener
+                or target[1] != SERVER_PORTS[index]
+            ):
+                raise ValueError(f"inconsistent endpoint receipts for port {port}")
+            for address, _ in (local, peer, listener):
+                if f"v{ip_address(address).version}" != family:
+                    raise ValueError(f"wrong IP family in receipt for port {port}")
+            addresses[port] = peer[0], listener[0]
             for endpoint in ("client", "server"):
                 receipt = directory / f"{endpoint}_{trial}_{family}.log"
                 label = "received"
@@ -44,8 +73,10 @@ def verify_tcp(directory: Path) -> None:
             "tcp.srcport",
             "tcp.dstport",
             "tcp.flags.reset",
-            "ip.version",
-            "ipv6.version",
+            "ip.src",
+            "ip.dst",
+            "ipv6.src",
+            "ipv6.dst",
         )
         command = [
             "tshark",
@@ -59,11 +90,13 @@ def verify_tcp(directory: Path) -> None:
         ]
         for field in fields:
             command.extend(("-e", field))
+        if (directory / capture).stat().st_size < 24:
+            raise ValueError(f"{capture}: missing capture header")
         result = subprocess.run(command, check=True, stdout=subprocess.PIPE, text=True)
-        if not result.stdout.strip():
-            raise ValueError(f"{capture}: missing TCP evidence")
         for line in result.stdout.splitlines():
-            epoch, source, destination, reset, ipv4, ipv6 = line.split("\t")
+            epoch, source, destination, reset, source4, target4, source6, target6 = (
+                line.split("\t")
+            )
             source_port, destination_port = int(source), int(destination)
             if source_port in SERVER_PORTS:
                 port, server, direction = destination_port, source_port, "reply"
@@ -71,12 +104,20 @@ def verify_tcp(directory: Path) -> None:
                 port, server, direction = source_port, destination_port, "request"
             if port not in cleanup or server != SERVER_PORTS[port % 2]:
                 raise ValueError(f"{capture}: unexpected socket {source}:{destination}")
-            if (port % 2 == 0 and ipv6 != "6") or (port % 2 == 1 and ipv4 != "4"):
-                raise ValueError(f"{capture}: unexpected IP family for port {port}")
             timestamp = float(epoch)
             if not math.isfinite(timestamp) or reset not in ("True", "False", "1", "0"):
                 raise ValueError(f"{capture}: invalid TCP metadata")
             if timestamp >= cleanup[port]:
+                continue
+            packet_addresses = (source4 or source6, target4 or target6)
+            if direction == "reply":
+                packet_addresses = packet_addresses[::-1]
+            if packet_addresses != addresses[port]:
+                failures.add(f"{capture}: unexpected IP addresses on port {port}")
+                if packet_addresses[1] == addresses[port][1] and reset in ("True", "1"):
+                    failures.add(
+                        f"{capture}: TCP reset for a different translated address before cleanup on port {port}"
+                    )
                 continue
             if reset in ("True", "1"):
                 failures.add(f"{capture}: TCP reset before cleanup on port {port}")
@@ -109,7 +150,7 @@ def verify_log(directory: Path) -> None:
     print(f"Checked {len(interval)} new ovs-vswitchd log bytes.")
 
 
-def verify_udp(directory: Path, expected: int) -> None:
+def verify_udp(directory: Path, expected: int, minimum_rate: int) -> None:
     sockets: set[tuple[str, int, int]] = set()
     send_times: list[int] = []
     directory = directory / "peer"
@@ -139,7 +180,12 @@ def verify_udp(directory: Path, expected: int) -> None:
     duration = (max(send_times) - min(send_times)) / 1_000_000_000
     if duration <= 0:
         raise ValueError("missing UDP send interval")
-    print(f"Verified {expected} UDP echoes at {expected / duration:.1f} sends per second.")
+    rate = (expected - 1) / duration
+    if rate < minimum_rate:
+        raise ValueError(
+            f"offered {rate:.1f} UDP sends per second, require {minimum_rate}"
+        )
+    print(f"Verified {expected} UDP echoes at {rate:.1f} sends per second.")
     print("Independent static IPv4 pings received five replies before and after load.")
 
 
@@ -153,8 +199,8 @@ def main() -> None:
     elif args.check == "log":
         verify_log(args.directory)
     else:
-        expected = {"udp-500": 10000, "udp-5000": 60000}
-        verify_udp(args.directory, expected[args.check])
+        workload = {"udp-500": (10000, 500), "udp-5000": (60000, 5000)}
+        verify_udp(args.directory, *workload[args.check])
         verify_log(args.directory / "card")
 
 
