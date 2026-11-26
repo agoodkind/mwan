@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/godbus/dbus/v5"
 	"github.com/mdlayher/ndp"
 	"github.com/vishvananda/netlink"
@@ -682,13 +683,19 @@ func startResolverKea(t *testing.T, name, configPath, logPath, ready string) fun
 	service := startProtocolService(t, name, logPath, "-c", configPath, "-d")
 	stop := sync.OnceFunc(func() { stopProtocolService(t, service) })
 	t.Cleanup(stop)
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		content, err := os.ReadFile(logPath)
-		if err == nil && strings.Contains(string(content), ready) {
-			return stop
-		}
-		time.Sleep(25 * time.Millisecond)
+	if waitForResolverLogUpdate(
+		t,
+		logPath,
+		5*time.Second,
+		func() bool {
+			content, err := os.ReadFile(logPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return strings.Contains(string(content), ready)
+		},
+	) {
+		return stop
 	}
 	content, _ := os.ReadFile(logPath)
 	t.Fatalf("resolver %s did not start: %s", name, content)
@@ -745,89 +752,93 @@ func startResolverRouter(t *testing.T) func() {
 
 func waitResolverRuntimeFailureLogs(t *testing.T, daemon *runtimeDaemon) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		operationFound := false
-		applicationFound := false
-		finalFound := false
-		for _, line := range strings.Split(runtimeDaemonLog(t, daemon), "\n") {
-			if strings.Contains(line, "WARN resolver operation failed") {
-				if !strings.HasSuffix(
-					line,
-					`WARN resolver operation failed operation="get resolved link" result=failed`,
-				) {
-					t.Fatalf(
-						"resolver operation event repeats the error or lacks its outcome: %s",
+	if waitForResolverLogUpdate(
+		t,
+		daemon.logPath,
+		10*time.Second,
+		func() bool {
+			assertRuntimeDaemonRunning(t, daemon)
+			operationFound := false
+			applicationFound := false
+			finalFound := false
+			for _, line := range strings.Split(runtimeDaemonLog(t, daemon), "\n") {
+				if strings.Contains(line, "WARN resolver operation failed") {
+					if !strings.HasSuffix(
 						line,
-					)
+						`WARN resolver operation failed operation="get resolved link" result=failed`,
+					) {
+						t.Fatalf(
+							"resolver operation event repeats the error or lacks its outcome: %s",
+							line,
+						)
+					}
+					operationFound = true
 				}
-				operationFound = true
-			}
-			var event struct {
-				Message   string          `json:"msg"`
-				Level     string          `json:"level"`
-				Operation string          `json:"operation"`
-				Result    string          `json:"result"`
-				Module    string          `json:"module"`
-				TraceID   string          `json:"trace_id"`
-				Err       json.RawMessage `json:"err"`
-				Error     json.RawMessage `json:"error"`
-			}
-			if json.Unmarshal([]byte(line), &event) != nil {
-				continue
-			}
-			if event.Message == "resolver operation failed" {
-				if event.Level != "WARN" || event.Operation != "get resolved link" ||
-					event.Result != "failed" ||
-					len(event.Err) != 0 ||
-					len(event.Error) != 0 {
-					t.Fatalf(
-						"resolver operation event repeats the error or lacks its outcome: %s",
-						line,
-					)
+				var event struct {
+					Message   string          `json:"msg"`
+					Level     string          `json:"level"`
+					Operation string          `json:"operation"`
+					Result    string          `json:"result"`
+					Module    string          `json:"module"`
+					TraceID   string          `json:"trace_id"`
+					Err       json.RawMessage `json:"err"`
+					Error     json.RawMessage `json:"error"`
 				}
-				operationFound = true
-			}
-			if event.Message == "resolver application failed" {
-				if event.Level != "WARN" || event.Module != "resolver" || event.Operation == "" ||
-					event.Result != "failed" ||
-					len(event.Err) != 0 ||
-					len(event.Error) != 0 {
-					t.Fatalf(
-						"resolver application event repeats the error or lacks its outcome: %s",
-						line,
-					)
+				if json.Unmarshal([]byte(line), &event) != nil {
+					continue
 				}
-				applicationFound = true
-			}
-			if event.Message == "ifmgr: module Reconcile failed" && event.Module == "resolver" {
-				var diagnostic string
-				if err := json.Unmarshal(
-					event.Err,
-					&diagnostic,
-				); err != nil || event.TraceID == "" || !strings.Contains(
-					diagnostic,
-					"connection ",
-				) ||
-					!strings.Contains(diagnostic, "get resolved link") {
-					t.Fatalf(
-						"resolver final diagnostic lacks connection, operation, or trace context: %s",
-						line,
-					)
+				if event.Message == "resolver operation failed" {
+					if event.Level != "WARN" || event.Operation != "get resolved link" ||
+						event.Result != "failed" ||
+						len(event.Err) != 0 ||
+						len(event.Error) != 0 {
+						t.Fatalf(
+							"resolver operation event repeats the error or lacks its outcome: %s",
+							line,
+						)
+					}
+					operationFound = true
 				}
-				finalFound = true
+				if event.Message == "resolver application failed" {
+					if event.Level != "WARN" || event.Module != "resolver" ||
+						event.Operation == "" ||
+						event.Result != "failed" ||
+						len(event.Err) != 0 ||
+						len(event.Error) != 0 {
+						t.Fatalf(
+							"resolver application event repeats the error or lacks its outcome: %s",
+							line,
+						)
+					}
+					applicationFound = true
+				}
+				if event.Message == "ifmgr: module Reconcile failed" && event.Module == "resolver" {
+					var diagnostic string
+					if err := json.Unmarshal(
+						event.Err,
+						&diagnostic,
+					); err != nil || event.TraceID == "" || !strings.Contains(
+						diagnostic,
+						"connection ",
+					) ||
+						!strings.Contains(diagnostic, "get resolved link") {
+						t.Fatalf(
+							"resolver final diagnostic lacks connection, operation, or trace context: %s",
+							line,
+						)
+					}
+					finalFound = true
+				}
+				if event.Message == "resolver: reconcile failed" ||
+					event.Message == "resolved: link apply failed" ||
+					event.Message == "resolved: reconcile resolver fields failed" {
+					t.Fatalf("resolver emitted an intermediate duplicate diagnostic: %s", line)
+				}
 			}
-			if event.Message == "resolver: reconcile failed" ||
-				event.Message == "resolved: link apply failed" ||
-				event.Message == "resolved: reconcile resolver fields failed" {
-				t.Fatalf("resolver emitted an intermediate duplicate diagnostic: %s", line)
-			}
-		}
-		if operationFound && applicationFound && finalFound {
-			return
-		}
-		assertRuntimeDaemonRunning(t, daemon)
-		time.Sleep(50 * time.Millisecond)
+			return operationFound && applicationFound && finalFound
+		},
+	) {
+		return
 	}
 	t.Fatalf(
 		"resolver dependency failure lacks operation and final diagnostics: %s",
@@ -941,14 +952,17 @@ func waitResolverRuntimeValues(
 	domains []resolved.Domain,
 ) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		actualDNS, actualDomains := resolverRuntimeValues(t, "owned397")
-		if reflect.DeepEqual(actualDNS, dns) && reflect.DeepEqual(actualDomains, domains) {
-			return
-		}
-		assertRuntimeDaemonRunning(t, daemon)
-		time.Sleep(50 * time.Millisecond)
+	if waitForResolverLogUpdate(
+		t,
+		daemon.logPath,
+		10*time.Second,
+		func() bool {
+			assertRuntimeDaemonRunning(t, daemon)
+			actualDNS, actualDomains := resolverRuntimeValues(t, "owned397")
+			return reflect.DeepEqual(actualDNS, dns) && reflect.DeepEqual(actualDomains, domains)
+		},
+	) {
+		return
 	}
 	actualDNS, actualDomains := resolverRuntimeValues(t, "owned397")
 	t.Fatalf(
@@ -959,6 +973,35 @@ func waitResolverRuntimeValues(
 		domains,
 		runtimeLogTail(t, daemon, 40),
 	)
+}
+
+func waitForResolverLogUpdate(
+	t *testing.T,
+	path string,
+	timeout time.Duration,
+	ready func() bool,
+) bool {
+	t.Helper()
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer watcher.Close()
+	if err := watcher.Add(path); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), timeout)
+	defer cancel()
+	for !ready() {
+		select {
+		case <-ctx.Done():
+			return false
+		case err := <-watcher.Errors:
+			t.Fatal(err)
+		case <-watcher.Events:
+		}
+	}
+	return true
 }
 
 func writeResolverRuntimeNetwork(

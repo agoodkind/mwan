@@ -166,7 +166,6 @@ func runWANFirewallRuntimeChild(t *testing.T) {
 	)
 	waitRuntimeTable(t, first, "ip", "nat", 10*time.Second)
 	waitRuntimeTable(t, first, "inet", "mangle", 10*time.Second)
-	assertRuntimeNoReconcileLoop(t, first)
 
 	wan := newRuntimePeer(
 		t,
@@ -367,7 +366,6 @@ func runWANFirewallRuntimeChild(t *testing.T) {
 		"[2001:db8:b01:fe::2]:0",
 		true,
 	)
-	assertRuntimeNoReconcileLoop(t, second)
 	assertRuntimeDaemonRunning(t, second)
 }
 

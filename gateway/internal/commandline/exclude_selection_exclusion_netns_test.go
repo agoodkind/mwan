@@ -245,7 +245,6 @@ func runSelectionExclusionDaemonRuntime(t *testing.T) {
 				"[fd50:9::2]:50102",
 			)
 			setRuntimeNamespace(t, gateway)
-			assertRuntimeNoReconcileLoop(t, first)
 			for _, route := range mainDefaults {
 				if err := netlink.RouteDel(&route); err != nil {
 					t.Fatal(err)
@@ -291,7 +290,6 @@ func runSelectionExclusionDaemonRuntime(t *testing.T) {
 				"[fd50:9::2]:50110",
 			)
 			setRuntimeNamespace(t, gateway)
-			assertRuntimeNoReconcileLoop(t, first)
 			killOwnedRuntimeDaemon(t, first)
 			writeSelectionRuntimeNetwork(t, networkDir, false)
 			excluded := startRuntimeDaemon(

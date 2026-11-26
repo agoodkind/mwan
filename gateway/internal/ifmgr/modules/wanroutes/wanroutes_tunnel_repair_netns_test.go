@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 	"goodkind.io/mwan/gateway/internal/netif"
 )
 
@@ -18,6 +19,45 @@ const (
 	tunnelRouteTunnelMarkPrio  = 200
 	tunnelRouteTunnelMark      = 2
 )
+
+func TestDefaultRouteNotificationsOnlyRequestRepairForMainTable(t *testing.T) {
+	if !enterTunnelRouteNamespace(t) {
+		return
+	}
+	ctx := t.Context()
+	fixture := newTunnelRouteFixture(ctx, t)
+	for _, kind := range []netif.EventKind{netif.EvRouteDeleted, netif.EvRouteAdded} {
+		event := netif.Event{
+			Kind:    kind,
+			Iface:   tunnelRouteUnderlay,
+			Family:  familyV4,
+			Dest:    "default",
+			Via:     tunnelRouteGateway,
+			TableID: tunnelRouteUnderTbl,
+		}
+		fixture.module.onMonitorEvent(ctx, fixture.module.Log, event)
+		select {
+		case reason := <-fixture.repairs:
+			t.Fatalf("policy-table %s requested another pass: %s", kind, reason)
+		default:
+		}
+		event.TableID = unix.RT_TABLE_MAIN
+		fixture.module.onMonitorEvent(ctx, fixture.module.Log, event)
+		select {
+		case reason := <-fixture.repairs:
+			if reason != repairMainDefaultChanged {
+				t.Fatalf(
+					"main-table %s requested %q, want %q",
+					kind,
+					reason,
+					repairMainDefaultChanged,
+				)
+			}
+		default:
+			t.Fatalf("main-table %s did not request a pass", kind)
+		}
+	}
+}
 
 func (fixture *tunnelRouteFixture) drainRepairs() {
 	for {

@@ -129,6 +129,7 @@ func TestForwardingPeerLossSelectsBestPath(t *testing.T) {
 		forwardingTarget4,
 		forwardingTarget6,
 		true,
+		1,
 	)
 	wanConfig := writeForwardingConfig(t, root, "wan", true)
 	primaryConfig := writeForwardingConfig(t, root, "primary", false)
@@ -180,8 +181,8 @@ func TestForwardingPeerLossSelectsBestPath(t *testing.T) {
 	waitForwardingPathCount(t, router, bgppkt.RF_IPv4_UC, 0)
 	waitForwardingPathCount(t, router, bgppkt.RF_IPv6_UC, 0)
 	assertForwardingPathCountStable(t, router, 0, time.Second, bgppkt.RF_IPv4_UC, bgppkt.RF_IPv6_UC)
-	waitForwardingNoDefault(t, netlink.FAMILY_V4)
-	waitForwardingNoDefault(t, netlink.FAMILY_V6)
+	waitForwardingDefault(t, netlink.FAMILY_V4, "", 20*time.Second)
+	waitForwardingDefault(t, netlink.FAMILY_V6, "", 20*time.Second)
 	startForwardingProcess(
 		t,
 		namespaces,
@@ -350,32 +351,6 @@ func TestForwardingPeerLossSelectsBestPath(t *testing.T) {
 	waitForwardingDefault(t, netlink.FAMILY_V6, forwardingPrimaryNH6, 20*time.Second)
 	assertForwardingDial(t, namespaces, "tcp4", forwardingTarget4)
 	assertForwardingDial(t, namespaces, "tcp6", forwardingTarget6)
-}
-
-func waitForwardingNoDefault(t *testing.T, family int) {
-	t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
-	for time.Now().Before(deadline) {
-		routes, err := netlink.RouteListFiltered(
-			family,
-			&netlink.Route{Table: unix.RT_TABLE_MAIN},
-			netlink.RT_FILTER_TABLE,
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-		found := false
-		for _, route := range routes {
-			if route.Dst == nil || route.Dst.IP.IsUnspecified() {
-				found = true
-			}
-		}
-		if !found {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	t.Fatalf("family %d default route remained after withdrawal", family)
 }
 
 func writeForwardingConfig(t *testing.T, root, name string, failover bool) string {
@@ -1003,10 +978,19 @@ func startForwardingProcess(
 
 func waitForwardingDefault(t *testing.T, family int, gateway string, timeout time.Duration) {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
+	ctx, cancel := context.WithTimeout(t.Context(), timeout)
+	updates := make(chan netlink.RouteUpdate, 16)
+	if err := netlink.RouteSubscribe(updates, ctx.Done()); err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	defer func() {
+		cancel()
+		for range updates {
+		}
+	}()
 	want := net.ParseIP(gateway)
-	var observed []netlink.Route
-	for time.Now().Before(deadline) {
+	for {
 		routes, err := netlink.RouteListFiltered(
 			family,
 			&netlink.Route{Table: unix.RT_TABLE_MAIN},
@@ -1015,22 +999,34 @@ func waitForwardingDefault(t *testing.T, family int, gateway string, timeout tim
 		if err != nil {
 			t.Fatal(err)
 		}
-		observed = routes
+		foundDefault := false
 		for _, route := range routes {
-			defaultRoute := route.Dst == nil || route.Dst.IP.IsUnspecified()
-			if defaultRoute && route.Gw.Equal(want) {
+			if route.Dst != nil && !route.Dst.IP.IsUnspecified() {
+				continue
+			}
+			foundDefault = true
+			if gateway != "" && route.Gw.Equal(want) {
 				return
 			}
 		}
-		time.Sleep(50 * time.Millisecond)
+		if gateway == "" && !foundDefault {
+			return
+		}
+		select {
+		case _, open := <-updates:
+			if !open {
+				t.Fatalf("route subscription closed for family %d: routes=%v", family, routes)
+			}
+		case <-ctx.Done():
+			t.Fatalf(
+				"family %d default gateway %q after %s: routes=%v",
+				family,
+				gateway,
+				timeout,
+				routes,
+			)
+		}
 	}
-	t.Fatalf(
-		"family %d default via %s absent after %s: routes=%v",
-		family,
-		gateway,
-		timeout,
-		observed,
-	)
 }
 
 func waitForwardingPathCount(

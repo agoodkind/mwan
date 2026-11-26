@@ -107,6 +107,7 @@ func runFailoverForwardingReadinessDaemonRuntime(t *testing.T, ipv4Only bool) {
 		"198.51.100.2",
 		failoverPeerIPv6Address,
 		!ipv4Only,
+		3,
 	)
 	addForwardingWANDefaults(t, "enatt0", "198.51.100.2", failoverPeerIPv6Address)
 	addForwardingWANSupportLinks(t)
@@ -233,6 +234,7 @@ func writeForwardingWANNetwork(
 	targetV4 string,
 	targetV6 string,
 	ipv6Enabled bool,
+	failureThreshold int,
 ) {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("..", "..", "yang", "instances", "network-min.json"))
@@ -274,7 +276,7 @@ func writeForwardingWANNetwork(
 				Enabled:           true,
 				PingCount:         1,
 				SuccessThreshold:  1,
-				FailureThreshold:  3,
+				FailureThreshold:  failureThreshold,
 				RecoveryThreshold: 1,
 				CheckInterval:     1,
 				TargetsV4:         []string{targetV4},
@@ -319,6 +321,7 @@ func writeForwardingWANNetwork(
 	); err != nil {
 		t.Fatal(err)
 	}
+	steeringGroup["health"] = json.RawMessage(`{"probe-timeout":100}`)
 	var routes map[string]json.RawMessage
 	if err := json.Unmarshal(steeringGroup["routes"], &routes); err != nil {
 		t.Fatal(err)

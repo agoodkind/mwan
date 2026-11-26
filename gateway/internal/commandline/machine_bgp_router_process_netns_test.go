@@ -188,7 +188,7 @@ func (r *bgpRuntimeRouter) apply(t *testing.T, paths []*apiutil.Path) {
 			continue
 		}
 		r.installed[destination.String()] = route
-		if !path.Stale {
+		if r.gracefulStop && !path.Stale {
 			r.retainOnStop = false
 		}
 	}

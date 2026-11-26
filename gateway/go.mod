@@ -9,6 +9,7 @@ require (
 	github.com/cilium/ebpf v0.22.0
 	github.com/cloudflare/cloudflare-go/v7 v7.13.1
 	github.com/coreos/go-systemd/v22 v22.7.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/google/nftables v0.3.0
@@ -49,7 +50,6 @@ require (
 	github.com/eapache/channels v1.1.0 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
-	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/gaissmai/bart v0.30.0 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.9.2 // indirect
