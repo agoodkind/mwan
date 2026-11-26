@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/notify"
-	"goodkind.io/mwan/internal/observation"
+	"goodkind.io/mwan/gateway/internal/notify"
+	"goodkind.io/mwan/gateway/internal/observation"
 )
 
 func TestObservationExecutorRuntime(t *testing.T) {

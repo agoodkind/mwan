@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"goodkind.io/mwan/internal/installfile"
-	"goodkind.io/mwan/internal/yangpub/schema"
+	"goodkind.io/mwan/gateway/internal/installfile"
+	"goodkind.io/mwan/gateway/yangpub/schema"
 )
 
 // WriteSchema preserves timestamps when installed module bytes already match.

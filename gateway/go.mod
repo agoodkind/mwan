@@ -1,4 +1,4 @@
-module goodkind.io/mwan
+module goodkind.io/mwan/gateway
 
 go 1.27.1
 

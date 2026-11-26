@@ -1,6 +1,6 @@
 package observation
 
-import "goodkind.io/mwan/internal/observation/contract"
+import "goodkind.io/mwan/gateway/internal/observation/contract"
 
 // ProviderIngress identifies an independently captured provider path.
 type ProviderIngress = contract.ProviderIngress

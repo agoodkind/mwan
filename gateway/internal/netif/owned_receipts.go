@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"goodkind.io/mwan/internal/connectionid"
-	"goodkind.io/mwan/internal/installfile"
+	"goodkind.io/mwan/gateway/connectionid"
+	"goodkind.io/mwan/gateway/internal/installfile"
 )
 
 func writeOwnedJournal[T ownedStaticJournal | ownedLinkState](

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/netip"
 
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/networkjson"
 )
 
 func validateFirewall(g Gateway) error {

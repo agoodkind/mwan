@@ -16,10 +16,10 @@ import (
 	"sync"
 	"time"
 
-	"goodkind.io/mwan/internal/bgp"
-	"goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/nptpolicy"
-	"goodkind.io/mwan/internal/observation/contract"
+	"goodkind.io/mwan/gateway/internal/bgp"
+	"goodkind.io/mwan/gateway/internal/clock"
+	"goodkind.io/mwan/gateway/internal/nptpolicy"
+	"goodkind.io/mwan/gateway/internal/observation/contract"
 )
 
 // Health is a member's combined verdict, mirroring the health module's

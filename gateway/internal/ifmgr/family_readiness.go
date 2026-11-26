@@ -3,9 +3,9 @@ package ifmgr
 import (
 	"slices"
 
-	"goodkind.io/mwan/internal/forwardingready"
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/forwardingready"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 func (state probeState) permitsForwarding() bool {

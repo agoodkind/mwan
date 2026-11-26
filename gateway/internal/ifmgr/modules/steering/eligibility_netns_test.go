@@ -21,7 +21,7 @@ import (
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
 )
 
 func TestPinnedFlowRespectsFamilyEligibility(t *testing.T) {

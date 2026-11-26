@@ -13,11 +13,11 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/bgp"
-	"goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/connectionid"
-	"goodkind.io/mwan/internal/forwardingready"
-	"goodkind.io/mwan/internal/ifmgr"
+	"goodkind.io/mwan/gateway/connectionid"
+	"goodkind.io/mwan/gateway/internal/bgp"
+	"goodkind.io/mwan/gateway/internal/clock"
+	"goodkind.io/mwan/gateway/internal/forwardingready"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
 )
 
 const moduleName = "bgp_sessions"

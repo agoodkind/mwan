@@ -15,10 +15,10 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"goodkind.io/mwan/internal/networkjson"
-	"goodkind.io/mwan/internal/stackspec"
-	"goodkind.io/mwan/internal/yangpub"
-	"goodkind.io/mwan/internal/yangpub/schema"
+	"goodkind.io/mwan/gateway/internal/yangpub"
+	"goodkind.io/mwan/gateway/networkjson"
+	"goodkind.io/mwan/gateway/stackspec"
+	"goodkind.io/mwan/gateway/yangpub/schema"
 )
 
 // Sysrepo selects one repository per process. Use separate children for install and

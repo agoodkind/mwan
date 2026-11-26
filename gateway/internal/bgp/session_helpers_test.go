@@ -14,7 +14,7 @@ import (
 	bgppkt "github.com/osrg/gobgp/v4/pkg/packet/bgp"
 	"github.com/osrg/gobgp/v4/pkg/server"
 
-	"goodkind.io/mwan/internal/bgp"
+	"goodkind.io/mwan/gateway/internal/bgp"
 )
 
 const (

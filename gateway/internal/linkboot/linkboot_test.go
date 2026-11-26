@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/linkboot"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/linkboot"
 )
 
 func TestWriteDirManagesOnlyOwnedPhysicalNames(t *testing.T) {

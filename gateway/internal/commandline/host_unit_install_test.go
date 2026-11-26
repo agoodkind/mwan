@@ -12,8 +12,8 @@ import (
 
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
 
-	"goodkind.io/mwan/internal/installspec"
-	"goodkind.io/mwan/internal/yangpub/schema"
+	"goodkind.io/mwan/gateway/installspec"
+	"goodkind.io/mwan/gateway/yangpub/schema"
 )
 
 type recordingEnabler struct {

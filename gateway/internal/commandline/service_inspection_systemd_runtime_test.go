@@ -16,8 +16,8 @@ import (
 	"time"
 
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
-	"goodkind.io/mwan/internal/commandline"
-	"goodkind.io/mwan/internal/installspec"
+	"goodkind.io/mwan/gateway/installspec"
+	"goodkind.io/mwan/gateway/internal/commandline"
 )
 
 func TestDebugSystemdPublicRuntime(t *testing.T) {

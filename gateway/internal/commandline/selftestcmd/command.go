@@ -15,8 +15,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"goodkind.io/mwan/internal/commandline/commandopts"
-	"goodkind.io/mwan/internal/commandline/commandui"
+	"goodkind.io/mwan/gateway/internal/commandline/commandopts"
+	"goodkind.io/mwan/gateway/internal/commandline/commandui"
 )
 
 const selftestLong = "Check the WANCONFIG datastore and notifications. " +

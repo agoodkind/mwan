@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 // FIBConfig identifies the kernel routing tables owned by the BGP installer.

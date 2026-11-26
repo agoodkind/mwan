@@ -16,9 +16,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 
-	"goodkind.io/mwan/internal/firewall"
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/gateway/firewall"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/networkjson"
 )
 
 type networkConfigResource struct{}

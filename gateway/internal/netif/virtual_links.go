@@ -8,7 +8,7 @@ import (
 	"log/slog"
 
 	"github.com/vishvananda/netlink"
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/interfaceintent"
 )
 
 var (

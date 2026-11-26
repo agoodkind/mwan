@@ -20,12 +20,12 @@ import (
 
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/commandline/commandopts"
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/wanconfig"
-	"goodkind.io/mwan/internal/wanstate"
-	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/commandline/commandopts"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/wanconfig"
+	"goodkind.io/mwan/gateway/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/yangpub"
 )
 
 const ownershipChildEnv = "MWAN_OWNERSHIP_TEST_CHILD"

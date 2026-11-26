@@ -17,10 +17,10 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"goodkind.io/mwan/internal/connectionid"
-	"goodkind.io/mwan/internal/firewall"
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/gateway/connectionid"
+	"goodkind.io/mwan/gateway/firewall"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/notify"
 )
 
 const maxNetworkdTimeoutSeconds = int64(1<<63-1) / int64(time.Second)

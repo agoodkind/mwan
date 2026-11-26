@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"log/slog"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/ifmgr/modules/addresses"
-	"goodkind.io/mwan/internal/ifmgr/modules/autoconfiguration"
-	"goodkind.io/mwan/internal/ifmgr/modules/resolver"
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/addresses"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/autoconfiguration"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/resolver"
+	"goodkind.io/mwan/gateway/networkjson"
 )
 
 func buildResolverConfig(ifmgrCfg config.IfMgrSection) resolver.Config {

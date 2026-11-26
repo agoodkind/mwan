@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"goodkind.io/mwan/internal/commandline/commandui"
+	"goodkind.io/mwan/gateway/internal/commandline/commandui"
 )
 
 // New builds the delegated-prefix inspection command.

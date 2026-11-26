@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"goodkind.io/mwan/internal/installspec"
+	"goodkind.io/mwan/gateway/installspec"
 )
 
 type nacmTree struct {

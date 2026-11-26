@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/interfaceintent"
 )
 
 // FileKind identifies the networkd unit file category.

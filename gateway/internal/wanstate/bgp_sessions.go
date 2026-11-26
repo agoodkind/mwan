@@ -3,7 +3,7 @@ package wanstate
 import (
 	"slices"
 
-	"goodkind.io/mwan/internal/bgp"
+	"goodkind.io/mwan/gateway/internal/bgp"
 )
 
 func cloneBGPSessions(sessions []bgp.SessionState) []bgp.SessionState {

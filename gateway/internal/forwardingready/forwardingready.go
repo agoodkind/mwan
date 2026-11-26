@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	internalclock "goodkind.io/mwan/internal/clock"
+	internalclock "goodkind.io/mwan/gateway/internal/clock"
 )
 
 // State reports whether each address family can forward downstream traffic.

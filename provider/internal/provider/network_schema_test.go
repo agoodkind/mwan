@@ -10,7 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/gateway/networkjson"
 )
 
 const (

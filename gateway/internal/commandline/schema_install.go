@@ -8,10 +8,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"goodkind.io/mwan/internal/installfile"
-	"goodkind.io/mwan/internal/installspec"
-	"goodkind.io/mwan/internal/networkjson"
-	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/gateway/installspec"
+	"goodkind.io/mwan/gateway/internal/installfile"
+	"goodkind.io/mwan/gateway/internal/yangpub"
+	"goodkind.io/mwan/gateway/networkjson"
 )
 
 const sysrepoRepositoryDir = "/etc/sysrepo"

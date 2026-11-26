@@ -6,11 +6,11 @@ import (
 	"io"
 	"log/slog"
 
-	"goodkind.io/mwan/internal/commandline/commandopts"
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/logging"
-	"goodkind.io/mwan/internal/networkload"
-	"goodkind.io/mwan/internal/version"
+	"goodkind.io/mwan/gateway/internal/commandline/commandopts"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/logging"
+	"goodkind.io/mwan/gateway/networkload"
+	"goodkind.io/mwan/gateway/version"
 )
 
 const (

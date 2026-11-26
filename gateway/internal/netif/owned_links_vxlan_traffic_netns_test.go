@@ -22,7 +22,7 @@ import (
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/interfaceintent"
 )
 
 const (

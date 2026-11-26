@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	"goodkind.io/mwan/internal/version"
-	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/gateway/internal/yangpub"
+	"goodkind.io/mwan/gateway/version"
 )
 
 const sysrepoVersionUnavailable = "unavailable"

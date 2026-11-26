@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/observation"
+	"goodkind.io/mwan/gateway/internal/observation"
 )
 
 func TestCloudflareObservationExecutorRuntime(t *testing.T) {

@@ -10,8 +10,8 @@ import (
 	"github.com/google/nftables"
 	"github.com/google/nftables/expr"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 type ipv4NATRule struct {

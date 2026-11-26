@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/tracing"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/tracing"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 // fakeModule is a Module implementation that records every dispatch the

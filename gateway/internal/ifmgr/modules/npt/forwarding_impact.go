@@ -1,6 +1,6 @@
 package npt
 
-import "goodkind.io/mwan/internal/forwardingready"
+import "goodkind.io/mwan/gateway/internal/forwardingready"
 
 // ForwardingFailureImpact excludes IPv6 after failed NPT reconciliation.
 // IPv4 translation readiness is independently verified against current rules.

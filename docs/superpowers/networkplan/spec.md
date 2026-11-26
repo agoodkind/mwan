@@ -8,7 +8,7 @@ Use direct cgo/libyang for provider validation on darwin/arm64, linux/amd64, and
 
 Network planning validates content locally. It does not contact the gateway or write its configuration. The schema handle removes its temporary model directory when it closes.
 
-Use the existing embedded [schema](../../../gateway/internal/yangpub/schema), module inventory, and enabled features. Preserve `LYD_PARSE_STRICT`, `LYD_PARSE_NO_STATE`, `LYD_VALIDATE_PRESENT`, and `LYD_VALIDATE_NO_STATE`. Unknown nodes, invalid enums, invalid ranges, missing mandatory nodes in present containers, and state nodes must fail validation. Do not create another YANG validator or permit a `GO_MK_CGO_OPTIONAL` bypass.
+Use the existing embedded [schema](../../../gateway/yangpub/schema), module inventory, and enabled features. Preserve `LYD_PARSE_STRICT`, `LYD_PARSE_NO_STATE`, `LYD_VALIDATE_PRESENT`, and `LYD_VALIDATE_NO_STATE`. Unknown nodes, invalid enums, invalid ranges, missing mandatory nodes in present containers, and state nodes must fail validation. Do not create another YANG validator or permit a `GO_MK_CGO_OPTIONAL` bypass.
 
 Native library and schema availability are mandatory. Initialization failures must report the missing dependency or schema cause. Never substitute semantic-only decoding after native initialization fails.
 

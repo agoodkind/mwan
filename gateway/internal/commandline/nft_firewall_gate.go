@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"goodkind.io/mwan/internal/firewall"
-	"goodkind.io/mwan/internal/networkload"
+	"goodkind.io/mwan/gateway/firewall"
+	"goodkind.io/mwan/gateway/networkload"
 )
 
 const firewallCheckTimeout = 30 * time.Second

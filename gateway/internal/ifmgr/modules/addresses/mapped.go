@@ -8,10 +8,10 @@ import (
 	"net/netip"
 	"slices"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/networkd"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/networkd"
 )
 
 var errNetworkdTimeoutRequired = errors.New(

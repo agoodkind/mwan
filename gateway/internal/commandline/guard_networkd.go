@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"io"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/connectionid"
-	"goodkind.io/mwan/internal/networkd"
-	"goodkind.io/mwan/internal/networkjson"
-	"goodkind.io/mwan/internal/networkload"
+	"goodkind.io/mwan/gateway/connectionid"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/networkd"
+	"goodkind.io/mwan/gateway/networkjson"
+	"goodkind.io/mwan/gateway/networkload"
 )
 
 func checkNetworkd(path string, schemaDir string, unitDir string, output io.Writer) int {

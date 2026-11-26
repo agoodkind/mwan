@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
 )
 
 const (

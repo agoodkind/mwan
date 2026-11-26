@@ -1,6 +1,6 @@
 package wanconfig
 
-import "goodkind.io/mwan/internal/interfaceintent"
+import "goodkind.io/mwan/gateway/interfaceintent"
 
 func tunnelItems(base string, tunnel *interfaceintent.Tunnel) []Item {
 	if tunnel == nil {

@@ -17,7 +17,7 @@ import (
 	"github.com/vishvananda/netns"
 	"golang.org/x/net/dns/dnsmessage"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/networkload"
+	"goodkind.io/mwan/gateway/networkload"
 )
 
 func TestNetworkdResolverDaemonRuntime(t *testing.T) {
@@ -38,7 +38,7 @@ func TestNetworkdResolverDaemonRuntime(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
+	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "yangpub", "schema"))
 	if err != nil {
 		t.Fatal(err)
 	}

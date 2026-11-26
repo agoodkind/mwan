@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"goodkind.io/mwan/internal/forwardingready"
+	"goodkind.io/mwan/gateway/internal/forwardingready"
 )
 
 // Modules without this contract invalidate both families.

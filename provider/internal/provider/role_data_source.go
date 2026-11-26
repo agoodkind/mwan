@@ -11,8 +11,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"goodkind.io/mwan/internal/installspec"
-	moduleschema "goodkind.io/mwan/internal/yangpub/schema"
+	"goodkind.io/mwan/gateway/installspec"
+	moduleschema "goodkind.io/mwan/gateway/yangpub/schema"
 )
 
 const fileModeFormat = "%04o"

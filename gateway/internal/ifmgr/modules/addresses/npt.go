@@ -7,10 +7,10 @@ import (
 	"log/slog"
 
 	"github.com/vishvananda/netlink"
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 // Ensure authorizes configured NPT intent independently of acquisition ownership.

@@ -22,8 +22,8 @@ import (
 	"github.com/google/nftables/expr"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/ifmgr/modules/npt"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/npt"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 func TestDebugInspectionPublicNamespace(t *testing.T) {
@@ -49,7 +49,7 @@ func runDebugInspectionPublicNamespace(t *testing.T, binary string) {
 		t.Fatal(err)
 	}
 	bindDebugProbePath(t, networkDir, "/etc/mwan")
-	schema, err := filepath.Abs("../../internal/yangpub/schema")
+	schema, err := filepath.Abs("../../yangpub/schema")
 	if err != nil {
 		t.Fatal(err)
 	}

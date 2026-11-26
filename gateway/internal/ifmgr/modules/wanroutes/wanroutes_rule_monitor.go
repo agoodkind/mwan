@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 func (m *Module) onRuleEvent(ctx context.Context, log *slog.Logger, event netif.RuleEvent) {

@@ -6,14 +6,14 @@ import (
 	"log/slog"
 	"sort"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/connectionid"
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/ifmgr/modules/links"
-	"goodkind.io/mwan/internal/ifmgr/modules/npt"
-	"goodkind.io/mwan/internal/ifmgr/modules/steering"
-	"goodkind.io/mwan/internal/ifmgr/modules/wanroutes"
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/connectionid"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/links"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/npt"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/steering"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/wanroutes"
 )
 
 func addWANRoleConfigs(

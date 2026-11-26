@@ -15,11 +15,11 @@ import (
 
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/ifmgr/modules/npt/bpf"
-	"goodkind.io/mwan/internal/nptpolicy"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/npt/bpf"
+	"goodkind.io/mwan/gateway/internal/nptpolicy"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 func TestIPv4TranslationReadinessKernel(t *testing.T) {

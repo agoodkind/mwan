@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/mdlayher/ndp"
-	"goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/clock"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 type raSession struct {

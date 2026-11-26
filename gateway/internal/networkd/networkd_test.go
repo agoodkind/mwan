@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"goodkind.io/mwan/internal/connectionid"
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/networkd"
+	"goodkind.io/mwan/gateway/connectionid"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/networkd"
 )
 
 // leasedLinkSpec is a link like monkeybrains: matched by hardware address,

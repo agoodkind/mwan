@@ -3,8 +3,14 @@ plugins:
   - local: protoc-gen-go
     out: .
     opt:
-      - module=goodkind.io/mwan
+      - module=goodkind.io/mwan/gateway
   - local: protoc-gen-go-grpc
     out: .
     opt:
-      - module=goodkind.io/mwan
+      - module=goodkind.io/mwan/gateway
+  - local: protoc-gen-go
+    out: proto
+    opt: paths=source_relative
+  - local: protoc-gen-go-grpc
+    out: proto
+    opt: paths=source_relative

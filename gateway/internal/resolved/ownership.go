@@ -14,8 +14,8 @@ import (
 	"sync"
 
 	"github.com/vishvananda/netlink"
-	"goodkind.io/mwan/internal/installfile"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/installfile"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 // Intent supplies one configured connection and its current ready link.

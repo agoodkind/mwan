@@ -14,7 +14,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/bgp"
+	"goodkind.io/mwan/gateway/internal/bgp"
 )
 
 func TestSessionRestartRetainsKernelRoutesUntilTheEndOfRIB(t *testing.T) {

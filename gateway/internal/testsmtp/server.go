@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/clock"
+	"goodkind.io/mwan/gateway/internal/clock"
 )
 
 // Server accepts real SMTP sessions and retains each accepted message for assertions.

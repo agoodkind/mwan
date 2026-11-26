@@ -4,7 +4,7 @@ WORKDIR /src/gateway
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 COPY gateway/go.mod gateway/go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
-COPY gateway/internal/stackspec/ ./internal/stackspec/
+COPY gateway/stackspec/ ./stackspec/
 COPY gateway/tools/wanconfigstack/*.go ./tools/wanconfigstack/
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \

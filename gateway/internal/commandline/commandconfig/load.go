@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/gateway/internal/config"
 )
 
 // WithConfig loads the selected TOML file and calls execute with its

@@ -9,7 +9,7 @@ import (
 
 	bgppkt "github.com/osrg/gobgp/v4/pkg/packet/bgp"
 
-	"goodkind.io/mwan/internal/bgp"
+	"goodkind.io/mwan/gateway/internal/bgp"
 )
 
 func TestSessionImportAcceptsOnlyDeclaredPrefixes(t *testing.T) {

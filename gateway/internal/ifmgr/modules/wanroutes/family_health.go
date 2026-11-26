@@ -3,7 +3,7 @@ package wanroutes
 import (
 	"maps"
 
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 type familyProbeReasons struct {

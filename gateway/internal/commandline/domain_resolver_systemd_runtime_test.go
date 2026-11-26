@@ -26,9 +26,9 @@ import (
 	"golang.org/x/net/dns/dnsmessage"
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/commandline/commandopts"
-	"goodkind.io/mwan/internal/resolved"
-	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/gateway/internal/commandline/commandopts"
+	"goodkind.io/mwan/gateway/internal/resolved"
+	"goodkind.io/mwan/gateway/internal/yangpub"
 )
 
 func TestStaticResolverDaemonRuntime(t *testing.T) {
@@ -54,7 +54,7 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 			t.Errorf("unmount network directory: %v", err)
 		}
 	})
-	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
+	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "yangpub", "schema"))
 	if err != nil {
 		t.Fatal(err)
 	}

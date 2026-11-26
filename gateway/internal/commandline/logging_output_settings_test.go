@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/gateway/internal/config"
 )
 
 func TestIfMgrStdoutHonorsDebugSetting(t *testing.T) {

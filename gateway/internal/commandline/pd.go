@@ -6,9 +6,9 @@ import (
 	"io"
 	"log/slog"
 
-	"goodkind.io/mwan/internal/logging"
-	"goodkind.io/mwan/internal/pd"
-	"goodkind.io/mwan/internal/version"
+	"goodkind.io/mwan/gateway/internal/logging"
+	"goodkind.io/mwan/gateway/internal/pd"
+	"goodkind.io/mwan/gateway/version"
 )
 
 // runPDProbe prints a delegated prefix to output and errors to diagnostics.

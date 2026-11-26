@@ -11,8 +11,8 @@ import (
 	"slices"
 	"strings"
 
-	"goodkind.io/mwan/internal/connectionid"
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/connectionid"
+	"goodkind.io/mwan/gateway/interfaceintent"
 )
 
 // VerifyDir compares the complete render, including parent VLAN references, without changing files.

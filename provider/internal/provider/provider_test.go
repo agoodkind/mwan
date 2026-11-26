@@ -11,7 +11,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 
-	"goodkind.io/mwan/internal/installspec"
+	"goodkind.io/mwan/gateway/installspec"
 )
 
 const (

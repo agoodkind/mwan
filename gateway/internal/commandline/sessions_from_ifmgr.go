@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"net/netip"
 
-	"goodkind.io/mwan/internal/bgpsession"
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/ifmgr/modules/bgpsessions"
+	"goodkind.io/mwan/gateway/internal/bgpsession"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/bgpsessions"
 )
 
 // All BGP sessions share the router ID from [bgp].

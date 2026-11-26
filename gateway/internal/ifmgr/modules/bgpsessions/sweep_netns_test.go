@@ -13,7 +13,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/ifmgr/modules/bgpsessions"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/bgpsessions"
 )
 
 const (

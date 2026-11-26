@@ -8,8 +8,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"goodkind.io/mwan/internal/firewall"
-	"goodkind.io/mwan/internal/ifmgr"
+	"goodkind.io/mwan/gateway/firewall"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
 )
 
 const moduleName = "firewall"

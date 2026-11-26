@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 // Module defines one feature that the ifmgr daemon manages. The WAN role

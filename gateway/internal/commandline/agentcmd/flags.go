@@ -3,7 +3,7 @@ package agentcmd
 import (
 	"github.com/spf13/pflag"
 
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/gateway/internal/config"
 )
 
 const (

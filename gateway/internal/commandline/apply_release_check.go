@@ -7,13 +7,13 @@ import (
 	"io"
 	"time"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/connectionid"
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/networkd"
-	"goodkind.io/mwan/internal/networkjson"
-	"goodkind.io/mwan/internal/networkload"
+	"goodkind.io/mwan/gateway/connectionid"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/networkd"
+	"goodkind.io/mwan/gateway/networkjson"
+	"goodkind.io/mwan/gateway/networkload"
 )
 
 func runCheckRelease(

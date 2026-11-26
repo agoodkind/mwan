@@ -4,8 +4,8 @@ import (
 	"net/netip"
 	"testing"
 
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/networkd"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/networkd"
 )
 
 // staticLinkSpec is a link like webpass: matched by driver, a static IPv4

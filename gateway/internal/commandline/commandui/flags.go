@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/gateway/networkjson"
 )
 
 // OutputFormatFlag registers and validates the text or JSON output format.

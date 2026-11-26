@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/vishvananda/netlink"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 const (

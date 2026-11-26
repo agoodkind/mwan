@@ -11,8 +11,8 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 const bgpUnreachableMetric = 1024

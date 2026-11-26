@@ -4,7 +4,7 @@ import (
 	"hash/fnv"
 	"strconv"
 
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/gateway/internal/config"
 )
 
 // TranslationInstanceID is independent of member order and routing numbers.

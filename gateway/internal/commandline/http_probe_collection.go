@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"io"
 
-	"goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/commandline/commandopts"
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/healthcheck"
-	"goodkind.io/mwan/internal/networkload"
+	"goodkind.io/mwan/gateway/internal/clock"
+	"goodkind.io/mwan/gateway/internal/commandline/commandopts"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/healthcheck"
+	"goodkind.io/mwan/gateway/networkload"
 )
 
 func runHealthOptions(

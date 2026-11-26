@@ -1,6 +1,6 @@
 package bgp
 
-import "goodkind.io/mwan/internal/bgpsession"
+import "goodkind.io/mwan/gateway/internal/bgpsession"
 
 type (
 	// SessionConfig is the complete configuration of one external BGP session.

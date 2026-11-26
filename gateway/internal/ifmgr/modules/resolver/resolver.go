@@ -9,11 +9,11 @@ import (
 	"net/netip"
 	"sync"
 
-	"goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/resolved"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/clock"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/resolved"
 )
 
 const moduleName = "resolver"

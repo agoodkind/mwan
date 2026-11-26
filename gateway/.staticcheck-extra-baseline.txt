@@ -677,7 +677,7 @@ internal/config/notify.go:8:1: doc_structure: add an introduction, explanation, 
 internal/config/report.go:66:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/config/vpp.go:86:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/configstate/configstate.go:22:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/connectionid/connectionid.go:7:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+connectionid/connectionid.go:7:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/deployoperation/engine.go:435:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/deployoperation/identity.go:20:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/deployoperation/manifest.go:46:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
@@ -686,10 +686,10 @@ internal/deployoperation/state.go:97:1: doc_structure: add an introduction, expl
 internal/deployoperation/watch.go:25:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/email/sender.go:83:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/failovercheck/failovercheck.go:32:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/firewall/apply_linux.go:25:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/firewall/config.go:80:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/firewall/inspect_linux.go:205:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/firewall/rules.go:697:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+firewall/apply_linux.go:25:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+firewall/config.go:80:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+firewall/inspect_linux.go:205:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+firewall/rules.go:697:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/forwardingready/forwardingready.go:24:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/healthcheck/main.go:14:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/ifmgr/alerts.go:1:9: filenameprefix: alerts.go repeats prefix "alerts"; use directory "alerts"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
@@ -787,13 +787,13 @@ internal/ifmgr/monitors.go:17:1: doc_structure: add an introduction, explanation
 internal/ifmgr/roles.go:119:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/ifmgr/wanref.go:13:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/installfile/installfile.go:21:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/installspec/derived.go:90:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+installspec/derived.go:90:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/installspec/guest.go:22:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/installspec/installspec.go:217:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/interfaceintent/native.go:3:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/interfaceintent/policy.go:93:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/interfaceintent/routes.go:8:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/interfaceintent/vxlan.go:21:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+installspec/installspec.go:217:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+interfaceintent/native.go:3:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+interfaceintent/policy.go:93:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+interfaceintent/routes.go:8:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+interfaceintent/vxlan.go:21:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/linkboot/linkboot.go:26:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/logging/context_handler.go:79:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/logging/factory.go:67:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
@@ -914,32 +914,32 @@ internal/networkd/obsolete.go:8:1: doc_structure: add an introduction, explanati
 internal/networkd/reload.go:18:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/networkd/spec.go:65:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/networkd/verify.go:18:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/bgp_session.go:1:9: filenameprefix: bgp_session.go repeats prefix "bgp"; use directory "bgp"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/bgp_session_reject_test.go:1:9: filenameprefix: bgp_session_reject_test.go repeats prefix "bgp"; use directory "bgp"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/bgp_session_rules.go:1:9: filenameprefix: bgp_session_rules.go repeats prefix "bgp"; use directory "bgp"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/bgp_session_schema_test.go:3:9: filenameprefix: bgp_session_schema_test.go repeats prefix "bgp"; use directory "bgp"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/bgp_session_set.go:1:9: filenameprefix: bgp_session_set.go repeats prefix "bgp"; use directory "bgp"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/bgp_session_test.go:1:9: filenameprefix: bgp_session_test.go repeats prefix "bgp"; use directory "bgp"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/canonical.go:17:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/decode.go:23:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/decode.go:1:9: filenameprefix: decode.go repeats prefix "decode"; use directory "decode"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/decode_parity_test.go:3:9: filenameprefix: decode_parity_test.go repeats prefix "decode"; use directory "decode"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/dhcpv6.go:13:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/firewall.go:1:9: filenameprefix: firewall.go repeats prefix "firewall"; use directory "firewall"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/firewall.go:77:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/firewall_plan.go:61:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/firewall_plan.go:1:9: filenameprefix: firewall_plan.go repeats prefix "firewall"; use directory "firewall"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/intent.go:370:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/networkjson.go:933:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/plan.go:94:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/policy_plan.go:41:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/tunnel.go:1:9: filenameprefix: tunnel.go repeats prefix "tunnel"; use directory "tunnel"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/tunnel_provider_firewall_test.go:1:9: filenameprefix: tunnel_provider_firewall_test.go repeats prefix "tunnel"; use directory "tunnel"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/tunnel_provider_reject_test.go:1:9: filenameprefix: tunnel_provider_reject_test.go repeats prefix "tunnel"; use directory "tunnel"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/tunnel_provider_test.go:1:9: filenameprefix: tunnel_provider_test.go repeats prefix "tunnel"; use directory "tunnel"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/tunnel_schema_test.go:3:9: filenameprefix: tunnel_schema_test.go repeats prefix "tunnel"; use directory "tunnel"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
-internal/networkjson/tunnel_test.go:3:9: filenameprefix: tunnel_test.go repeats prefix "tunnel"; use directory "tunnel"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
-internal/networkload/load.go:81:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+networkjson/bgp_session.go:1:9: filenameprefix: bgp_session.go repeats prefix "bgp"; use directory "bgp"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
+networkjson/bgp_session_reject_test.go:1:9: filenameprefix: bgp_session_reject_test.go repeats prefix "bgp"; use directory "bgp"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
+networkjson/bgp_session_rules.go:1:9: filenameprefix: bgp_session_rules.go repeats prefix "bgp"; use directory "bgp"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
+networkjson/bgp_session_schema_test.go:3:9: filenameprefix: bgp_session_schema_test.go repeats prefix "bgp"; use directory "bgp"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
+networkjson/bgp_session_set.go:1:9: filenameprefix: bgp_session_set.go repeats prefix "bgp"; use directory "bgp"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
+networkjson/bgp_session_test.go:1:9: filenameprefix: bgp_session_test.go repeats prefix "bgp"; use directory "bgp"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
+networkjson/canonical.go:17:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+networkjson/decode.go:23:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+networkjson/decode.go:1:9: filenameprefix: decode.go repeats prefix "decode"; use directory "decode"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
+networkjson/decode_parity_test.go:3:9: filenameprefix: decode_parity_test.go repeats prefix "decode"; use directory "decode"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
+networkjson/dhcpv6.go:13:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+networkjson/firewall.go:1:9: filenameprefix: firewall.go repeats prefix "firewall"; use directory "firewall"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
+networkjson/firewall.go:77:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+networkjson/firewall_plan.go:61:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+networkjson/firewall_plan.go:1:9: filenameprefix: firewall_plan.go repeats prefix "firewall"; use directory "firewall"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
+networkjson/intent.go:370:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+networkjson/networkjson.go:933:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+networkjson/plan.go:94:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+networkjson/policy_plan.go:41:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+networkjson/tunnel.go:1:9: filenameprefix: tunnel.go repeats prefix "tunnel"; use directory "tunnel"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
+networkjson/tunnel_provider_firewall_test.go:1:9: filenameprefix: tunnel_provider_firewall_test.go repeats prefix "tunnel"; use directory "tunnel"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
+networkjson/tunnel_provider_reject_test.go:1:9: filenameprefix: tunnel_provider_reject_test.go repeats prefix "tunnel"; use directory "tunnel"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
+networkjson/tunnel_provider_test.go:1:9: filenameprefix: tunnel_provider_test.go repeats prefix "tunnel"; use directory "tunnel"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
+networkjson/tunnel_schema_test.go:3:9: filenameprefix: tunnel_schema_test.go repeats prefix "tunnel"; use directory "tunnel"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
+networkjson/tunnel_test.go:3:9: filenameprefix: tunnel_test.go repeats prefix "tunnel"; use directory "tunnel"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
+networkload/load.go:81:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/notify/body.go:30:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/notify/email.go:44:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/notify/manager.go:75:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
@@ -985,7 +985,7 @@ internal/reporting/vpp_linux.go:23:1: doc_structure: add an introduction, explan
 internal/resolved/ownership.go:60:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/rollback/coordinator.go:71:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/rollback/state.go:48:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/stackspec/stackspec.go:99:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+stackspec/stackspec.go:99:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/statuspush/statuspush.go:99:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/statuspush/statuspush.go:2:9: filenameprefix: statuspush.go repeats prefix "statuspush"; use directory "statuspush"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
 internal/statuspush/statuspush_sender.go:1:9: filenameprefix: statuspush_sender.go repeats prefix "statuspush"; use directory "statuspush"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
@@ -993,7 +993,7 @@ internal/statuspush/statuspush_sender.go:82:1: doc_structure: add an introductio
 internal/statuspush/statuspush_test.go:1:9: filenameprefix: statuspush_test.go repeats prefix "statuspush"; use directory "statuspush"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
 internal/testsmtp/server.go:38:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/tracing/tracing.go:98:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/version/version.go:95:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+version/version.go:95:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/vpp/client.go:60:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/vpp/controller.go:1:9: filenameprefix: controller.go repeats prefix "controller"; use directory "controller"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
 internal/vpp/controller.go:77:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
@@ -1048,10 +1048,10 @@ internal/watchdogconfig/load.go:99:1: doc_structure: add an introduction, explan
 internal/watchdogconfig/notify.go:9:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/yangpub/publisher_cgo.go:96:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/yangpub/schema.go:20:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/yangpub/schema/schema.go:60:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+yangpub/schema/schema.go:60:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 internal/yangpub/version_cgo.go:14:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/yangschema/embedded.go:18:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
-internal/yangschema/schema_cgo.go:43:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+yangschema/embedded.go:18:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
+yangschema/schema_cgo.go:43:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:43:48Z last_seen=2026-11-16T06:12:05Z
 proto/mwan/v1/mwan.pb.go:7:9: filenameprefix: mwan.pb.go repeats prefix "mwan"; use directory "mwan"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
 proto/mwan/v1/mwan_grpc.pb.go:7:9: filenameprefix: mwan_grpc.pb.go repeats prefix "mwan"; use directory "mwan"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-16T06:12:05Z
 cmd/mwan/ifmgr_native_config.go:1:9: filenameprefix: ifmgr_native_config.go repeats prefix "ifmgr"; use directory "ifmgr"	# staticcheck-extra:first_added=2026-11-09T07:44:29Z last_seen=2026-11-10T12:54:23Z

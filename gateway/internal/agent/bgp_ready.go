@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"goodkind.io/mwan/internal/forwardingready"
+	"goodkind.io/mwan/gateway/internal/forwardingready"
 )
 
 // SetForwardingReady configures ifmgr readiness polling for BGP announcements. When requireAllFamilies is true, AnnounceRoutes requires every configured family to be ready.

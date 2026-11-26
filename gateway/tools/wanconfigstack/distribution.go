@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"goodkind.io/mwan/internal/stackspec"
+	"goodkind.io/mwan/gateway/stackspec"
 )
 
 var errDownloadedFile = errors.New("apt-get download did not leave exactly one .deb")

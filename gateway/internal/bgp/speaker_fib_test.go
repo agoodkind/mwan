@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/netif"
 
 	"github.com/osrg/gobgp/v4/pkg/apiutil"
 	bgppkt "github.com/osrg/gobgp/v4/pkg/packet/bgp"

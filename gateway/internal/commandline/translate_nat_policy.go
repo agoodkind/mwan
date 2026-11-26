@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"strconv"
 
-	"goodkind.io/mwan/internal/wanconfig"
+	"goodkind.io/mwan/gateway/internal/wanconfig"
 )
 
 func checkSelftestNAT(log *slog.Logger, tree json.RawMessage) error {

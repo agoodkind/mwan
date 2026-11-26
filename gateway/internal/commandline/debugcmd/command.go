@@ -7,13 +7,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"goodkind.io/mwan/internal/commandline/commandconfig"
-	"goodkind.io/mwan/internal/commandline/commandopts"
-	"goodkind.io/mwan/internal/commandline/commandui"
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/connectionid"
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/gateway/connectionid"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/commandline/commandconfig"
+	"goodkind.io/mwan/gateway/internal/commandline/commandopts"
+	"goodkind.io/mwan/gateway/internal/commandline/commandui"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/networkjson"
 )
 
 type runView func(commandopts.Debug, *config.Config, io.Writer, io.Writer) int

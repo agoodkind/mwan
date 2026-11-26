@@ -19,8 +19,8 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/installspec"
-	"goodkind.io/mwan/internal/networkd"
+	"goodkind.io/mwan/gateway/installspec"
+	"goodkind.io/mwan/gateway/internal/networkd"
 )
 
 func TestNetworkdOrderedDaemonStartup(t *testing.T) {
@@ -54,7 +54,7 @@ func TestNetworkdOrderedDaemonStartup(t *testing.T) {
 	if err := os.RemoveAll("/var/lib/mwan"); err != nil {
 		t.Fatal(err)
 	}
-	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
+	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "yangpub", "schema"))
 	if err != nil {
 		t.Fatal(err)
 	}

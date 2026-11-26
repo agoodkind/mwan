@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/testsmtp"
+	"goodkind.io/mwan/gateway/internal/testsmtp"
 )
 
 func TestNotifyDeliversConfiguredAlert(t *testing.T) {

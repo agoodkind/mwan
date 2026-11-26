@@ -15,7 +15,7 @@ import (
 	"slices"
 	"strings"
 
-	"goodkind.io/mwan/internal/stackspec"
+	"goodkind.io/mwan/gateway/stackspec"
 )
 
 // manifestName is the bundle member that lists every package it carries.

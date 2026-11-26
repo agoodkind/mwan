@@ -51,7 +51,7 @@ func TestNetworkdNPTEdgeDaemonRuntime(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
+	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "yangpub", "schema"))
 	if err != nil {
 		t.Fatal(err)
 	}

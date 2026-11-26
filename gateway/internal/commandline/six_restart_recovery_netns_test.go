@@ -22,7 +22,7 @@ import (
 	"github.com/vishvananda/netns"
 	"golang.org/x/net/ipv6"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 const (
@@ -99,7 +99,7 @@ func runOwnedDHCPv6DaemonRestartRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	bindStartupDirectory(t, networkDir, "/etc/mwan")
-	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
+	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "yangpub", "schema"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,7 +4,7 @@ package statuspush
 import (
 	"time"
 
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 // Status stores provider verdicts and a timestamp. ActiveTier identifies the

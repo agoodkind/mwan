@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
-	"goodkind.io/mwan/internal/bgp"
-	"goodkind.io/mwan/internal/forwardingready"
+	mwanv1 "goodkind.io/mwan/gateway/gen/mwan/v1"
+	"goodkind.io/mwan/gateway/internal/bgp"
+	"goodkind.io/mwan/gateway/internal/forwardingready"
 )
 
 func TestBackupBGPAnnouncesEachReadyFamily(t *testing.T) {

@@ -13,8 +13,8 @@ import (
 	"sync"
 
 	"github.com/vishvananda/netlink"
-	"goodkind.io/mwan/internal/installfile"
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/installfile"
 )
 
 const arpIgnoreIncomingInterface = "1"

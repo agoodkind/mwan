@@ -27,7 +27,7 @@ import (
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/observation"
+	"goodkind.io/mwan/gateway/internal/observation"
 )
 
 const distributionRuntimeChild = "MWAN_DISTRIBUTION_RUNTIME_CHILD"
@@ -225,7 +225,7 @@ func runDistributionObservationRuntime(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	schema, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
+	schema, err := filepath.Abs(filepath.Join("..", "..", "yangpub", "schema"))
 	if err != nil {
 		t.Fatal(err)
 	}

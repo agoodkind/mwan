@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/networkload"
-	"goodkind.io/mwan/internal/wanconfig"
-	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/wanconfig"
+	"goodkind.io/mwan/gateway/internal/yangpub"
+	"goodkind.io/mwan/gateway/networkload"
 )
 
 const networkInstanceGlob = "../../yang/instances/*.json"

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"goodkind.io/gklog"
-	"goodkind.io/mwan/internal/email"
+	"goodkind.io/mwan/gateway/internal/email"
 	"goodkind.io/send-email/mailer"
 )
 

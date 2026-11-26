@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"slices"
 
-	"goodkind.io/mwan/internal/observation/contract"
+	"goodkind.io/mwan/gateway/internal/observation/contract"
 )
 
 // CheckTransition retains the failed or recovered observation in bounded history.

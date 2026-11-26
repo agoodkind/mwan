@@ -1,8 +1,8 @@
 package wanconfig
 
 import (
-	"goodkind.io/mwan/internal/bgpsession"
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/gateway/internal/bgpsession"
+	"goodkind.io/mwan/gateway/internal/config"
 )
 
 func bgpSessionItems(base string, sessions []config.BGPSession) []Item {

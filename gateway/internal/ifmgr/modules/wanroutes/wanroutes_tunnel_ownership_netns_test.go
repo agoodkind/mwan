@@ -9,8 +9,8 @@ import (
 
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 func addForeignTableRoute(t *testing.T, destination string, protocol int) {

@@ -8,12 +8,12 @@ import (
 	"os"
 	"time"
 
-	"goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/commandline/commandopts"
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/networkload"
-	"goodkind.io/mwan/internal/statuspush"
+	"goodkind.io/mwan/gateway/internal/clock"
+	"goodkind.io/mwan/gateway/internal/commandline/commandopts"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/statuspush"
+	"goodkind.io/mwan/gateway/networkload"
 )
 
 var (

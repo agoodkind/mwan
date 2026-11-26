@@ -17,7 +17,7 @@ import (
 
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/interfaceintent"
 )
 
 func TestMonitorRebindsConfiguredLinkAfterRenameAndRecreation(t *testing.T) {

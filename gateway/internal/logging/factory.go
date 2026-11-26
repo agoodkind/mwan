@@ -4,11 +4,11 @@
 // handler-list factory. This package adds:
 //
 //   - re-exports of the bits mwan call sites use most so existing
-//     imports of "goodkind.io/mwan/internal/logging" keep working.
+//     imports of "goodkind.io/mwan/gateway/internal/logging" keep working.
 //   - ContextHandler, the project-specific [slog.Handler] that pulls
 //     trace attrs out of context (depends on internal/tracing).
 //
-// Email delivery is owned by goodkind.io/mwan/internal/notify; the
+// Email delivery is owned by goodkind.io/mwan/gateway/internal/notify; the
 // slog email handler that used to live here is intentionally absent so
 // alerts flow through one path with state-change semantics.
 //

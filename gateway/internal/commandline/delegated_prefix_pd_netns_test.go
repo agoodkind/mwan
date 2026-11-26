@@ -22,7 +22,7 @@ import (
 	"github.com/vishvananda/netns"
 	"golang.org/x/net/ipv6"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/networkload"
+	"goodkind.io/mwan/gateway/networkload"
 )
 
 const (
@@ -43,7 +43,7 @@ func TestOwnedDHCPv6PDRejectsInformationRequest(t *testing.T) {
 	writeDHCPv6PDRuntimeNetwork(t, directory, "information-request")
 	_, err := networkload.Load(
 		filepath.Join(directory, "network.json"),
-		filepath.Join("..", "..", "internal", "yangpub", "schema"),
+		filepath.Join("..", "..", "yangpub", "schema"),
 	)
 	if err == nil ||
 		!strings.Contains(
@@ -222,7 +222,7 @@ func buildDHCPv6PDRuntime(t *testing.T, withoutRA string) dhcpv6PDRuntime {
 		t.Fatal(err)
 	}
 	bindStartupDirectory(t, networkDir, "/etc/mwan")
-	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
+	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "yangpub", "schema"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,14 +15,14 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
-	"goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/networkjson"
-	"goodkind.io/mwan/internal/observation/contract"
-	"goodkind.io/mwan/internal/wanconfig"
-	"goodkind.io/mwan/internal/wanstate"
-	"goodkind.io/mwan/internal/yangpub"
+	mwanv1 "goodkind.io/mwan/gateway/gen/mwan/v1"
+	"goodkind.io/mwan/gateway/internal/clock"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/observation/contract"
+	"goodkind.io/mwan/gateway/internal/wanconfig"
+	"goodkind.io/mwan/gateway/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/yangpub"
+	"goodkind.io/mwan/gateway/networkjson"
 )
 
 const (

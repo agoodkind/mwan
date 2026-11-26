@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/networkload"
-	"goodkind.io/mwan/internal/notify"
-	"goodkind.io/mwan/internal/wanstate"
-	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/notify"
+	"goodkind.io/mwan/gateway/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/yangpub"
+	"goodkind.io/mwan/gateway/networkload"
 )
 
 func TestAdvanceHealthAppliesConsecutiveThresholds(t *testing.T) {

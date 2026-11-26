@@ -5,7 +5,7 @@ package wanroutes
 import (
 	"testing"
 
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 func TestTunnelReadinessReportsTheFailedDependency(t *testing.T) {

@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	"goodkind.io/mwan/internal/wanconfig"
-	"goodkind.io/mwan/internal/wanstate"
-	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/gateway/internal/wanconfig"
+	"goodkind.io/mwan/gateway/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/yangpub"
 )
 
 const (

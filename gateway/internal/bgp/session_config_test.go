@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"goodkind.io/mwan/internal/bgp"
+	"goodkind.io/mwan/gateway/internal/bgp"
 )
 
 func TestNewSessionRejectsInvalidConfiguration(t *testing.T) {

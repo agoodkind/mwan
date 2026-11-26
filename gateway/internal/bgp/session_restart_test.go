@@ -7,7 +7,7 @@ import (
 
 	apipb "github.com/osrg/gobgp/v4/api"
 
-	"goodkind.io/mwan/internal/bgp"
+	"goodkind.io/mwan/gateway/internal/bgp"
 )
 
 const sessionRestartSeconds uint32 = 60

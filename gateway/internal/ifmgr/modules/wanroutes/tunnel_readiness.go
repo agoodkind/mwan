@@ -1,8 +1,8 @@
 package wanroutes
 
 import (
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/wanstate"
 )
 
 func (m *Module) tunnelLinkApplied(wan WAN) bool {

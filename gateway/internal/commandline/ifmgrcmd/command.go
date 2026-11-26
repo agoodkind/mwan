@@ -12,11 +12,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"goodkind.io/mwan/internal/commandline/commandconfig"
-	"goodkind.io/mwan/internal/commandline/commandopts"
-	"goodkind.io/mwan/internal/commandline/commandui"
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/gateway/internal/commandline/commandconfig"
+	"goodkind.io/mwan/gateway/internal/commandline/commandopts"
+	"goodkind.io/mwan/gateway/internal/commandline/commandui"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/networkjson"
 )
 
 var errUnknownIfMgrRole = errors.New("unknown ifmgr role")

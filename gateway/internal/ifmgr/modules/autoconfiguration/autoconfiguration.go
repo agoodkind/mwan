@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"goodkind.io/mwan/internal/ifmgr"
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/ifmgr"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 const moduleName = "autoconfiguration"

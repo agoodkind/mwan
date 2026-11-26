@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/statuspush"
+	"goodkind.io/mwan/gateway/internal/netif"
+	"goodkind.io/mwan/gateway/internal/statuspush"
 )
 
 func TestNewStatusPicksTheLowestHealthyTier(t *testing.T) {

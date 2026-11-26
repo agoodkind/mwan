@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package mwan.v1;
 
-option go_package = "goodkind.io/mwan/gen/mwan/v1;mwanv1";
+option go_package = "goodkind.io/mwan/gateway/gen/mwan/v1;mwanv1";
 
 // MWANAgent serves the local Linux gateway API.
 service MWANAgent {

@@ -20,8 +20,8 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/observation/contract"
+	"goodkind.io/mwan/gateway/internal/clock"
+	"goodkind.io/mwan/gateway/internal/observation/contract"
 )
 
 type ingressCapture struct {

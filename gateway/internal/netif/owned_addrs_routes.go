@@ -14,8 +14,8 @@ import (
 
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
-	internalclock "goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	internalclock "goodkind.io/mwan/gateway/internal/clock"
 )
 
 const familyIPv4 = "ipv4"

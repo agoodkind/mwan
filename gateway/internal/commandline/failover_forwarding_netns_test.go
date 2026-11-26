@@ -23,8 +23,8 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
-	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
-	"goodkind.io/mwan/internal/forwardingready"
+	mwanv1 "goodkind.io/mwan/gateway/gen/mwan/v1"
+	"goodkind.io/mwan/gateway/internal/forwardingready"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

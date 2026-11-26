@@ -11,12 +11,12 @@ import (
 	"strings"
 	"testing"
 
-	"goodkind.io/mwan/internal/commandline/commandopts"
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/wanconfig"
-	"goodkind.io/mwan/internal/wanstate"
-	"goodkind.io/mwan/internal/yangpub"
-	"goodkind.io/mwan/internal/yangpub/schema"
+	"goodkind.io/mwan/gateway/internal/commandline/commandopts"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/wanconfig"
+	"goodkind.io/mwan/gateway/internal/wanstate"
+	"goodkind.io/mwan/gateway/internal/yangpub"
+	"goodkind.io/mwan/gateway/yangpub/schema"
 )
 
 func assertEmptyClientPresence(t *testing.T, exported []byte) {

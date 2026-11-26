@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/gateway/internal/clock"
+	"goodkind.io/mwan/gateway/internal/config"
 )
 
 const (

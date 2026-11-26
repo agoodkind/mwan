@@ -3,7 +3,7 @@ package commandline_test
 import (
 	"testing"
 
-	"goodkind.io/mwan/internal/commandline"
+	"goodkind.io/mwan/gateway/internal/commandline"
 )
 
 func testMwanBinary(t *testing.T) string {

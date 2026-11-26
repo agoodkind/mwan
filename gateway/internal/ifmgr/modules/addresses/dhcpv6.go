@@ -14,9 +14,9 @@ import (
 
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/clock"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 // leaseLifetimeSeconds rounds down to whole seconds, allowing expiry one second before ValidUntil.

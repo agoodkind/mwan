@@ -3,9 +3,9 @@ package moduleconfig
 import (
 	"net/netip"
 
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/ifmgr/modules/bgpsessions"
-	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/gateway/interfaceintent"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/bgpsessions"
 )
 
 const kernelDefaultIPv6Metric = 1024

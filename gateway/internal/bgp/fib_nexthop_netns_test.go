@@ -13,7 +13,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/bgp"
+	"goodkind.io/mwan/gateway/internal/bgp"
 )
 
 const nextHopChildEnv = "MWAN_BGP_NEXT_HOP_CHILD"

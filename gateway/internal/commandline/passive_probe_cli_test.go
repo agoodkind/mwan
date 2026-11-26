@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 func TestCLIActiveProbeFailuresRemainResultData(t *testing.T) {

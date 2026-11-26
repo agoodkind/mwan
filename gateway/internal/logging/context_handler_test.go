@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"goodkind.io/gklog"
-	"goodkind.io/mwan/internal/tracing"
+	"goodkind.io/mwan/gateway/internal/tracing"
 )
 
 type captureHandler struct {

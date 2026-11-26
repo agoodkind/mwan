@@ -10,12 +10,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/logging"
-	"goodkind.io/mwan/internal/networkjson"
-	"goodkind.io/mwan/internal/tracing"
-	"goodkind.io/mwan/internal/version"
+	mwanv1 "goodkind.io/mwan/gateway/gen/mwan/v1"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/logging"
+	"goodkind.io/mwan/gateway/internal/tracing"
+	"goodkind.io/mwan/gateway/networkjson"
+	"goodkind.io/mwan/gateway/version"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )

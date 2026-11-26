@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/logging"
-	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/gateway/internal/logging"
+	"goodkind.io/mwan/gateway/internal/netif"
 )
 
 func TestHTTPGetPreservesResponseAndDiagnostics(t *testing.T) {

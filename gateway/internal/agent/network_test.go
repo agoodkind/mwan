@@ -12,9 +12,9 @@ import (
 	"github.com/BurntSushi/toml"
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/bgp"
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/gateway/internal/bgp"
+	"goodkind.io/mwan/gateway/internal/config"
+	"goodkind.io/mwan/gateway/internal/yangpub"
 )
 
 // gatewayConfigTOML contains the gateway's retained BGP settings.

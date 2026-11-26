@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"goodkind.io/mwan/internal/email"
+	"goodkind.io/mwan/gateway/internal/email"
 )
 
 type emailSink struct {
