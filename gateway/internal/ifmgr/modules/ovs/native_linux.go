@@ -13,6 +13,7 @@ import "C"
 import (
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"unsafe"
 )
@@ -45,7 +46,7 @@ func marshalText(
 		}
 		port := C.CString(name)
 		status := C.mwan_port_add(ports, C.uint32_t(number), port)
-		C.free(unsafe.Pointer(port))
+		C.mwan_string_free(port)
 		if status != 0 {
 			slog.Error(
 				"OVS port number rejected",
@@ -61,17 +62,17 @@ func marshalText(
 		}
 	}
 	text := C.CString(expression)
-	defer C.free(unsafe.Pointer(text))
+	defer C.mwan_string_free(text)
 	wire := C.mwan_parse(ports, C.int(kind), text, groupNamespace, maxGroupID)
 	if wire.error != nil {
-		defer C.free(unsafe.Pointer(wire.error))
+		defer C.mwan_string_free(wire.error)
 
 		return nil, fmt.Errorf("%w: %s", errExpression, C.GoString(wire.error))
 	}
-	defer C.free(wire.data)
+	defer C.mwan_string_free(wire.data)
 	if wire.size > maxFlowSize {
 		return nil, errFlowSize
 	}
 
-	return C.GoBytes(wire.data, C.int(wire.size)), nil
+	return slices.Clone(unsafe.Slice((*byte)(unsafe.Pointer(wire.data)), int(wire.size))), nil
 }

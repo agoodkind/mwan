@@ -8,7 +8,7 @@ int main(void) {
         0,4,0,24,0,0,0,0,0,25,0,16,0x80,0,22,4,203,0,113,45,0,0,0,0,
         0,1,0,8,1,0,0,0
     };
-    struct ofputil_port_map *ports = mwan_ports_new();
+    mwan_ports *ports = mwan_ports_new();
     struct mwan_wire wire = mwan_parse(ports, 1, "set_field:203.0.113.45->ip_src,goto_table:1",
                                        0x6d770000, 65535);
     if (wire.error) {

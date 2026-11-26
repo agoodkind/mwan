@@ -116,7 +116,7 @@ func marshalFlow(
 	if len(rule.Match) != 0 || len(rule.Actions) != 0 {
 		wire, err := flow.MarshalBinary()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("marshal flow for OVS validation: %w", err)
 		}
 
 		if err := validateFlowWire(wire); err != nil {

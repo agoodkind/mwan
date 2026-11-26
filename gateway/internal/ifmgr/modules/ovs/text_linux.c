@@ -12,10 +12,12 @@
 #include "openvswitch/ofpbuf.h"
 #include "text.h"
 
-struct ofputil_port_map *mwan_ports_new(void) {
+void mwan_string_free(char *s) { free(s); }
+
+mwan_ports *mwan_ports_new(void) {
     struct ofputil_port_map *ports = xmalloc(sizeof *ports);
     ofputil_port_map_init(ports);
-    return ports;
+    return (mwan_ports *)ports;
 }
 
 const char *mwan_validate_flow(const uint8_t *wire) {
@@ -31,16 +33,16 @@ const char *mwan_validate_flow(const uint8_t *wire) {
     return error ? ofperr_get_name(error) : NULL;
 }
 
-void mwan_ports_free(struct ofputil_port_map *ports) {
-    ofputil_port_map_destroy(ports);
+void mwan_ports_free(mwan_ports *ports) {
+    ofputil_port_map_destroy((struct ofputil_port_map *)ports);
     free(ports);
 }
 
-int mwan_port_add(struct ofputil_port_map *ports, uint32_t number, const char *name) {
+int mwan_port_add(mwan_ports *ports, uint32_t number, const char *name) {
     ofp_port_t port;
     int error = ofputil_port_from_ofp11(htonl(number), &port);
     if (!error) {
-        ofputil_port_map_put(ports, port, name);
+        ofputil_port_map_put((struct ofputil_port_map *)ports, port, name);
     }
     return error;
 }
@@ -76,7 +78,7 @@ static char *map_groups(struct ofpbuf *actions, uint32_t group_namespace,
     return NULL;
 }
 
-struct mwan_wire mwan_parse(const struct ofputil_port_map *ports, int kind, const char *text,
+struct mwan_wire mwan_parse(const mwan_ports *ports, int kind, const char *text,
                             uint32_t group_namespace, uint32_t max_group_id) {
     struct ofpbuf wire;
     enum ofputil_protocol protocols = OFPUTIL_P_ANY;
@@ -86,7 +88,7 @@ struct mwan_wire mwan_parse(const struct ofputil_port_map *ports, int kind, cons
         struct ofputil_flow_mod fm;
         error = check_fields(text);
         if (!error) {
-            error = parse_ofp_str(&fm, -1, text, ports, NULL, &protocols);
+            error = parse_ofp_str(&fm, -1, text, (struct ofputil_port_map *)ports, NULL, &protocols);
         }
         if (!error) {
             struct match match;
@@ -100,7 +102,7 @@ struct mwan_wire mwan_parse(const struct ofputil_port_map *ports, int kind, cons
         struct ofpbuf actions;
         ofpbuf_init(&actions, 128);
         struct ofpact_parse_params params = {
-            .port_map = ports, .ofpacts = &actions, .usable_protocols = &protocols,
+            .port_map = (struct ofputil_port_map *)ports, .ofpacts = &actions, .usable_protocols = &protocols,
         };
         if (kind == 1) {
             error = ofpacts_parse_instructions(text, &params);
