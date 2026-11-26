@@ -32,7 +32,7 @@ type Flow struct {
 	RawInstruction [][]byte `json:"raw-instruction"`
 }
 
-// Group defines an OpenFlow group and its buckets.
+// Group uses a logical ID that flows reference across OpenFlow tables.
 type Group struct {
 	ID                 uint32    `json:"id"`
 	Type               GroupType `json:"type"`
