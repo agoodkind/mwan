@@ -31,6 +31,7 @@ jobs:
       - name: Resolve release image targets
         run: docker compose build --print release stack-build > "$RUNNER_TEMP/gateway-release.json"
       - name: Build and cache release images
+        id: images
         uses: docker/bake-action@v7.5.0
         with:
           source: .
@@ -44,15 +45,20 @@ jobs:
             release.cache-from+=type=gha,scope=mwan-gateway-builder-${{ inputs.arch }}
             release.cache-to=type=gha,scope=mwan-gateway-release-${{ inputs.arch }},mode=max
             stack-build.cache-from=type=gha,scope=mwan-gateway-stack-build-${{ inputs.arch }}
-            stack-build.cache-to=type=gha,scope=mwan-gateway-stack-build-${{ inputs.arch }},mode=max
+            stack-build.cache-to=type=gha,scope=mwan-gateway-stack-build-${{ inputs.arch }},mode=min
       - name: Set CI release tag
         run: echo "RELEASE_TAG=ci-${GITHUB_RUN_ID}-${GITHUB_SHA:0:7}" >> "$GITHUB_ENV"
       - name: Build WANCONFIG stack archive
         run: docker compose run --pull never --rm stack-build
+      - name: Cache compiled gateway packages
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/gateway-go-build
+          key: gateway-go-build-${{ inputs.arch }}-${{ fromJSON(steps.images.outputs.metadata).release['containerimage.config.digest'] }}-${{ hashFiles('gateway/go.sum') }}
       - name: Compile gateway
         env:
           RELEASE_STAGE: compile
-        run: &release-command docker compose run --pull never --rm release
+        run: docker compose run --pull never --rm --volume "$RUNNER_TEMP/gateway-go-build:/root/.cache/go-build" release
       - uses: actions/upload-artifact@v7
         with:
           name: build-gateway-linux-${{ inputs.arch }}
@@ -61,7 +67,7 @@ jobs:
       - name: Package without publishing
         env:
           RELEASE_STAGE: package
-        run: *release-command
+        run: docker compose run --pull never --rm release
       - uses: actions/upload-artifact@v7
         with:
           name: ci-gateway-linux-${{ inputs.arch }}-archives
