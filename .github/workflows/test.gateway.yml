@@ -30,22 +30,9 @@ jobs:
         with:
           arch: amd64
           cache-go: 'true'
-      - name: Resolve the go-makefile revision
-        id: go-makefile
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh api repos/agoodkind/go-makefile/git/ref/heads/main --jq '"revision=" + .object.sha' >> "$GITHUB_OUTPUT"
-      - name: Cache the go-makefile executable and golangci-lint results
-        uses: actions/cache@v6
-        with:
-          path: |
-            gateway/.make/go-mk
-            gateway/.make/golangci-cache-linux-amd64
-          key: gateway-lint-${{ steps.go-makefile.outputs.revision }}-${{ steps.builder.outputs.cache-key }}
       - name: Run gateway quality checks
         env:
           GH_TOKEN: ${{ github.token }}
-          GO_MK_API_REF: ${{ steps.go-makefile.outputs.revision }}
         run: docker compose -f compose.build.yaml -f compose.amd64.yaml -f compose.test-cache.yaml -f compose.ci.yaml run --pull never --rm check
 
       - name: Save Go module downloads and compiled packages

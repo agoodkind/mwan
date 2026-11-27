@@ -131,7 +131,7 @@ services:
       <<: *environment
       GOWORK: /tmp/go.work
       MWAN_BINARY: /usr/local/bin/mwan
-    command: [make, -C, /src/gateway, run-provider-drift]
+    command: [go, test, -v, -count=1, -tags, drift, ./...]
 
   firewall:
     <<: *builder
