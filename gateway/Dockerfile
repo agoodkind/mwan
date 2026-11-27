@@ -69,6 +69,11 @@ RUN dpkg-deb -x /tmp/ovs.deb /tmp/ovs-package \
     && strip --strip-debug /opt/parser/lib/libopenvswitch.a \
     && mkdir -p /opt/parser/include \
     && find config.h include lib -name '*.h' -exec cp --parents {} /opt/parser/include/ \;
+RUN --mount=type=bind,source=gateway,target=/gateway \
+    cc -static -I. -Iinclude -Ilib -I/gateway/internal/ifmgr/modules/ovs \
+    /gateway/internal/ifmgr/modules/ovs/text_linux.c /gateway/tools/ovs-wire-test.c \
+    /opt/parser/lib/libopenvswitch.a -latomic -lm -lpthread -o /tmp/ovs-wire-test \
+    && /tmp/ovs-wire-test
 
 FROM base AS builder
 COPY --from=ovs-parser /opt/parser /opt/parser
