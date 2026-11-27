@@ -1,0 +1,34 @@
+module goodkind-mwan-steering {
+  yang-version 1.1;
+  namespace "urn:goodkind:mwan-steering";
+  prefix mwan-steer;
+
+  import ietf-interfaces { prefix if; }
+  import ietf-inet-types { prefix inet; }
+
+  revision 2026-11-26 {
+    description "Linux VXLAN configuration before the tunnel options migration.";
+  }
+
+  augment "/if:interfaces/if:interface" {
+    container link {
+      container tunnel {
+        presence "Create a tunnel.";
+        leaf protocol {
+          type enumeration { enum 6in4; enum vxlan; }
+          mandatory true;
+        }
+        leaf underlay { type if:interface-ref; mandatory true; }
+        leaf remote-address { type inet:ipv4-address-no-zone; mandatory true; }
+        container vxlan {
+          presence "Configure the VXLAN envelope.";
+          leaf vni { type uint32 { range "0..16777215"; } mandatory true; }
+          leaf source-port-min { type uint16 { range "1..65535"; } mandatory true; }
+          leaf source-port-max { type uint16 { range "1..65535"; } mandatory true; }
+          leaf destination-port { type uint16 { range "1..65535"; } mandatory true; }
+          leaf tos { type uint8; mandatory true; }
+        }
+      }
+    }
+  }
+}

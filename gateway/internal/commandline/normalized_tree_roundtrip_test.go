@@ -22,6 +22,7 @@ const networkInstanceGlob = "../../yang/instances/*.json"
 // Use each YANG list's key in the flattened path. Reject lists without a known key.
 var networkListKeys = map[string][]string{
 	"interface":          {"name"},
+	"options":            {"name"},
 	"static-mapping":     {"external"},
 	"address":            {"ip"},
 	"forwarding-address": {"address"},
