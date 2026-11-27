@@ -36,33 +36,25 @@ runs:
       env:
         SERVICE: ${{ inputs.service }}
       run: |
-        docker compose build --print "$SERVICE" > "$RUNNER_TEMP/gateway-builder.json"
+        docker compose build --print build "$SERVICE" > "$RUNNER_TEMP/gateway-builder.json"
 
     - name: Build the gateway builder with cached layers
       id: image
       uses: docker/bake-action@v7.5.0
       with:
         source: .
-        files: ${{ runner.temp }}/gateway-builder.json
-        targets: ${{ inputs.service }}
+        files: |
+          ${{ runner.temp }}/gateway-builder.json
+          gateway/native-cache.hcl
+        targets: |
+          ${{ inputs.service }}
+          ${{ inputs.cache-go == 'true' && 'native-cache' || '' }}
         builder: ${{ steps.buildx.outputs.name || 'default' }}
         set: |
           ${{ inputs.service }}.cache-from=type=gha,scope=mwan-gateway-builder-${{ inputs.arch }}
+          ${{ inputs.cache-go == 'true' && format('native-cache.cache-from=type=gha,scope=mwan-gateway-builder-{0}', inputs.arch) || '' }}
           ${{ inputs.export-cache == 'true' && format('{0}.output=type=cacheonly', inputs.service) || '' }}
           ${{ inputs.export-cache == 'true' && format('{0}.cache-to=type=gha,scope=mwan-gateway-builder-{1},mode=max', inputs.service, inputs.arch) || '' }}
-
-    - name: Identify the Go toolchain and native libraries
-      id: native
-      if: inputs.cache-go == 'true'
-      shell: bash
-      env:
-        IMAGE: ${{ fromJSON(steps.image.outputs.metadata)[inputs.service]['image.name'] }}
-      run: |
-        docker run --rm --network none --entrypoint sha256sum "$IMAGE" \
-          /usr/local/go/VERSION /usr/bin/cc /usr/local/lib/libyang.so /usr/local/lib/libsysrepo.so \
-          > "$RUNNER_TEMP/gateway-native.sha256"
-        read -r digest _ < <(sha256sum "$RUNNER_TEMP/gateway-native.sha256")
-        echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
     - name: Restore Go module downloads and compiled packages
       if: inputs.cache-go == 'true'
@@ -70,5 +62,4 @@ runs:
       uses: actions/cache/restore@v6
       with:
         path: ${{ runner.temp }}/gateway-go
-        key: gateway-go-quality-${{ inputs.arch }}-${{ steps.native.outputs.digest }}-${{ hashFiles('gateway/Dockerfile', 'build/wanconfig.env', 'gateway/go.mod', 'gateway/go.sum', 'provider/go.mod', 'provider/go.sum') }}
-        restore-keys: gateway-go-${{ inputs.arch }}-${{ steps.native.outputs.digest }}-${{ hashFiles('gateway/Dockerfile', 'build/wanconfig.env', 'gateway/go.mod', 'gateway/go.sum', 'provider/go.mod', 'provider/go.sum') }}
+        key: gateway-go-quality-${{ inputs.arch }}-${{ fromJSON(steps.image.outputs.metadata)['native-cache']['containerimage.digest'] }}-${{ hashFiles('gateway/go.mod', 'gateway/go.sum', 'provider/go.mod', 'provider/go.sum') }}
