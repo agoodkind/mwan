@@ -2,6 +2,14 @@
 
 package commandline_test
 
+// Two virtual WANs share a software OVS bridge with a LAN input.
+//
+//	hc-client -> br-hc -> hc-peer-a or hc-peer-b
+//
+// An nftables filter blocks individual probes to change WAN health. Test cases
+// check switch rules and receive IPv4 and IPv6 packets after failure and
+// recovery. A separate scenario samples IPv6 delivery while mwan restarts.
+
 import (
 	"bytes"
 	"fmt"

@@ -2,6 +2,15 @@
 
 package commandline_test
 
+// Raw packet sockets on virtual Ethernet peers observe what a software OVS
+// bridge forwards after mwan reloads the network document.
+//
+// IPv4 initially selects A. IPv6 initially selects B.
+// A valid edit swaps the ports. A rejected bundle preserves that choice.
+//
+// Other assertions check software forwarding counters, the host firewall, and
+// an independent flow that refers to the updated group.
+
 import (
 	"bytes"
 	"encoding/json"

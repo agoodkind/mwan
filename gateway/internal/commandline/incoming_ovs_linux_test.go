@@ -2,6 +2,11 @@
 
 package commandline_test
 
+// TestOVSHealthConditions uses these UDP exchanges to check when OVS
+// remembers the WAN that received a request. For example, an IPv4 request from
+// WAN B normally receives its reply on WAN A. If WAN A is down when the
+// request arrives, later replies for that connection use WAN B after recovery.
+
 import (
 	"net/netip"
 	"testing"

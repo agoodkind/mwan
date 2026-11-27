@@ -2,6 +2,11 @@
 
 package ovs
 
+// This test reconciles against a disposable OVS bridge while a fake clock and
+// WAN store control lease state. It reads back installed entries after leases
+// arrive, change, conflict, disappear, or expire. For example, replacing the
+// IPv4 lease changes the bucket's source rewrite while a fixed bucket remains.
+
 import (
 	"log/slog"
 	"net/netip"

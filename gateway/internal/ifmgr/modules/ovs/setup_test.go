@@ -2,6 +2,11 @@
 
 package ovs
 
+// A disposable OVS database exercises the setup checks and interface updates.
+// This fixture supplies settings that block DOCA setup, then uses a software bridge
+// to change a Geneve key from 200 to 201. It checks that the same interface
+// record survives both the update and a repeat of the configuration.
+
 import (
 	"context"
 	"os"

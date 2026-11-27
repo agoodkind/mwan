@@ -1,5 +1,10 @@
 package ovsreport
 
+// Forwarding reports combine switch counters with the rules in the network document.
+// A fake Unix socket reproduces an older OVS reply that provides totals but
+// omits offload counts. An older switch can report seven packets for a rule while
+// marking its forwarding status unavailable.
+
 import (
 	"context"
 	"encoding/json"

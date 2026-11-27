@@ -1,5 +1,9 @@
 package ifmgr
 
+// The wan role lists the modules that the interface manager reconciles. These
+// tests check the role lookup and ensure that OVS follows health in the
+// reconciliation order.
+
 import (
 	"reflect"
 	"slices"

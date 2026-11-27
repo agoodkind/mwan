@@ -2,6 +2,15 @@
 
 package commandline_test
 
+// A disposable software OVS bridge connects virtual Ethernet peers. Packet sockets
+// send UDP requests and replies and record addresses and ports at each receiver.
+//
+//	LAN peer <-> OVS rules <-> WAN peer
+//
+// Packet cases cover VLAN tags, IPv6 prefix translation, a fixed IPv4 mapping,
+// and two clients that share one translated IPv4 address and need distinct
+// public socket addresses.
+
 import (
 	"bytes"
 	"fmt"

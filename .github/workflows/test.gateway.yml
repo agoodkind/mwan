@@ -1,3 +1,7 @@
+# This reusable workflow checks the gateway build, schema, and Linux runtime.
+# Its OVS job builds the amd64 Compose service and runs packet tests against
+# a switch in the test container.
+
 name: Test gateway
 
 on:

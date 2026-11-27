@@ -1,5 +1,9 @@
 package bgpsessions_test
 
+// OVS mode still needs BGP to originate configured routes. A test session uses a
+// loopback neighbor and checks the advertisement in mwan's live session state.
+// For example, the ExportAlways rule records 2001:db8:ab::/48 as advertised.
+
 import (
 	"context"
 	"log/slog"

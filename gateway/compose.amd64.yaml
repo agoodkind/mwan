@@ -1,3 +1,7 @@
+# This Compose overlay selects Linux amd64 for gateway builds and tests.
+# For OVS packet tests, it selects the amd64 image. Gateway services use
+# checkout caches for the same architecture.
+
 x-platform: &platform
   platform: linux/amd64
   environment:

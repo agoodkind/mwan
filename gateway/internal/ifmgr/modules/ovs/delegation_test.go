@@ -1,5 +1,10 @@
 package ovs
 
+// A delegated NPTv6 mapping uses the current DHCPv6 prefix and the configured
+// external prefix length. A live /48 assignment supplies a /60 mapping.
+// An expired assignment and a /64 assignment both leave the external prefix
+// unset. Resolution preserves the configured mapping.
+
 import (
 	"net/netip"
 	"testing"

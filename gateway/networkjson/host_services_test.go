@@ -2,6 +2,10 @@
 
 package networkjson_test
 
+// In OVS mode Linux still provides host networking services. This case loads an
+// OVS network document and checks the WAN module settings for configured
+// interfaces, health probes, and the absence of Linux translation settings.
+
 import (
 	"testing"
 

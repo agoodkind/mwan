@@ -2,6 +2,13 @@
 
 package commandline_test
 
+// Two Linux network namespaces provide the endpoints for a software VXLAN test.
+//
+//	tn-client <-> br-tun-tests <-> tn-underlay <-> vx73
+//
+// An IPv4 echo checks both directions of the VNI 73 tunnel. An IPv6 echo
+// checks that the remote endpoint can use the translated LAN address.
+
 import (
 	"os"
 	"os/exec"

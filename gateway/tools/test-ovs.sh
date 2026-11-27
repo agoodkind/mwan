@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# This runner starts a disposable OVS instance in the privileged Linux
+# builder. Most tests use its database socket. TestOVSRestartRecovery starts
+# its own daemons and receives a private network namespace from unshare.
+
 set -euo pipefail
 
 export OVS_RUNDIR=/run/openvswitch

@@ -2,6 +2,11 @@
 
 package commandline_test
 
+// This test restarts OVS in a private Linux network namespace while mwan keeps
+// running. Before the restart, probes select WAN B. While OVS is down, the test
+// reverses probe availability. After restart, mwan installs rules that send
+// traffic to WAN A. A foreign flow disappears when the switch restarts.
+
 import (
 	"os"
 	"os/exec"

@@ -1,3 +1,7 @@
+# These Make targets dispatch gateway builds, tests, and releases to Linux
+# Compose services. For example, test-ovs runs the ovs service to exercise
+# bridge setup and WAN packet forwarding.
+
 ################################################################################
 # Settings
 ################################################################################

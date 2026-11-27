@@ -1,3 +1,6 @@
+# Health tests add IPv4 destinations to blocked to simulate failed probes.
+# Only outgoing ICMP echo requests to those destinations hit the drop rule.
+
 table ip ovs_health_test {
     set blocked {
         type ipv4_addr

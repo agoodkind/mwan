@@ -2,6 +2,14 @@
 
 package commandline_test
 
+// A software OVS bridge applies IPv6 prefix translation to TCP and UDP frames.
+//
+//	LAN peer <-> OVS <-> trunk peer (WAN VLAN 101 or 102)
+//
+// Packet checks compare packets against independently checksummed frames in both
+// directions. It checks the WAN selection, verifies that translation preserves
+// the transport bytes, and tests that reserved interface identifiers do not pass.
+
 import (
 	"bytes"
 	"fmt"

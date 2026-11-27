@@ -2,6 +2,10 @@
 
 package ovs
 
+// OpenFlow port numbers belong to a bridge. Two OVSDB bridge fixtures each
+// assign port 2 to a different interface. The lookup for the first bridge
+// returns only lan mapped to 2. The second returns only wan mapped to 2.
+
 import (
 	"testing"
 

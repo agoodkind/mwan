@@ -1,3 +1,7 @@
+# This Compose file supplies the shared services for gateway builds and
+# tests. Make and CI use the privileged ovs service to run the OVS packet
+# test script in the dedicated Linux test image.
+
 x-build: &build
   context: ..
   dockerfile: gateway/Dockerfile

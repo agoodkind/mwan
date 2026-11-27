@@ -1,5 +1,10 @@
 package health
 
+// Probe cycles publish health before asking the interface manager to reconcile.
+// A fake probe returns a controlled sequence of results while the callback reads
+// the committed verdict. Two consecutive failures mark the WAN unhealthy, and
+// two consecutive successes restore healthy status.
+
 import (
 	"context"
 	"errors"

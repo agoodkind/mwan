@@ -1,5 +1,9 @@
 package ovs
 
+// Conditional OpenFlow rules need a live health snapshot. This fixture checks
+// that both Setup and module reconciliation reject a configuration when the
+// caller cannot provide the health state needed to evaluate its condition.
+
 import (
 	"errors"
 	"io"

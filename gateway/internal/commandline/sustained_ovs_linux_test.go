@@ -2,6 +2,12 @@
 
 package commandline_test
 
+// TestOVSHealthConditions uses these helpers to check packet delivery while
+// mwan stops and starts against a running software switch. Each UDP source port
+// identifies one IPv6 packet. Packet capture checks for duplicates and counts
+// lost packets. A new switch rule identifies the restarted process, and
+// health.state shows when probe results are still unknown.
+
 import (
 	"bytes"
 	"context"

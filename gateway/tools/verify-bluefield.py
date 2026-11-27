@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# This script checks artifacts from a BlueField test run. It compares TCP
+# endpoint receipts with packet captures, checks UDP echoes and the offered
+# send rate, and reads a recorded log interval. TCP verification invokes tshark
+# on saved captures.
+
 from __future__ import annotations
 
 import argparse
