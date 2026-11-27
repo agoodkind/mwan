@@ -890,13 +890,23 @@ func (r *OwnedLinkReconciler) recordForAlias(alias string) (string, virtualRecor
 }
 
 func hasLinkChildren(link netlink.Link, links []netlink.Link) bool {
+	index := link.Attrs().Index
 	for _, child := range links {
-		if vxlan, ok := child.(*netlink.Vxlan); ok && vxlan.VtepDevIndex == link.Attrs().Index {
+		attrs := child.Attrs()
+		if attrs.MasterIndex == index {
 			return true
 		}
 
-		if child.Attrs().ParentIndex == link.Attrs().Index ||
-			child.Attrs().MasterIndex == link.Attrs().Index {
+		// A reported link namespace identifies an index outside this namespace.
+		if attrs.NetNsID >= 0 {
+			continue
+		}
+
+		if vxlan, ok := child.(*netlink.Vxlan); ok && vxlan.VtepDevIndex == index {
+			return true
+		}
+
+		if attrs.ParentIndex == index {
 			return true
 		}
 	}
