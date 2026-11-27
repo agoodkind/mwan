@@ -1,5 +1,9 @@
 package ovs
 
+// OpenFlow readback inspects buckets in groups outside mwan's namespace when
+// prefix translation needs to allocate helper tables. A resubmit to table 42,
+// for example, marks that table as reserved for existing traffic.
+
 import (
 	"encoding/binary"
 )

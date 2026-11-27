@@ -1,5 +1,11 @@
 package ovs
 
+// OpenFlow installation verifies the bridge's datapath ID on the socket,
+// then submits an ordered atomic bundle. A barrier lets the installer read
+// errors from staged messages before it closes and commits the bundle.
+//
+//   open -> stage changes -> barrier -> close -> commit
+
 import (
 	"context"
 	"encoding/hex"

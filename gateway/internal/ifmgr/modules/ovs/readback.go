@@ -1,5 +1,9 @@
 package ovs
 
+// OpenFlow readback gives the installer the current flows and groups for
+// comparison. A configured rule conflicts with an installed rule when the
+// table, priority, and match agree but another application owns the cookie.
+
 import (
 	"context"
 	"encoding/binary"
