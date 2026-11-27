@@ -1,5 +1,12 @@
 package netif
 
+// Link reconciliation applies the current WANCONFIG and records the virtual
+// links it creates. After a restart, the journal lets the reconciler verify
+// link ownership before reusing a link or deleting it when config omits it.
+//
+//	configured VLAN 397 -> create VLAN and record its identity
+//	removed VLAN 397    -> verify its identity and keep it while local children depend on it
+
 import (
 	"context"
 	"errors"
