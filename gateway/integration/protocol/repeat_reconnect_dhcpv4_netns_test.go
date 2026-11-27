@@ -2,6 +2,13 @@
 
 package protocol_test
 
+// These tests verify how DHCPv4 checks an existing lease after the WAN link
+// returns. If discovery obtains a different lease, the tests wait for the
+// replacement address to appear and the original address to disappear.
+//
+//	link returns -> verify 198.51.100.101 -> upstream ignores request
+//	DHCP discovery -> acquire 198.51.100.102 -> verify old address is absent
+
 import (
 	"encoding/binary"
 	"errors"
