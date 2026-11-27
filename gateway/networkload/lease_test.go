@@ -1,5 +1,10 @@
 package networkload_test
 
+// Both network document entry points check where OpenFlow can use a DHCP lease.
+// One case tries an address rewrite inside an indirect group's bucket and on
+// the flow that calls the group. It also checks a lease inside a nested clone
+// action and a lease on a select group's bucket.
+
 import (
 	"strings"
 	"testing"

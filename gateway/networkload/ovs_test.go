@@ -1,5 +1,11 @@
 package networkload_test
 
+// LoadOVS reads bridge and port settings, then validates how OpenFlow
+// entries refer to WAN connections. Cases vary one setting at a time,
+// including health conditions and the source of an IPv6 translation prefix.
+// A fixed prefix supplies the external mapping at load time. A delegated
+// prefix supplies an expectation for later lease processing.
+
 import (
 	"os"
 	"strings"

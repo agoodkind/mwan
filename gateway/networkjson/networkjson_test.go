@@ -2,6 +2,11 @@
 
 package networkjson_test
 
+// Network loader tests start with a document that configures two WAN providers and an
+// internal link. Each case changes the document and checks the settings the gateway
+// would use or the error it would report. An OVS case checks that the loader
+// rejects the kernel BGP backup setting in OVS mode.
+
 import (
 	"fmt"
 	"net/netip"

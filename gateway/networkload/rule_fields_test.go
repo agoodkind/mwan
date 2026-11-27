@@ -1,5 +1,9 @@
 package networkload_test
 
+// OpenFlow schema validation requires supported fields on flows, groups, and buckets.
+// Each case adds one unsupported field to the same valid OVS document and checks
+// that the loader reports the field as unknown.
+
 import (
 	"strings"
 	"testing"
