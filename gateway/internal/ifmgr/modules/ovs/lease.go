@@ -222,7 +222,7 @@ func (v leaseValues) openFlow(
 
 				slog.WarnContext(
 					ctx,
-					"Omitting OpenFlow bucket actions",
+					"Omitting OpenFlow bucket",
 					"group",
 					group.ID,
 					"bucket",
@@ -230,11 +230,8 @@ func (v leaseValues) openFlow(
 					"err",
 					err,
 				)
-				if group.Type != ovsconfig.GroupIndirect {
-					continue
-				}
 
-				// OpenFlow requires one bucket in an indirect group. Empty actions drop packets.
+				continue
 			}
 
 			buckets = append(buckets, bucket)
