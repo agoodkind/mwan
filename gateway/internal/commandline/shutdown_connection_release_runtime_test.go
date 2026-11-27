@@ -24,7 +24,7 @@ import (
 	"goodkind.io/mwan/gateway/internal/networkd"
 )
 
-func TestSystemdConnectionReleaseDaemonRuntime(t *testing.T) {
+func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	RequireSystemd(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()

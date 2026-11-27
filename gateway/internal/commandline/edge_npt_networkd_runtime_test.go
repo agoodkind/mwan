@@ -23,7 +23,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func TestSystemdNetworkdNPTEdgeDaemonRuntime(t *testing.T) {
+func TestNetworkdNPTEdgeDaemonRuntime(t *testing.T) {
 	RequireSystemd(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()

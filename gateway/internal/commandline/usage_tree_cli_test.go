@@ -1,4 +1,4 @@
-//go:build !protocol
+//go:build !protocol && !systemd
 
 package commandline_test
 

@@ -1,3 +1,5 @@
+//go:build !systemd
+
 package commandline_test
 
 import (

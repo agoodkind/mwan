@@ -33,7 +33,7 @@ import (
 	"goodkind.io/mwan/gateway/internal/yangpub"
 )
 
-func TestSystemdStaticResolverDaemonRuntime(t *testing.T) {
+func TestStaticResolverDaemonRuntime(t *testing.T) {
 	RequireSystemd(t)
 	requireSystemdOutput(t, "systemctl", "is-active", "systemd-resolved", "dbus")
 	runtime.LockOSThread()

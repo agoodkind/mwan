@@ -140,7 +140,7 @@ jobs:
       - name: Run systemd acceptance tests
         run: |
           docker compose up --no-build --pull never --wait systemd
-          docker compose exec -T systemd go test -count=1 -timeout=20m -tags systemd -run ^TestSystemd ./internal/commandline
+          docker compose exec -T systemd go test -count=1 -timeout=20m -tags systemd ./internal/commandline
       - name: Stop systemd container
         if: always()
         run: docker compose down --remove-orphans

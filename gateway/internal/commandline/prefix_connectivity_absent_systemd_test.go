@@ -14,7 +14,7 @@ import (
 	"goodkind.io/mwan/gateway/internal/commandline"
 )
 
-func TestSystemdCLIConnectivityAbsentPrefix(t *testing.T) {
+func TestCLIConnectivityAbsentPrefixSystemd(t *testing.T) {
 	commandline.RequireSystemd(t)
 	if os.Getenv(debugProbeNamespaceChild) != t.Name() {
 		ensureDebugNetworkd(t)
