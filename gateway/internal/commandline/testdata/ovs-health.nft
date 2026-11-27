@@ -1,0 +1,9 @@
+table ip ovs_health_test {
+    set blocked {
+        type ipv4_addr
+    }
+    chain output {
+        type filter hook output priority -10; policy accept;
+        ip daddr @blocked icmp type echo-request drop
+    }
+}
