@@ -1,5 +1,9 @@
 package ovs
 
+// Bridge setup uses this OVSDB client to write configuration. Bridge setup
+// and OpenFlow installation use its row models to follow references from a
+// bridge to its ports and from each port to its interfaces.
+
 import (
 	"context"
 	"fmt"

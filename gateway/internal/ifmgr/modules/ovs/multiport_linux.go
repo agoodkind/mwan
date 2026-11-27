@@ -1,5 +1,9 @@
 package ovs
 
+// Before bridge setup accepts DOCA offload, it checks esw_multiport in Linux
+// devlink. It resolves each physical port to a PCI address, then checks the
+// runtime value once per address.
+
 import (
 	"context"
 	"errors"

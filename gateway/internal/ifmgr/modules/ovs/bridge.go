@@ -1,5 +1,9 @@
 package ovs
 
+// OVS setup reconciles the bridge and its ports through OVSDB. Before rule
+// installation begins, ovs-vswitchd must apply the configuration and assign
+// valid OpenFlow port numbers to the requested interfaces.
+
 import (
 	"context"
 	"errors"
