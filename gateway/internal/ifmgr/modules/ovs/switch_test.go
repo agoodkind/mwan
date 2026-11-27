@@ -1,5 +1,9 @@
 package ovs
 
+// A fake OVS database supplies the switch setting for one-way UDP connection
+// tracking offload. The test checks that readSwitch rejects it when either the
+// datapath or offload mode selects DOCA.
+
 import (
 	"context"
 	"errors"

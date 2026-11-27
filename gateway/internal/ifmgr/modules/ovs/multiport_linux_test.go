@@ -1,5 +1,10 @@
 package ovs
 
+// These tests model Linux sysfs and inject devlink responses for the physical
+// devices behind DOCA and DPDK ports. Two interfaces can refer to the same PCI
+// device and need only one lookup. A second device fails readiness when its
+// runtime multiport setting is false, even with a permanent setting of true.
+
 import (
 	"os"
 	"path/filepath"
