@@ -49,6 +49,17 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-11-26 {
+    description
+      "Accept Open vSwitch match and action expressions, conditions for unhealthy
+       connections, and WAN connection IDs on flows and group buckets.";
+  }
+  revision 2026-11-25 {
+    description "OpenFlow rules and group buckets can depend on connection health.";
+  }
+  revision 2026-11-22 {
+    description "Add OVS bridge, port, and OpenFlow configuration.";
+  }
   revision 2026-11-21;
 
   revision 2026-11-15;
@@ -1373,9 +1384,232 @@ module goodkind-mwan-steering {
     }
   }
 
+  grouping ovs-actions {
+    list action {
+      key "id";
+      ordered-by user;
+      description "OVS actions execute in list order. Each ID identifies one occurrence.";
+      leaf id { type uint32; }
+      leaf name {
+        type string { length "1..max"; }
+        mandatory true;
+      }
+      leaf argument {
+        type string { length "1..max"; }
+        description "OVS operand, including nested actions where the operation accepts them.";
+      }
+    }
+  }
+
+  grouping ovs-connection {
+    leaf connection {
+      type string { length "1..max"; }
+      description
+        "Apply this WAN connection's IPv6 prefix translation to the entry.
+         Use the connection-id, or the WAN name when the interface omits connection-id.";
+    }
+  }
+
+  grouping ovs-health-condition {
+    container condition {
+      presence "Apply a health condition to this flow or bucket.";
+      description
+        "While a WAN health verdict is unknown, preserve the entry's current membership in OVS.
+         Identify the WAN by connection-id if present, or by WAN name otherwise.
+         Enable a health probe for this WAN. Restart mwan-ifmgr@wan.service after changing
+         probe definitions. Verdict changes apply during service operation.";
+      choice connection-verdict {
+        mandatory true;
+        leaf healthy-connection {
+          type string { length "1..max"; }
+          description "Install this entry while the connection is healthy.";
+        }
+        leaf unhealthy-connection {
+          type string { length "1..max"; }
+          description "Install this entry while the connection is unhealthy.";
+        }
+      }
+    }
+  }
+
   augment "/if:interfaces" {
     description
       "Group-wide steering settings.";
+    leaf dataplane {
+      type enumeration {
+        enum kernel;
+        enum ovs;
+      }
+      default "kernel";
+      must ". != 'ovs' or ../ovs" {
+        error-message "Selecting ovs requires an ovs configuration.";
+      }
+      description "Selects a dataplane for forwarded traffic.";
+    }
+    container ovs {
+      when "../dataplane = 'ovs'";
+      presence "Configure OVS forwarding.";
+      description "Configures an OVS bridge and its ports.";
+      leaf database-socket {
+        type string { pattern '/.+'; }
+        mandatory true;
+        description "Absolute path to a local OVSDB Unix socket.";
+      }
+      leaf startup-timeout-millis {
+        type uint32 { range "1..max"; }
+        mandatory true;
+        description "Time allowed for OVS bridge and port setup.";
+      }
+      leaf bridge {
+        type string { length "1..15"; }
+        mandatory true;
+        description "OVS bridge name.";
+      }
+      leaf datapath-type {
+        type enumeration {
+          enum system;
+          enum netdev;
+          enum doca;
+        }
+        mandatory true;
+        description "Selects a datapath advertised by ovs-vswitchd.";
+      }
+      leaf offload {
+        type enumeration {
+          enum none;
+          enum doca;
+        }
+        default "none";
+        must ". != 'doca' or ../datapath-type = 'doca' or ../datapath-type = 'netdev'" {
+          error-message "OVS-DOCA requires datapath-type doca or netdev.";
+        }
+        description "Selects OVS hardware offload requirements.";
+      }
+      list port {
+        key "name";
+        min-elements 1;
+        must "name != ../bridge" {
+          error-message "Port and bridge names must differ.";
+        }
+        description "An OVS port with one interface.";
+        leaf name {
+          type string { length "1..15"; }
+          description "Shared name for this port and its interface.";
+        }
+        leaf type {
+          type string { length "1..max"; }
+          mandatory true;
+          description "Value for OVSDB Interface.type.";
+        }
+        list options {
+          key "name";
+          description "Entries in OVSDB Interface.options.";
+          leaf name {
+            type string { length "1..max"; }
+            description "OVS interface option name.";
+          }
+          leaf value {
+            type string;
+            mandatory true;
+            description "OVS interface option value.";
+          }
+        }
+      }
+      container openflow {
+        presence "Manage OpenFlow rules on this bridge.";
+        description
+          "Use this rule set for rules that mwan manages.
+           An empty rule set removes all rules that mwan manages.";
+        leaf socket {
+          type string { pattern '/.+'; }
+          mandatory true;
+          description "Absolute path to this bridge's OpenFlow management socket.";
+        }
+        list group {
+          key "id";
+          must "type != 'indirect' or count(bucket) = 1" {
+            error-message "An indirect OpenFlow group requires exactly one bucket.";
+          }
+          description "OpenFlow groups and their packet actions.";
+          leaf id {
+            type uint32 { range "1..65535"; }
+            description "Logical group ID within mwan's reserved OpenFlow ID range.";
+          }
+          leaf type {
+            type enumeration {
+              enum all;
+              enum select;
+              enum indirect;
+              enum fast-failover;
+            }
+            mandatory true;
+            description "OpenFlow group type.";
+          }
+          leaf selection-method {
+            when "../type = 'select'";
+            type string { length "1..15"; }
+            description "OVS selection method, such as hash or dp_hash.";
+          }
+          leaf selection-parameter {
+            when "../selection-method";
+            type uint64;
+            description "Parameter for this group's OVS selection method.";
+          }
+          list bucket {
+            key "id";
+            ordered-by user;
+            must "not(condition) or ../type != 'indirect'" {
+              error-message
+                "An indirect group requires an unconditional bucket. Apply health conditions to referring flows.";
+            }
+            uses ovs-connection;
+            uses ovs-health-condition;
+            leaf id {
+              type uint32 { range "0..4294967039"; }
+              description "Bucket ID within this group.";
+            }
+            leaf weight {
+              type uint16;
+              description "Relative share of traffic assigned to this bucket.";
+            }
+            uses ovs-actions;
+          }
+        }
+        list flow {
+          key "name";
+          description "An OpenFlow rule.";
+          uses ovs-connection;
+          uses ovs-health-condition;
+          leaf name {
+            type string { length "1..max"; }
+            description "Identifies this rule in configuration errors.";
+          }
+          leaf table {
+            type uint8 { range "0..254"; }
+            default 0;
+            description "OpenFlow table number.";
+          }
+          leaf priority {
+            type uint16;
+            mandatory true;
+            description "Priority among matching rules in this table.";
+          }
+          list match {
+            key "field";
+            ordered-by user;
+            description "Packet match fields and protocol keywords in ovs-ofctl syntax.";
+            leaf field {
+              type string { length "1..max"; }
+            }
+            leaf value {
+              type string { length "1..max"; }
+              description "Field value and optional mask. Omit for protocol keywords.";
+            }
+          }
+          uses ovs-actions;
+        }
+      }
+    }
     container steering-group {
       description
         "Settings that apply to the member group as a whole.";

@@ -66,7 +66,7 @@ func (c *Config) FirewallPlan() (FirewallPlan, error) {
 		Rules:  make(map[FirewallRuleKey]firewall.Rule),
 		Sets:   make(map[FirewallSetKey]firewall.Set),
 	}
-	compiled, err := firewall.Compile(c.Firewall)
+	compiled, err := c.Firewall.Ruleset()
 	if err != nil {
 		slog.Error("networkjson: firewall compile failed", "err", err)
 		return FirewallPlan{}, fmt.Errorf("steering-group/firewall: %w", err)

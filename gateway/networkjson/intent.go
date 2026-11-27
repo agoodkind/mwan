@@ -980,7 +980,7 @@ func validateConnectionDependencies(
 }
 
 func validateRequiredRoles(indexes map[string]int, internal string, firewall *firewallWire) error {
-	if _, ok := indexes[internal]; !ok {
+	if _, ok := indexes[internal]; internal != "" && !ok {
 		return fmt.Errorf("internal interface %s was rejected", internal)
 	}
 
