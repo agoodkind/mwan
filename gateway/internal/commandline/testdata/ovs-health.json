@@ -1,0 +1,193 @@
+{
+  "ietf-interfaces:interfaces": {
+    "interface": [
+      {"name": "hc-in", "type": "iana-if-type:other"},
+      {
+        "name": "hc-a", "type": "iana-if-type:other",
+        "goodkind-mwan-steering:link-files": "hand-authored",
+        "goodkind-mwan-steering:connection-id": "wan-a",
+        "goodkind-mwan-steering:wan": {
+          "name": "provider-a",
+          "health": {
+            "enabled": true, "ping-count": 1, "success-threshold": 1,
+            "failure-threshold": 1, "recovery-threshold": 1, "check-interval": 1,
+            "targets-v4": ["198.51.100.1"], "targets-v6": []
+          }
+        }
+      },
+      {
+        "name": "hc-b", "type": "iana-if-type:other",
+        "goodkind-mwan-steering:link-files": "hand-authored",
+        "goodkind-mwan-steering:connection-id": "wan-b",
+        "goodkind-mwan-steering:wan": {
+          "name": "provider-b",
+          "health": {
+            "enabled": true, "ping-count": 1, "success-threshold": 1,
+            "failure-threshold": 1, "recovery-threshold": 1, "check-interval": 1,
+            "targets-v4": ["203.0.113.1"], "targets-v6": []
+          }
+        }
+      }
+    ],
+    "goodkind-mwan-steering:steering-group": {
+      "health": {"probe-timeout": 150},
+      "routes": {"internal-iface": "hc-in"},
+      "firewall": {
+        "management-interface": "hc-in",
+        "management-service": [{"protocol": "tcp", "port": 22}],
+        "pinned-set-v4-name": "hc_pinned_v4",
+        "pinned-set-v6-name": "hc_pinned_v6"
+      }
+    },
+    "goodkind-mwan-steering:dataplane": "ovs",
+    "goodkind-mwan-steering:ovs": {
+      "database-socket": "/run/openvswitch/db.sock",
+      "startup-timeout-millis": 10000,
+      "bridge": "br-hc",
+      "datapath-type": "netdev",
+      "port": [
+        {"name": "hc-in", "type": "system"},
+        {"name": "hc-a", "type": "system"},
+        {"name": "hc-b", "type": "system"}
+      ],
+      "openflow": {
+        "socket": "/run/openvswitch/br-hc.mgmt",
+        "group": [{
+          "id": 7, "type": "select",
+          "bucket": [
+            {"id": 1, "weight": 200, "action": [{"id": 1, "name": "output", "argument": "hc-a"}], "condition": {"healthy-connection": "wan-a"}},
+            {"id": 2, "weight": 100, "action": [{"id": 1, "name": "output", "argument": "hc-b"}], "condition": {"healthy-connection": "wan-b"}}
+          ]
+        }, {
+          "id": 8, "type": "select",
+          "bucket": [
+            {"id": 3, "action": [{"id": 1, "name": "output", "argument": "hc-b"}], "condition": {"healthy-connection": "wan-b"}}
+          ]
+        }],
+        "flow": [
+          {"name": "remember-incoming-ipv4-a", "table": 10, "priority": 300,
+           "condition": {"unhealthy-connection": "wan-b"},
+           "match": [
+             {"field": "udp"},
+             {"field": "in_port", "value": "hc-a"},
+             {"field": "ct_state", "value": "+trk+new"}
+           ],
+           "action": [
+             {"id": 1, "name": "ct", "argument": "commit,zone=147,exec(set_field:1->ct_mark)"},
+             {"id": 2, "name": "output", "argument": "hc-in"}
+           ]},
+          {"name": "remember-incoming-ipv4-b", "table": 10, "priority": 300,
+           "condition": {"unhealthy-connection": "wan-a"},
+           "match": [
+             {"field": "udp"},
+             {"field": "in_port", "value": "hc-b"},
+             {"field": "ct_state", "value": "+trk+new"}
+           ],
+           "action": [
+             {"id": 1, "name": "ct", "argument": "commit,zone=147,exec(set_field:2->ct_mark)"},
+             {"id": 2, "name": "output", "argument": "hc-in"}
+           ]},
+          {"name": "remember-incoming-ipv6-a", "table": 10, "priority": 300,
+           "condition": {"unhealthy-connection": "wan-b"},
+           "match": [
+             {"field": "udp6"},
+             {"field": "in_port", "value": "hc-a"},
+             {"field": "ct_state", "value": "+trk+new"}
+           ],
+           "action": [
+             {"id": 1, "name": "ct", "argument": "commit,zone=147,exec(set_field:1->ct_mark)"},
+             {"id": 2, "name": "output", "argument": "hc-in"}
+           ]},
+          {"name": "remember-incoming-ipv6-b", "table": 10, "priority": 300,
+           "condition": {"unhealthy-connection": "wan-a"},
+           "match": [
+             {"field": "udp6"},
+             {"field": "in_port", "value": "hc-b"},
+             {"field": "ct_state", "value": "+trk+new"}
+           ],
+           "action": [
+             {"id": 1, "name": "ct", "argument": "commit,zone=147,exec(set_field:2->ct_mark)"},
+             {"id": 2, "name": "output", "argument": "hc-in"}
+           ]},
+          {"name": "look-up-incoming-ipv4", "priority": 200,
+           "match": [
+             {"field": "udp"},
+             {"field": "tp_dst", "value": "8053"}
+           ],
+           "action": [
+             {"id": 1, "name": "ct", "argument": "zone=147,table=10"}
+           ]},
+          {"name": "look-up-ipv4-reply", "priority": 200,
+           "match": [
+             {"field": "udp"},
+             {"field": "in_port", "value": "hc-in"},
+             {"field": "tp_src", "value": "8053"}
+           ],
+           "action": [
+             {"id": 1, "name": "ct", "argument": "zone=147,table=11"}
+           ]},
+          {"name": "unmarked-ipv4-reply", "table": 11, "priority": 10,
+           "match": [
+             {"field": "udp"}
+           ],
+           "action": [
+             {"id": 1, "name": "output", "argument": "hc-a"}
+           ]},
+          {"name": "look-up-incoming-ipv6", "priority": 200,
+           "match": [
+             {"field": "udp6"},
+             {"field": "tp_dst", "value": "8053"}
+           ],
+           "action": [
+             {"id": 1, "name": "ct", "argument": "zone=147,table=10"}
+           ]},
+          {"name": "look-up-ipv6-reply", "priority": 200,
+           "match": [
+             {"field": "udp6"},
+             {"field": "in_port", "value": "hc-in"},
+             {"field": "tp_src", "value": "8053"}
+           ],
+           "action": [
+             {"id": 1, "name": "ct", "argument": "zone=147,table=11"}
+           ]},
+          {"name": "unmarked-ipv6-reply", "table": 11, "priority": 10,
+           "match": [
+             {"field": "udp6"}
+           ],
+           "action": [
+             {"id": 1, "name": "output", "argument": "hc-b"}
+           ]},
+          {"name": "reply-through-remembered-wan-a", "table": 11, "priority": 100,
+           "match": [
+             {"field": "ct_state", "value": "+trk+est+rpl"},
+             {"field": "ct_mark", "value": "1"}
+           ],
+           "action": [
+             {"id": 1, "name": "output", "argument": "hc-a"}
+           ]},
+          {"name": "reply-through-remembered-wan-b", "table": 11, "priority": 100,
+           "match": [
+             {"field": "ct_state", "value": "+trk+est+rpl"},
+             {"field": "ct_mark", "value": "2"}
+           ],
+           "action": [
+             {"id": 1, "name": "output", "argument": "hc-b"}
+           ]},
+          {"name": "deliver-incoming-to-lan", "table": 10, "priority": 10,
+           "action": [{"id": 1, "name": "output", "argument": "hc-in"}]},
+          {"name": "ipv4", "priority": 100,
+           "match": [{"field": "in_port", "value": "hc-in"}, {"field": "ip"}],
+           "action": [{"id": 1, "name": "group", "argument": "7"}]},
+          {"name": "ipv6", "priority": 100,
+           "match": [{"field": "in_port", "value": "hc-in"}, {"field": "ipv6"}],
+           "action": [{"id": 1, "name": "group", "argument": "7"}],
+           "condition": {"healthy-connection": "wan-a"}},
+          {"name": "ipv6-outage", "priority": 90,
+           "match": [{"field": "in_port", "value": "hc-in"}, {"field": "ipv6"}],
+           "action": [{"id": 1, "name": "group", "argument": "8"}],
+           "condition": {"unhealthy-connection": "wan-a"}}
+        ]
+      }
+    }
+  }
+}

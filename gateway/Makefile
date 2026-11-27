@@ -1,3 +1,7 @@
+# These Make targets dispatch gateway builds, tests, and releases to Linux
+# Compose services. For example, test-ovs runs the ovs service to exercise
+# bridge setup and WAN packet forwarding.
+
 ################################################################################
 # Settings
 ################################################################################
@@ -41,7 +45,7 @@ build-check: ## Run shared quality checks in Linux builder.
 # Tests
 ################################################################################
 
-.PHONY: test test-netns test-firewall test-provider-drift
+.PHONY: test test-netns test-firewall test-ovs test-provider-drift
 .PHONY: test-protocol-namespace test-systemd systemd-stop
 
 test: ## Run ordinary Go test suite.
@@ -49,9 +53,10 @@ test: ## Run ordinary Go test suite.
 
 test-netns: ## Run network namespace tests.
 test-firewall: ## Run firewall runtime tests.
+test-ovs: ## Verify OVS bridge setup and WAN packet forwarding.
 test-provider-drift: ## Compare installer with OpenTofu provider output.
 
-test-netns test-firewall test-provider-drift:
+test-netns test-firewall test-ovs test-provider-drift:
 	$(RUN) $(@:test-%=%)
 
 test-protocol-namespace: ## Run protocol namespace tests. Set PROTOCOL_TEST to select a test expression.

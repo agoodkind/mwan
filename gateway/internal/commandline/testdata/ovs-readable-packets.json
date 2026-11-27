@@ -1,0 +1,216 @@
+{
+  "ietf-interfaces:interfaces": {
+    "interface": [
+      {"name": "rp-vlan-l", "type": "iana-if-type:other"},
+      {"name": "rp-vlan-w", "type": "iana-if-type:other"},
+      {"name": "rp-v6-l", "type": "iana-if-type:other"},
+      {"name": "rp-v6-w", "type": "iana-if-type:other"},
+      {"name": "rp-map-l", "type": "iana-if-type:other"},
+      {"name": "rp-map-w", "type": "iana-if-type:other"},
+      {"name": "rp-nat-l", "type": "iana-if-type:other"},
+      {"name": "rp-nat-w", "type": "iana-if-type:other"}
+    ],
+    "goodkind-mwan-steering:steering-group": {
+      "routes": {
+        "internal-iface": "rp-vlan-l"
+      },
+      "firewall": {
+        "management-interface": "rp-vlan-w",
+        "management-service": [
+          {
+            "protocol": "tcp",
+            "port": 22
+          }
+        ],
+        "pinned-set-v4-name": "uplink_pinned_v4",
+        "pinned-set-v6-name": "uplink_pinned_v6"
+      }
+    },
+    "goodkind-mwan-steering:dataplane": "ovs",
+    "goodkind-mwan-steering:ovs": {
+      "database-socket": "/run/openvswitch/db.sock",
+      "startup-timeout-millis": 10000,
+      "bridge": "br-rp",
+      "datapath-type": "netdev",
+      "port": [
+        {"name": "rp-vlan-l", "type": "system"},
+        {"name": "rp-vlan-w", "type": "system"},
+        {"name": "rp-v6-l", "type": "system"},
+        {"name": "rp-v6-w", "type": "system"},
+        {"name": "rp-map-l", "type": "system"},
+        {"name": "rp-map-w", "type": "system"},
+        {"name": "rp-nat-l", "type": "system"},
+        {"name": "rp-nat-w", "type": "system"}
+      ],
+      "openflow": {
+        "socket": "/run/openvswitch/br-rp.mgmt",
+        "flow": [
+          {
+            "name": "vlan-out",
+            "table": 0,
+            "priority": 100,
+            "match": [
+              {"field": "in_port", "value": "rp-vlan-l"}
+            ],
+            "action": [
+              {"id": 1, "name": "push_vlan", "argument": "0x8100"},
+              {"id": 2, "name": "set_field", "argument": "0x1025->vlan_vid"},
+              {"id": 3, "name": "output", "argument": "rp-vlan-w"}
+            ]
+          },
+          {
+            "name": "vlan-in",
+            "table": 0,
+            "priority": 100,
+            "match": [
+              {"field": "in_port", "value": "rp-vlan-w"},
+              {"field": "dl_vlan", "value": "37"}
+            ],
+            "action": [
+              {"id": 1, "name": "pop_vlan"},
+              {"id": 2, "name": "output", "argument": "rp-vlan-l"}
+            ]
+          },
+          {
+            "name": "prefix-out",
+            "table": 0,
+            "priority": 100,
+            "match": [
+              {"field": "in_port", "value": "rp-v6-l"},
+              {
+                "field": "ipv6"
+              },
+              {"field": "ipv6_src", "value": "fd01:2345:6789:abcd::/64"}
+            ],
+            "action": [
+              {"id": 1, "name": "load", "argument": "0x20010db801230456->NXM_NX_IPV6_SRC[64..127]"},
+              {"id": 2, "name": "output", "argument": "rp-v6-w"}
+            ]
+          },
+          {
+            "name": "prefix-in",
+            "table": 0,
+            "priority": 100,
+            "match": [
+              {"field": "in_port", "value": "rp-v6-w"},
+              {
+                "field": "ipv6"
+              },
+              {"field": "ipv6_dst", "value": "2001:db8:123:456::/64"}
+            ],
+            "action": [
+              {"id": 1, "name": "load", "argument": "0xfd0123456789abcd->NXM_NX_IPV6_DST[64..127]"},
+              {"id": 2, "name": "output", "argument": "rp-v6-l"}
+            ]
+          },
+          {
+            "name": "mapping-out",
+            "table": 0,
+            "priority": 100,
+            "match": [
+              {"field": "in_port", "value": "rp-map-l"},
+              {
+                "field": "ip"
+              },
+              {"field": "nw_src", "value": "192.0.2.41"}
+            ],
+            "action": [
+              {"id": 1, "name": "set_field", "argument": "203.0.113.41->ip_src"},
+              {"id": 2, "name": "output", "argument": "rp-map-w"}
+            ]
+          },
+          {
+            "name": "mapping-in",
+            "table": 0,
+            "priority": 100,
+            "match": [
+              {"field": "in_port", "value": "rp-map-w"},
+              {
+                "field": "ip"
+              },
+              {"field": "nw_dst", "value": "203.0.113.41"}
+            ],
+            "action": [
+              {"id": 1, "name": "set_field", "argument": "192.0.2.41->ip_dst"},
+              {"id": 2, "name": "output", "argument": "rp-map-l"}
+            ]
+          },
+          {
+            "name": "nat-out",
+            "table": 0,
+            "priority": 100,
+            "match": [
+              {"field": "in_port", "value": "rp-nat-l"},
+              {
+                "field": "ip"
+              }
+            ],
+            "action": [
+              {"id": 1, "name": "ct", "argument": "zone=23,table=1,nat"}
+            ]
+          },
+          {
+            "name": "nat-in",
+            "table": 0,
+            "priority": 100,
+            "match": [
+              {"field": "in_port", "value": "rp-nat-w"},
+              {
+                "field": "ip"
+              }
+            ],
+            "action": [
+              {"id": 1, "name": "ct", "argument": "zone=23,table=1,nat"}
+            ]
+          },
+          {
+            "name": "nat-create",
+            "table": 1,
+            "priority": 100,
+            "match": [
+              {"field": "in_port", "value": "rp-nat-l"},
+              {
+                "field": "ip"
+              },
+              {"field": "ct_state", "value": "+trk+new"}
+            ],
+            "action": [
+              {"id": 1, "name": "ct", "argument": "commit,zone=23,nat(src=203.0.113.61)"},
+              {"id": 2, "name": "output", "argument": "rp-nat-w"}
+            ]
+          },
+          {
+            "name": "nat-established",
+            "table": 1,
+            "priority": 100,
+            "match": [
+              {"field": "in_port", "value": "rp-nat-l"},
+              {
+                "field": "ip"
+              },
+              {"field": "ct_state", "value": "+trk+est"}
+            ],
+            "action": [
+              {"id": 1, "name": "output", "argument": "rp-nat-w"}
+            ]
+          },
+          {
+            "name": "nat-reply",
+            "table": 1,
+            "priority": 100,
+            "match": [
+              {"field": "in_port", "value": "rp-nat-w"},
+              {
+                "field": "ip"
+              },
+              {"field": "ct_state", "value": "+trk+est+rpl"}
+            ],
+            "action": [
+              {"id": 1, "name": "output", "argument": "rp-nat-l"}
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

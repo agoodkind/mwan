@@ -1,7 +1,12 @@
 package ifmgr
 
+// The wan role lists the modules that the interface manager reconciles. These
+// tests check the role lookup and ensure that OVS follows health in the
+// reconciliation order.
+
 import (
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -67,5 +72,20 @@ func TestModulesForRoleExported(t *testing.T) {
 
 	if _, err := ModulesForRole("bogus"); err == nil {
 		t.Error("ModulesForRole(\"bogus\") returned nil err; unknown role should error")
+	}
+}
+
+func TestOVSReconcilesAfterHealth(t *testing.T) {
+	t.Parallel()
+
+	modules, err := ModulesForOVS("wan")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	health := slices.Index(modules, "health")
+	ovs := slices.Index(modules, "ovs")
+	if health < 0 || ovs <= health {
+		t.Fatalf("OVS must reconcile after health, got %v", modules)
 	}
 }

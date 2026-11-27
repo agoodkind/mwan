@@ -1,0 +1,166 @@
+{
+  "ietf-interfaces:interfaces": {
+    "interface": [
+      {"name": "npt-lan", "type": "iana-if-type:other"},
+      {"name": "npt-trunk", "type": "iana-if-type:other"},
+      {
+        "name": "npt-1",
+        "type": "iana-if-type:other",
+        "goodkind-mwan-steering:link-files": "hand-authored",
+        "goodkind-mwan-steering:connection-id": "wan-1",
+        "goodkind-mwan-steering:wan": {
+          "name": "provider-1"
+        },
+        "ietf-ip:ipv6": {
+          "goodkind-mwan-steering:translation": {
+            "mode": "ietf-nat:nptv6",
+            "nptv6": {
+              "internal-prefix": "fd01:203:405::/48",
+              "external-source": "configured",
+              "external-prefix": "2001:db8:1::/48"
+            }
+          }
+        }
+      },
+      {
+        "name": "npt-2",
+        "type": "iana-if-type:other",
+        "goodkind-mwan-steering:link-files": "hand-authored",
+        "goodkind-mwan-steering:connection-id": "wan-2",
+        "goodkind-mwan-steering:wan": {
+          "name": "provider-2"
+        },
+        "ietf-ip:ipv6": {
+          "goodkind-mwan-steering:translation": {
+            "mode": "ietf-nat:nptv6",
+            "nptv6": {
+              "internal-prefix": "fd01:203:405::/48",
+              "external-source": "configured",
+              "external-prefix": "2001:db8:2:ab00::/56"
+            }
+          }
+        }
+      }
+    ],
+    "goodkind-mwan-steering:steering-group": {
+      "routes": {
+        "internal-iface": "npt-lan"
+      },
+      "firewall": {
+        "management-interface": "npt-lan",
+        "management-service": [
+          {
+            "protocol": "tcp",
+            "port": 22
+          }
+        ],
+        "pinned-set-v4-name": "npt_pinned_v4",
+        "pinned-set-v6-name": "npt_pinned_v6"
+      }
+    },
+    "goodkind-mwan-steering:dataplane": "ovs",
+    "goodkind-mwan-steering:ovs": {
+      "database-socket": "/run/openvswitch/db.sock",
+      "startup-timeout-millis": 10000,
+      "bridge": "br-npt",
+      "datapath-type": "netdev",
+      "port": [
+        {"name": "npt-lan", "type": "system"},
+        {"name": "npt-trunk", "type": "system"}
+      ],
+      "openflow": {
+        "socket": "/run/openvswitch/br-npt.mgmt",
+        "group": [
+          {
+            "id": 7,
+            "type": "select",
+            "bucket": [
+              {
+                "id": 1,
+                "weight": 100,
+                "connection": "wan-1",
+                "action": [
+                  {"id": 1, "name": "push_vlan", "argument": "0x8100"},
+                  {"id": 2, "name": "set_field", "argument": "0x1065->vlan_vid"},
+                  {"id": 3, "name": "output", "argument": "npt-trunk"}
+                ]
+              },
+              {
+                "id": 2,
+                "weight": 100,
+                "connection": "wan-2",
+                "action": [
+                  {"id": 1, "name": "push_vlan", "argument": "0x8100"},
+                  {"id": 2, "name": "set_field", "argument": "0x1066->vlan_vid"},
+                  {"id": 3, "name": "output", "argument": "npt-trunk"}
+                ]
+              }
+            ]
+          }
+        ],
+        "flow": [
+          {
+            "name": "fixed-wan",
+            "priority": 200,
+            "connection": "wan-2",
+            "match": [
+              {"field": "in_port", "value": "npt-lan"},
+              {
+                "field": "tcp6"
+              },
+              {"field": "tp_dst", "value": "8443"}
+            ],
+            "action": [
+              {"id": 1, "name": "push_vlan", "argument": "0x8100"},
+              {"id": 2, "name": "set_field", "argument": "0x1066->vlan_vid"},
+              {"id": 3, "name": "output", "argument": "npt-trunk"}
+            ]
+          },
+          {
+            "name": "select-wan",
+            "priority": 100,
+            "match": [
+              {"field": "in_port", "value": "npt-lan"},
+              {
+                "field": "ipv6"
+              }
+            ],
+            "action": [{"id": 1, "name": "group", "argument": "7"}]
+          },
+          {
+            "name": "return-1",
+            "priority": 100,
+            "connection": "wan-1",
+            "match": [
+              {"field": "in_port", "value": "npt-trunk"},
+              {
+                "field": "ipv6"
+              },
+              {"field": "dl_vlan", "value": "101"}
+            ],
+            "action": [
+              {"id": 1, "name": "pop_vlan"},
+              {"id": 2, "name": "output", "argument": "npt-lan"}
+            ]
+          },
+          {
+            "name": "return-2",
+            "priority": 100,
+            "connection": "wan-2",
+            "match": [
+              {"field": "in_port", "value": "npt-trunk"},
+              {
+                "field": "ipv6"
+              },
+              {"field": "dl_vlan", "value": "102"}
+            ],
+            "action": [
+              {"id": 1, "name": "pop_vlan"},
+              {"id": 2, "name": "output", "argument": "npt-lan"}
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

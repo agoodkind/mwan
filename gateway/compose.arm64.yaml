@@ -1,3 +1,7 @@
+# This Compose overlay selects Linux arm64 for gateway builds and tests.
+# For OVS packet tests, it selects the arm64 image. Gateway services use
+# checkout caches for the same architecture.
+
 x-platform: &platform
   platform: linux/arm64
   environment:
@@ -25,6 +29,9 @@ services:
   yang-validate: *builder
   yang-validate-instances: *builder
   firewall: *builder
+  ovs:
+    <<: *platform
+    image: mwan-ovs-tests:arm64
   release:
     <<: *platform
     image: mwan-release-builder:arm64

@@ -1,3 +1,6 @@
+# CI mounts Go build and download caches from the runner into gateway test
+# containers, including the ovs service.
+
 x-go-cache: &go-cache
   volumes:
     - ${RUNNER_TEMP:?Supply the runner temporary directory}/gateway-go/build:/root/.cache/go-build
@@ -9,5 +12,6 @@ services:
   provider-drift: *go-cache
   netns: *go-cache
   firewall: *go-cache
+  ovs: *go-cache
   protocol-namespace: *go-cache
   systemd: *go-cache
