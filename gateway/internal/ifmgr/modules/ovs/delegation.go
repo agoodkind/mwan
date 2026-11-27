@@ -1,5 +1,9 @@
 package ovs
 
+// Lease binding provides the IPv6 prefix translation compiler with the current
+// external prefix for mappings that use DHCPv6 prefix delegation. For example,
+// it can select the first /64 of a delegated /56 for a connection's mapping.
+
 import (
 	"context"
 	"log/slog"

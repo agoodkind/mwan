@@ -1,5 +1,11 @@
 package ovs
 
+// Lease binding replaces DHCP operands before ifmgr compiles OpenFlow rules.
+// If the assignment is missing or ambiguous, ifmgr omits the affected flow
+// or group bucket.
+//
+//   ${dhcpv4:wan-a} -> 192.0.2.9
+
 import (
 	"context"
 	"errors"

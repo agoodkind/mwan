@@ -1,5 +1,12 @@
 package ovs
 
+// OpenFlow compilation generates helper rules for IPv6 prefix translation.
+// For matching packets, it rewrites the prefix and adjusts a word in the
+// address to preserve the transport checksum.
+//
+//   outbound source     internal prefix -> external prefix
+//   return destination   external prefix -> internal prefix
+
 import (
 	"encoding/binary"
 	"errors"

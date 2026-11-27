@@ -1,5 +1,11 @@
 package ovs
 
+// OpenFlow compilation reserves tables that foreign entries or configured
+// rules already use or reference. A flow calls its translation helper before
+// its configured actions. A group bucket uses a wrapper table in this order.
+//
+//   bucket resubmit -> translate prefix -> run original bucket actions
+
 import (
 	"encoding/binary"
 	"errors"

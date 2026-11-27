@@ -1,5 +1,9 @@
 package ovs
 
+// OpenFlow compilation gives the installer a cookie-scoped delete followed by
+// the configured flow additions. Rules with the same table, priority, and match
+// conflict even when they have different names.
+
 import (
 	"context"
 	"errors"

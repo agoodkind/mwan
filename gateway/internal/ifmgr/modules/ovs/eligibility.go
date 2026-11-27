@@ -1,5 +1,13 @@
 package ovs
 
+// OpenFlow compilation uses WAN health and installed state to choose the
+// flows and group buckets to install. Consider an entry that requires wan-a
+// to be healthy.
+//
+//   healthy   -> include the entry
+//   unhealthy -> omit the entry
+//   unknown   -> keep the installed entry if present
+
 import (
 	"context"
 	"errors"
