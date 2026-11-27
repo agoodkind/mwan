@@ -1,5 +1,12 @@
 package netif
 
+// Link reconciliation applies the current WANCONFIG and records the virtual
+// links it creates. After a restart, the journal lets the reconciler verify
+// link ownership before reusing a link or deleting it when config omits it.
+//
+//	configured VLAN 397 -> create VLAN and record its identity
+//	removed VLAN 397    -> verify its identity and keep it while local children depend on it
+
 import (
 	"context"
 	"errors"
@@ -890,13 +897,24 @@ func (r *OwnedLinkReconciler) recordForAlias(alias string) (string, virtualRecor
 }
 
 func hasLinkChildren(link netlink.Link, links []netlink.Link) bool {
+	index := link.Attrs().Index
+
 	for _, child := range links {
-		if vxlan, ok := child.(*netlink.Vxlan); ok && vxlan.VtepDevIndex == link.Attrs().Index {
+		attrs := child.Attrs()
+		if attrs.MasterIndex == index {
 			return true
 		}
 
-		if child.Attrs().ParentIndex == link.Attrs().Index ||
-			child.Attrs().MasterIndex == link.Attrs().Index {
+		// A reported link namespace identifies an index outside this namespace.
+		if attrs.NetNsID >= 0 {
+			continue
+		}
+
+		if vxlan, ok := child.(*netlink.Vxlan); ok && vxlan.VtepDevIndex == index {
+			return true
+		}
+
+		if attrs.ParentIndex == index {
 			return true
 		}
 	}
