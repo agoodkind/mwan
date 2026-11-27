@@ -1,5 +1,9 @@
 package ovs
 
+// An in-memory OpenFlow peer returns installed rules with an extension instruction.
+// Reconciliation compares the instruction bytes for a rule mwan owns. A foreign
+// rule conflicts only when it uses the same switch match, table, and priority.
+
 import (
 	"errors"
 	"net"
