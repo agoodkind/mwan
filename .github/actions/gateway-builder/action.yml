@@ -38,8 +38,22 @@ runs:
       run: |
         docker compose build --print build "$SERVICE" > "$RUNNER_TEMP/gateway-builder.json"
 
-    - name: Build the gateway builder with cached layers
+    - name: Export gateway build layers
+      if: inputs.export-cache == 'true'
+      uses: docker/bake-action@v7.5.0
+      with:
+        source: .
+        files: ${{ runner.temp }}/gateway-builder.json
+        targets: ${{ inputs.service }}
+        builder: ${{ steps.buildx.outputs.name }}
+        set: |
+          ${{ inputs.service }}.cache-from=type=gha,scope=mwan-gateway-builder-${{ inputs.arch }}
+          ${{ inputs.service }}.output=type=cacheonly
+          ${{ inputs.service }}.cache-to=type=gha,scope=mwan-gateway-builder-${{ inputs.arch }},mode=max
+
+    - name: Build the gateway image with cached layers
       id: image
+      if: inputs.export-cache == 'false'
       uses: docker/bake-action@v7.5.0
       with:
         source: .
@@ -48,13 +62,11 @@ runs:
           gateway/native-cache.hcl
         targets: |
           ${{ inputs.service }}
-          ${{ inputs.cache-go == 'true' && 'native-cache' || '' }}
-        builder: ${{ steps.buildx.outputs.name || 'default' }}
+          native-cache
+        builder: default
         set: |
           ${{ inputs.service }}.cache-from=type=gha,scope=mwan-gateway-builder-${{ inputs.arch }}
-          ${{ inputs.cache-go == 'true' && format('native-cache.cache-from=type=gha,scope=mwan-gateway-builder-{0}', inputs.arch) || '' }}
-          ${{ inputs.export-cache == 'true' && format('{0}.output=type=cacheonly', inputs.service) || '' }}
-          ${{ inputs.export-cache == 'true' && format('{0}.cache-to=type=gha,scope=mwan-gateway-builder-{1},mode=max', inputs.service, inputs.arch) || '' }}
+          native-cache.cache-from=type=gha,scope=mwan-gateway-builder-${{ inputs.arch }}
 
     - name: Restore Go module downloads and compiled packages
       if: inputs.cache-go == 'true'
