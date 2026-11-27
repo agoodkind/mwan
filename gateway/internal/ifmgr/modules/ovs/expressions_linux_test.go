@@ -2,6 +2,10 @@
 
 package ovs
 
+// OpenFlow action order comes from the list. A Linux parser test encodes two
+// rewrites of the same IPv4 source field in list order even though the first
+// action has the larger ID. It also checks both group references inside clone.
+
 import (
 	"bytes"
 	"testing"

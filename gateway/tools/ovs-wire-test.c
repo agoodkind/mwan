@@ -1,3 +1,7 @@
+// This standalone check calls the OVS text parser and compares its output with
+// the original OpenFlow instruction bytes for an IPv4 source rewrite followed
+// by a table jump.
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

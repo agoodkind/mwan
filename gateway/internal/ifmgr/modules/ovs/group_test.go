@@ -1,5 +1,10 @@
 package ovs
 
+// The OpenFlow compiler resolves port names and encodes group properties.
+// Cases check that a select group sends weights 3 and 1 with port numbers
+// 5 and 9, and that an all group can compile without a selection policy. These
+// checks inspect the encoded message.
+
 import (
 	"bytes"
 	"encoding/binary"
