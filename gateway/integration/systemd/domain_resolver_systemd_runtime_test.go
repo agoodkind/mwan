@@ -498,8 +498,9 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 			testenv.WaitStaticRuntimeLog(t, daemon, "external resolver change preserved")
 			testenv.KillOwnedRuntimeDaemon(t, daemon)
 			writeResolverCleanupNetwork(t, networkDir)
+			logResolverPruneLinks(t, gateway, "before restart")
 			daemon = testenv.StartRuntimeDaemon(t, binary, configPath, root, "resolver-prune")
-			testenv.WaitOwnedRuntimeAbsent(t, daemon, "owned397", 10*time.Second)
+			waitResolverPrune(t, daemon, gateway, filepath.Join(root, "links.json"))
 			testenv.WaitStaticRuntimeLog(
 				t,
 				daemon,
@@ -920,6 +921,77 @@ func waitResolverRuntimeFailureLogs(t *testing.T, daemon *testenv.RuntimeDaemon)
 		"resolver dependency failure lacks operation and final diagnostics: %s",
 		testenv.RuntimeLogTail(t, daemon, 40),
 	)
+}
+
+func waitResolverPrune(
+	t *testing.T,
+	daemon *testenv.RuntimeDaemon,
+	gateway netns.NsHandle,
+	journalPath string,
+) {
+	t.Helper()
+	completed := false
+	defer func() {
+		if !completed {
+			logResolverPruneFailure(t, daemon, gateway, journalPath)
+		}
+	}()
+	testenv.WaitOwnedRuntimeAbsent(t, daemon, "owned397", 10*time.Second)
+	completed = true
+}
+
+func logResolverPruneFailure(
+	t *testing.T,
+	daemon *testenv.RuntimeDaemon,
+	gateway netns.NsHandle,
+	journalPath string,
+) {
+	t.Helper()
+	t.Logf("resolver prune daemon: args=%q", daemon.Command.Args)
+	for _, path := range []string{
+		daemon.LogPath,
+		"/etc/mwan/network.json",
+		journalPath,
+		"/proc/sys/kernel/random/boot_id",
+	} {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Logf("read resolver prune diagnostic %s: %v", path, err)
+			continue
+		}
+		t.Logf("resolver prune diagnostic %s:\n%s", path, content)
+	}
+	logResolverPruneLinks(t, gateway, "after failure")
+}
+
+func logResolverPruneLinks(t *testing.T, gateway netns.NsHandle, stage string) {
+	t.Helper()
+	t.Logf("resolver prune gateway links %s", stage)
+	handle, err := netlink.NewHandleAt(gateway)
+	if err != nil {
+		t.Logf("open gateway netlink handle: %v", err)
+		return
+	}
+	defer handle.Close()
+	links, err := handle.LinkList()
+	if err != nil {
+		t.Logf("list gateway links: %v", err)
+		return
+	}
+	for _, link := range links {
+		attrs := link.Attrs()
+		t.Logf(
+			"gateway link %s: type=%s index=%d parent_index=%d netns_id=%d master_index=%d alias=%q mac=%s permanent_mac=%s",
+			attrs.Name, link.Type(), attrs.Index, attrs.ParentIndex, attrs.NetNsID,
+			attrs.MasterIndex, attrs.Alias, attrs.HardwareAddr, attrs.PermHWAddr,
+		)
+		switch device := link.(type) {
+		case *netlink.Vlan:
+			t.Logf("gateway VLAN %s: id=%d protocol=%s", attrs.Name, device.VlanId, device.VlanProtocol)
+		case *netlink.Vxlan:
+			t.Logf("gateway VXLAN %s: vtep_dev_index=%d", attrs.Name, device.VtepDevIndex)
+		}
+	}
 }
 
 func writeResolverCleanupNetwork(t *testing.T, directory string) {
