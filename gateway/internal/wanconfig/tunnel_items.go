@@ -23,20 +23,26 @@ func tunnelItems(base string, tunnel *interfaceintent.Tunnel) []Item {
 	if tunnel.VXLAN != nil {
 		items = append(
 			items,
-			Item{Path: base + "/vxlan/vni", Value: uintValue(uint64(tunnel.VXLAN.VNI))},
 			Item{
-				Path:  base + "/vxlan/source-port-min",
+				Path:  base + "/options[name='vni']/value",
+				Value: uintValue(uint64(tunnel.VXLAN.VNI)),
+			},
+			Item{
+				Path:  base + "/options[name='source-port-min']/value",
 				Value: uintValue(uint64(tunnel.VXLAN.SourcePortMin)),
 			},
 			Item{
-				Path:  base + "/vxlan/source-port-max",
+				Path:  base + "/options[name='source-port-max']/value",
 				Value: uintValue(uint64(tunnel.VXLAN.SourcePortMax)),
 			},
 			Item{
-				Path:  base + "/vxlan/destination-port",
+				Path:  base + "/options[name='destination-port']/value",
 				Value: uintValue(uint64(tunnel.VXLAN.DestinationPort)),
 			},
-			Item{Path: base + "/vxlan/tos", Value: uintValue(uint64(tunnel.VXLAN.TOS))},
+			Item{
+				Path:  base + "/options[name='tos']/value",
+				Value: uintValue(uint64(tunnel.VXLAN.TOS)),
+			},
 		)
 	}
 

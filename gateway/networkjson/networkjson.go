@@ -82,12 +82,13 @@ type linkIdentity struct {
 }
 
 type linkTunnel struct {
-	Protocol      string     `json:"protocol"`
-	Underlay      string     `json:"underlay"`
-	RemoteAddress string     `json:"remote-address"`
-	LocalAddress  string     `json:"local-address"`
-	TTL           *uint8     `json:"ttl"`
-	VXLAN         *linkVXLAN `json:"vxlan"`
+	Protocol      string         `json:"protocol"`
+	Underlay      string         `json:"underlay"`
+	RemoteAddress string         `json:"remote-address"`
+	LocalAddress  string         `json:"local-address"`
+	TTL           *uint8         `json:"ttl"`
+	Options       []tunnelOption `json:"options"`
+	LegacyVXLAN   *legacyVXLAN   `json:"vxlan"`
 }
 
 type linkMatch struct {

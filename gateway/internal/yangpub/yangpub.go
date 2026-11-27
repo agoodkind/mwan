@@ -32,8 +32,8 @@ const (
 
 // Item is one path-value pair to publish.
 type Item struct {
-	Path  string
-	Value string
+	Path  string `json:"path"`
+	Value string `json:"value"`
 }
 
 // ProviderFunc computes the items under xpath at the moment a read
