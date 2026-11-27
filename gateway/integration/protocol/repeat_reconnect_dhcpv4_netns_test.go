@@ -2,6 +2,13 @@
 
 package protocol_test
 
+// These tests verify how DHCPv4 checks an existing lease after the WAN link
+// returns. If discovery obtains a different lease, the tests wait for the
+// replacement address to appear and the original address to disappear.
+//
+//	link returns -> verify 198.51.100.101 -> upstream ignores request
+//	DHCP discovery -> acquire 198.51.100.102 -> verify old address is absent
+
 import (
 	"encoding/binary"
 	"errors"
@@ -253,25 +260,37 @@ func (r *dhcpReconnectRuntime) hasAddress(t *testing.T, cidr string) bool {
 
 func (r *dhcpReconnectRuntime) requireReplacement(t *testing.T, wait time.Duration) {
 	t.Helper()
-	cidr := dhcpReconnectChangedAddress + "/24"
+	replacement := dhcpReconnectChangedAddress + "/24"
+	original := dhcpReconnectOriginalAddress + "/24"
 	deadline := time.Now().Add(wait)
-	for !r.hasAddress(t, cidr) {
+	for {
+		addresses, err := netlink.AddrList(r.link, netlink.FAMILY_V4)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var replacementPresent, originalPresent bool
+		for _, address := range addresses {
+			switch address.IPNet.String() {
+			case replacement:
+				replacementPresent = true
+			case original:
+				originalPresent = true
+			}
+		}
+		if replacementPresent && !originalPresent {
+			return
+		}
 		if !time.Now().Before(deadline) {
 			t.Fatalf(
-				"Address %s was absent after %s. Daemon log: %s",
-				cidr,
+				"After %s, expected %s present and %s absent. Observed IPv4 addresses: %v. Daemon log: %s",
 				wait,
+				replacement,
+				original,
+				addresses,
 				testenv.RuntimeLogTail(t, r.daemon, 30),
 			)
 		}
 		time.Sleep(50 * time.Millisecond)
-	}
-	if r.hasAddress(t, dhcpReconnectOriginalAddress+"/24") {
-		t.Fatalf(
-			"The replaced address %s remained on the interface. Daemon log: %s",
-			dhcpReconnectOriginalAddress+"/24",
-			testenv.RuntimeLogTail(t, r.daemon, 30),
-		)
 	}
 }
 
