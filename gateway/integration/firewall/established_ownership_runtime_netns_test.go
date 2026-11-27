@@ -239,8 +239,8 @@ func runWANOwnershipRuntimeChild(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !bytes.Contains(firstHistory, []byte(`"msg":"ifmgr: interface transition"`)) {
-				t.Fatalf("persistent log has no transition: %s", firstHistory)
+			if transitions := attLinkTransitions(t, firstHistory); len(transitions) == 0 {
+				t.Fatal("persistent log did not record a link transition for att")
 			}
 			second := testenv.StartRuntimeDaemon(t, binary, configPath, root, "ownership-second")
 			defer testenv.StopRuntimeDaemon(t, second)
@@ -250,16 +250,47 @@ func runWANOwnershipRuntimeChild(t *testing.T) {
 				read,
 				fmt.Sprintf(`"actual-index":%d`, replacement.Attrs().Index),
 			)
+			testenv.WaitRuntimeOwnershipRead(t, second, read, `"firewall-protection":"ready"`)
+			testenv.StopRuntimeDaemon(t, second)
 			secondHistory, err := os.ReadFile(jsonLogPath)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if bytes.Count(
-				secondHistory,
-				[]byte(`"msg":"ifmgr: interface transition"`),
-			) != bytes.Count(firstHistory, []byte(`"msg":"ifmgr: interface transition"`)) {
-				t.Fatalf("restart created a transition: %s", secondHistory)
+			restartHistory, ok := bytes.CutPrefix(secondHistory, firstHistory)
+			if !ok {
+				t.Fatal("restart did not preserve the first daemon's log")
+			}
+			if transitions := attLinkTransitions(t, restartHistory); len(transitions) != 0 {
+				t.Fatalf("restart recorded link transitions for the unchanged att interface: %q", transitions)
 			}
 		},
 	)
+}
+
+func attLinkTransitions(t *testing.T, history []byte) []string {
+	t.Helper()
+	var transitions []string
+	for line := range bytes.Lines(history) {
+		var record struct {
+			Message      string          `json:"msg"`
+			ConnectionID string          `json:"connection_id"`
+			Transition   json.RawMessage `json:"transition"`
+		}
+		if err := json.Unmarshal(line, &record); err != nil {
+			t.Fatalf("decode daemon log record: %v: %q", err, line)
+		}
+		if record.Message != "ifmgr: interface transition" || record.ConnectionID != "att" {
+			continue
+		}
+		var transition struct {
+			Operation string
+		}
+		if err := json.Unmarshal(record.Transition, &transition); err != nil {
+			t.Fatalf("decode att interface transition: %v: %q", err, line)
+		}
+		if transition.Operation == "observe-link" {
+			transitions = append(transitions, string(bytes.TrimSpace(line)))
+		}
+	}
+	return transitions
 }
