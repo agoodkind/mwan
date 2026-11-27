@@ -144,6 +144,15 @@ func buildAutoconfigurationRuntime(t *testing.T) autoconfigurationRuntime {
 		"peer397",
 		[]string{"10.39.7.2/24", "2001:db8:517::1/64", "2001:db8:518::1/128"},
 	)
+	// Enable forwarding on the router. Linux removes routes through a neighbor that stops
+	// advertising the Router flag.
+	if err := os.WriteFile(
+		"/proc/sys/net/ipv6/conf/peer397/forwarding",
+		[]byte("1"),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
 	setRuntimeNamespace(t, gateway)
 	if err := os.WriteFile(
 		"/proc/sys/net/ipv6/conf/all/forwarding",
@@ -194,6 +203,7 @@ func runAutoconfigurationDaemonRuntime(t *testing.T, useRadvd bool) {
 	}
 	setRuntimeNamespace(t, peer.namespace)
 	waitAutoconfigurationLinkLocal(t, "peer397")
+	var stopAdvertisements func()
 	var advertiser *protocolService
 	if useRadvd {
 		advertiser = startAutoconfigurationRadvd(t, root)
@@ -208,15 +218,6 @@ func runAutoconfigurationDaemonRuntime(t *testing.T, useRadvd bool) {
 			stopProtocolServices(t, []protocolService{*advertiser})
 		}()
 	} else {
-		device, err := net.InterfaceByName("peer397")
-		if err != nil {
-			t.Fatal(err)
-		}
-		conn, _, err := ndp.Listen(device, ndp.LinkLocal)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer conn.Close()
 		ra := &ndp.RouterAdvertisement{
 			RouterLifetime: 4 * time.Second,
 			Options: []ndp.Option{
@@ -230,9 +231,13 @@ func runAutoconfigurationDaemonRuntime(t *testing.T, useRadvd bool) {
 				},
 			},
 		}
-		if err := conn.WriteTo(ra, nil, netip.MustParseAddr("ff02::1")); err != nil {
-			t.Fatal(err)
-		}
+		stopAdvertisements = startRuntimeRouterAdvertisements(
+			t,
+			"peer397",
+			ra,
+			500*time.Millisecond,
+		)
+		defer stopAdvertisements()
 	}
 	setRuntimeNamespace(t, gateway)
 	waitAutoconfigurationState(t, daemon, link, true, true, false)
@@ -288,6 +293,8 @@ func runAutoconfigurationDaemonRuntime(t *testing.T, useRadvd bool) {
 		if err := advertiser.command.Process.Signal(syscall.SIGSTOP); err != nil {
 			t.Fatal(err)
 		}
+	} else {
+		stopAdvertisements()
 	}
 	waitAutoconfigurationState(t, daemon, link, true, false, true)
 	if routes, err := netlink.RouteGet(net.ParseIP("2001:db8:518::1")); !errors.Is(
@@ -312,15 +319,6 @@ func runAutoconfigurationSolicitationRuntime(t *testing.T) {
 	topology := buildAutoconfigurationRuntime(t)
 	binary := os.Getenv(raRuntimeBinaryEnv)
 	setRuntimeNamespace(t, topology.peer.namespace)
-	// Enable forwarding on the router. Linux removes routes through a neighbor that stops
-	// advertising the Router flag.
-	if err := os.WriteFile(
-		"/proc/sys/net/ipv6/conf/peer397/forwarding",
-		[]byte("1"),
-		0o644,
-	); err != nil {
-		t.Fatal(err)
-	}
 	waitAutoconfigurationLinkLocal(t, "peer397")
 	solicitations, stopResponder := answerAutoconfigurationSolicitations(t, "peer397")
 	defer stopResponder()

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -515,7 +516,21 @@ func waitDHCPv6RuntimeRASysctl(t *testing.T, daemon *runtimeDaemon) {
 
 func startDHCPv6RuntimeRouter(t *testing.T, managed bool) func() {
 	t.Helper()
-	link, err := net.InterfaceByName("wan-vlan")
+	advertisement := &ndp.RouterAdvertisement{
+		RouterLifetime:       60 * time.Second,
+		ManagedConfiguration: managed,
+	}
+	return startRuntimeRouterAdvertisements(t, "wan-vlan", advertisement, 2*time.Second)
+}
+
+func startRuntimeRouterAdvertisements(
+	t *testing.T,
+	iface string,
+	advertisement *ndp.RouterAdvertisement,
+	interval time.Duration,
+) func() {
+	t.Helper()
+	link, err := net.InterfaceByName(iface)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -523,11 +538,8 @@ func startDHCPv6RuntimeRouter(t *testing.T, managed bool) func() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	advertisement := &ndp.RouterAdvertisement{
-		RouterLifetime:       60 * time.Second,
-		ManagedConfiguration: managed,
-	}
-	if err := connection.WriteTo(advertisement, nil, netip.MustParseAddr("ff02::1")); err != nil {
+	allNodes := netip.MustParseAddr("ff02::1")
+	if err := connection.WriteTo(advertisement, nil, allNodes); err != nil {
 		connection.Close()
 		t.Fatal(err)
 	}
@@ -535,22 +547,25 @@ func startDHCPv6RuntimeRouter(t *testing.T, managed bool) func() {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		ticker := time.NewTicker(2 * time.Second)
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-stop:
 				return
 			case <-ticker.C:
-				connection.WriteTo(advertisement, nil, netip.MustParseAddr("ff02::1"))
+				if err := connection.WriteTo(advertisement, nil, allNodes); err != nil {
+					t.Errorf("send router advertisement on %s: %v", iface, err)
+					return
+				}
 			}
 		}
 	}()
-	return func() {
+	return sync.OnceFunc(func() {
 		close(stop)
 		<-done
 		connection.Close()
-	}
+	})
 }
 
 func waitDHCPv6RuntimeDefault(t *testing.T, daemon *runtimeDaemon) {
