@@ -5,6 +5,7 @@ package commandline
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -689,6 +690,9 @@ func startResolverKea(t *testing.T, name, configPath, logPath, ready string) fun
 		5*time.Second,
 		func() bool {
 			content, err := os.ReadFile(logPath)
+			if errors.Is(err, os.ErrNotExist) {
+				return false
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -697,7 +701,10 @@ func startResolverKea(t *testing.T, name, configPath, logPath, ready string) fun
 	) {
 		return stop
 	}
-	content, _ := os.ReadFile(logPath)
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("resolver %s did not start: %v", name, err)
+	}
 	t.Fatalf("resolver %s did not start: %s", name, content)
 	return stop
 }
@@ -987,21 +994,32 @@ func waitForResolverLogUpdate(
 		t.Fatal(err)
 	}
 	defer watcher.Close()
-	if err := watcher.Add(path); err != nil {
+	if err := watcher.Add(filepath.Dir(path)); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), timeout)
 	defer cancel()
-	for !ready() {
+	if ready() {
+		return true
+	}
+	for {
 		select {
 		case <-ctx.Done():
 			return false
-		case err := <-watcher.Errors:
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				t.Fatalf("log watcher for %s closed", path)
+			}
 			t.Fatal(err)
-		case <-watcher.Events:
+		case event, ok := <-watcher.Events:
+			if !ok {
+				t.Fatalf("log watcher for %s closed", path)
+			}
+			if event.Name == path && ready() {
+				return true
+			}
 		}
 	}
-	return true
 }
 
 func writeResolverRuntimeNetwork(

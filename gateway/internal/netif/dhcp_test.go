@@ -16,7 +16,7 @@ import (
 )
 
 func TestDHCPRenewalRetransmissionFollowsRemainingLeaseTime(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) { testDHCPRenewalSchedule(t, time.Minute) })
+	synctest.Test(t, func(t *testing.T) { testDHCPRenewalSchedule(t, 400*time.Millisecond) })
 }
 
 func TestDHCPLinkFlapsKeepRenewalRetryDeadline(t *testing.T) {
@@ -305,14 +305,14 @@ func testDHCPRenewalSchedule(t *testing.T, restartWindow time.Duration, flaps ..
 		t.Error("DHCP client did not verify the address after reconnection")
 	}
 
-	if restartWindow < renewal {
+	if len(flaps) > 0 && restartWindow < renewal {
 		wantDiscover := started.Add(flaps[0] + restartWindow)
 		if !firstDiscover.Equal(wantDiscover) {
 			t.Errorf("first DHCP DISCOVER at %v, want %v", firstDiscover, wantDiscover)
 		}
 	}
 
-	if restartWindow >= lifetime && !firstDiscover.IsZero() {
+	if (len(flaps) == 0 || restartWindow >= lifetime) && !firstDiscover.IsZero() {
 		t.Errorf("sent DHCP DISCOVER at %v before the lease expired", firstDiscover)
 	}
 

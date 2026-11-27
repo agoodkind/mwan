@@ -211,7 +211,7 @@ func bgpRuntimeGracefulRestart(
 	run *bgpRuntimeRun,
 	first *runtimeDaemon,
 	provider bgpRuntimeProvider,
-) {
+) *runtimeDaemon {
 	t.Helper()
 	router := run.routers[provider.id]
 	home := netip.MustParsePrefix(bgpRuntimeHome)
@@ -264,4 +264,5 @@ func bgpRuntimeGracefulRestart(
 		},
 	)
 	requireBGPRuntimeExchange(t, run, second, provider)
+	return second
 }
