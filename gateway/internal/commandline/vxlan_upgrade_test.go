@@ -1,5 +1,10 @@
 package commandline
 
+// These tests seed independent running and startup configuration in temporary
+// sysrepo repositories and run the schema upgrade. A legacy vni of 17 in
+// running and 27 in startup must keep both values as named tunnel options.
+// Retry cases use a saved journal and check that current edits survive.
+
 import (
 	"encoding/json"
 	"log/slog"

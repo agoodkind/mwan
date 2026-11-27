@@ -1,5 +1,10 @@
 package networkload_test
 
+// The public loader converts the Linux VXLAN example into typed tunnel settings.
+// These cases check that applying those settings makes an independent copy and
+// that configuration publication restores named options such as vni with
+// value 0. Legacy input and invalid option values exercise the same loader.
+
 import (
 	"fmt"
 	"reflect"

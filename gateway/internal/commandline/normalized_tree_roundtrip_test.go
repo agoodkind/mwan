@@ -1,5 +1,10 @@
 package commandline
 
+// This test loads each bundled network document and generates the values that
+// the gateway would publish. Packet checks compare input leaves with the generated
+// items by YANG list key. It allows derived leaves where the input document
+// does not supply a value.
+
 import (
 	"bytes"
 	"encoding/json"
