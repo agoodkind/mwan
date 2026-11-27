@@ -1,3 +1,10 @@
+/*
+ * Go code uses these C declarations to pass expressions and port numbers to
+ * libopenvswitch and read back bytes, errors, and action dependencies.
+ *
+ *   Go expression and port map -> libopenvswitch -> OpenFlow bytes or error
+ */
+
 #include <stddef.h>
 #include <stdint.h>
 

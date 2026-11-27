@@ -2,6 +2,10 @@
 
 package ovs
 
+// On Linux, OpenFlow compilation and inspection use cgo to call libopenvswitch.
+// The wrapper copies parser and action inspection results into Go memory
+// before freeing the C buffers.
+
 /*
 #cgo CFLAGS: -I/opt/parser/include -I/opt/parser/include/include -I/opt/parser/include/lib
 #cgo LDFLAGS: -L/opt/parser/lib -lopenvswitch -latomic -lm

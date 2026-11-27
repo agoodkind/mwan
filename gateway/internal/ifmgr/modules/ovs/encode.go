@@ -1,6 +1,10 @@
 // Package ovs configures Open vSwitch bridges, ports, and OpenFlow rules.
 package ovs
 
+// OpenFlow compilation encodes one configured rule as a FlowMod. It combines
+// the cookie, table, and priority with the match and instruction bytes, then
+// asks libopenvswitch to validate the whole message.
+
 import (
 	"context"
 	"encoding/binary"

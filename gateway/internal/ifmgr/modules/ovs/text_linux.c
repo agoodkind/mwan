@@ -1,5 +1,12 @@
 //go:build linux && cgo
 
+/*
+ * This cgo implementation uses libopenvswitch to parse expressions and check
+ * FlowMod messages. It also reports the table references in instructions and
+ * bucket actions. For a bucket, it returns the actions in the order OVS would
+ * execute them.
+ */
+
 #include <config.h>
 #include <arpa/inet.h>
 #include <stdlib.h>

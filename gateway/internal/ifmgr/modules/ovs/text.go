@@ -1,5 +1,9 @@
 package ovs
 
+// Bridge setup can check OpenFlow expressions using temporary port numbers.
+// Rule compilation uses the same parser with the numbers OVS assigns. For
+// example, output(wan-a) can encode an output action for port 5.
+
 import (
 	"context"
 	"encoding/binary"

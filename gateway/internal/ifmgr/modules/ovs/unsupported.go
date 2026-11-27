@@ -2,6 +2,10 @@
 
 package ovs
 
+// On builds without Linux or cgo, these functions report that OpenFlow
+// expressions require a Linux build with libopenvswitch. Expression parsing,
+// flow validation, and action inspection all return that error.
+
 import "errors"
 
 var errTextPlatform = errors.New("OpenFlow expressions require a Linux build with libopenvswitch")

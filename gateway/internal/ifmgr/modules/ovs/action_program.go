@@ -1,5 +1,9 @@
 package ovs
 
+// Before the translation compiler puts bucket actions in a helper flow, it
+// checks whether a resubmit depends on the original table. It checks the
+// bucket's own actions and recursively checks any groups the bucket uses.
+
 import (
 	"encoding/binary"
 	"fmt"

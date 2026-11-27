@@ -1,5 +1,11 @@
 package ovs
 
+// OpenFlow group compilation reserves a range of group IDs for mwan and
+// encodes bucket actions with the bridge's port numbers. The installer
+// uses the resulting messages to add or update groups.
+//
+//   configured group 7 -> OpenFlow group 0x6d770007
+
 import (
 	"context"
 	"encoding/binary"

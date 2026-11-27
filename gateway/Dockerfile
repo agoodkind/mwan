@@ -1,4 +1,9 @@
 # syntax=docker/dockerfile:1
+
+# Compose uses these stages to build and test the Linux gateway and package
+# releases. Linux builds use the OVS parser library and headers from a
+# separate stage alongside libyang and sysrepo.
+
 FROM golang:1.27.4-trixie AS base
 ARG LIBYANG_VERSION
 ARG SYSREPO_VERSION
