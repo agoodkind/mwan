@@ -1,5 +1,9 @@
 package yangpub
 
+// When the steering schema replaces the legacy VXLAN container, the
+// installer saves its startup and running values to journals. It restores
+// missing named options after the update and can resume from a journal.
+
 /*
 #cgo pkg-config: sysrepo libyang
 #include "tunnel_upgrade.h"

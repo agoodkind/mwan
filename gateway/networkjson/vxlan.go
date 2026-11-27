@@ -1,5 +1,9 @@
 package networkjson
 
+// Linux tunnel declarations use the shared WANCONFIG option list. These
+// checks turn VXLAN options into values the Linux link driver can use and
+// reject settings that the selected tunnel protocol cannot apply.
+
 import (
 	"errors"
 	"fmt"

@@ -1,5 +1,8 @@
 package wanconfig
 
+// WANCONFIG management readers see Linux tunnel intent as YANG path and
+// value pairs. A VXLAN VNI such as 42 becomes options[name='vni']/value.
+
 import "goodkind.io/mwan/gateway/interfaceintent"
 
 func tunnelItems(base string, tunnel *interfaceintent.Tunnel) []Item {

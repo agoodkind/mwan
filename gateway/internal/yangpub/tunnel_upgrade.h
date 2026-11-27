@@ -1,3 +1,9 @@
+/*
+ * These C routines give the Go migration code access to the libyang schema
+ * and sysrepo values. They manage the lifetime of value arrays and the
+ * formatted option text returned by sysrepo.
+ */
+
 #ifndef MWAN_TUNNEL_UPGRADE_H
 #define MWAN_TUNNEL_UPGRADE_H
 

@@ -1,5 +1,9 @@
 // Package networkload validates network documents with libyang before
 // semantic decoding.
+//
+// Both dataplanes use this loader to validate WANCONFIG before starting.
+// When the installed YANG schema rejects a legacy VXLAN document, the loader
+// can convert its tunnel options and check the converted document again.
 package networkload
 
 import (

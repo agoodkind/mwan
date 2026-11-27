@@ -1,5 +1,9 @@
 package yangpub
 
+// Gateway installation and daemon operations use this cgo binding to access
+// sysrepo. During a steering model update, the publisher can preserve VXLAN
+// settings that sysrepo stored under the prior schema.
+
 /*
 #cgo pkg-config: sysrepo libyang
 #include <stdlib.h>

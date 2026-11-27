@@ -1,5 +1,10 @@
 package networkjson
 
+// WANCONFIG loading can convert a legacy Linux tunnel document when the
+// current YANG schema needs named options.
+//
+//	vxlan.vni = 42 -> options entry {name: "vni", value: "42"}
+
 import (
 	"errors"
 	"fmt"
