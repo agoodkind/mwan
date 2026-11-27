@@ -8,6 +8,7 @@ package networkjson
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"goodkind.io/mwan/gateway/connectionid"
@@ -44,11 +45,27 @@ func compileConnections(
 	}
 
 	if internal != "" && !declared[internal] {
+		slog.Error(
+			"networkjson: internal interface is missing from declarations",
+			"interface",
+			internal,
+			"err",
+			errUndeclaredInterface,
+		)
+
 		return nil, nil, fmt.Errorf("internal interface %s %w", internal, errUndeclaredInterface)
 	}
 
 	if firewall != nil && firewall.ManagementInterface != "" &&
 		!declared[firewall.ManagementInterface] {
+		slog.Error(
+			"networkjson: management interface is missing from declarations",
+			"interface",
+			firewall.ManagementInterface,
+			"err",
+			errUndeclaredInterface,
+		)
+
 		return nil, nil, fmt.Errorf(
 			"management interface %s %w",
 			firewall.ManagementInterface,
@@ -125,6 +142,16 @@ func validateConnectionDependencies(
 			}
 
 			if !declared[parent] {
+				slog.Error(
+					"networkjson: interface parent is missing from declarations",
+					"interface",
+					connection.Name,
+					"parent",
+					parent,
+					"err",
+					errUndeclaredInterface,
+				)
+
 				return fmt.Errorf(
 					"interface %s: parent %s %w",
 					connection.Name,
@@ -135,7 +162,22 @@ func validateConnectionDependencies(
 
 			index, accepted := indexes[parent]
 			if !accepted {
-				return fmt.Errorf("interface %s: parent %s %w", connection.Name, parent, errRejectedInterface)
+				slog.Error(
+					"networkjson: interface depends on a rejected parent",
+					"interface",
+					connection.Name,
+					"parent",
+					parent,
+					"err",
+					errRejectedInterface,
+				)
+
+				return fmt.Errorf(
+					"interface %s: parent %s %w",
+					connection.Name,
+					parent,
+					errRejectedInterface,
+				)
 			}
 
 			connections[index].Roles |= interfaceintent.RoleParent
@@ -157,6 +199,16 @@ func validateConnectionDependencies(
 
 		parent := connections[indexes[connection.Link.VLAN.Parent]]
 		if parent.Owner != interfaceintent.OwnerNetworkd || parent.Link == nil {
+			slog.Error(
+				"networkjson: VLAN parent lacks a rendered networkd link",
+				"interface",
+				connection.Name,
+				"parent",
+				parent.Name,
+				"err",
+				errMissingRenderedVLANParent,
+			)
+
 			return fmt.Errorf(
 				"interface %s: vlan parent %s %w",
 				connection.Name,
@@ -171,12 +223,32 @@ func validateConnectionDependencies(
 
 func validateRequiredRoles(indexes map[string]int, internal string, firewall *firewallWire) error {
 	if _, ok := indexes[internal]; internal != "" && !ok {
+		slog.Error(
+			"networkjson: internal interface failed validation",
+			"interface",
+			internal,
+			"err",
+			errRejectedInterface,
+		)
+
 		return fmt.Errorf("internal interface %s %w", internal, errRejectedInterface)
 	}
 
 	if firewall != nil && firewall.ManagementInterface != "" {
 		if _, ok := indexes[firewall.ManagementInterface]; !ok {
-			return fmt.Errorf("management interface %s %w", firewall.ManagementInterface, errRejectedInterface)
+			slog.Error(
+				"networkjson: management interface failed validation",
+				"interface",
+				firewall.ManagementInterface,
+				"err",
+				errRejectedInterface,
+			)
+
+			return fmt.Errorf(
+				"management interface %s %w",
+				firewall.ManagementInterface,
+				errRejectedInterface,
+			)
 		}
 	}
 
@@ -201,6 +273,18 @@ func validateConnectionDevices(connections []interfaceintent.Connection) error {
 
 		for _, key := range keys {
 			if prior, taken := devices[key]; taken {
+				slog.Error(
+					"networkjson: interface device match is already in use",
+					"interface",
+					connection.Name,
+					"other_interface",
+					prior,
+					"device",
+					key,
+					"err",
+					errDuplicateDeviceMatch,
+				)
+
 				return fmt.Errorf(
 					"interfaces %s and %s %w %q",
 					prior,
@@ -238,12 +322,17 @@ func validateActiveDependencies(connections []interfaceintent.Connection) error 
 
 		for _, parent := range linkDependencies(connection.Link) {
 			if parent != "" && !available[parent] {
-				return fmt.Errorf(
-					"interface %s %w %s",
+				slog.Error(
+					"networkjson: active interface requires an unavailable parent",
+					"interface",
 					connection.Name,
-					errRejectedParent,
+					"parent",
 					parent,
+					"err",
+					errRejectedParent,
 				)
+
+				return fmt.Errorf("interface %s %w %s", connection.Name, errRejectedParent, parent)
 			}
 		}
 	}
@@ -262,6 +351,14 @@ func checkParentCycle(
 	}
 
 	if state[name] == parentCycleVisiting {
+		slog.Error(
+			"networkjson: interface parent dependency forms a cycle",
+			"interface",
+			name,
+			"err",
+			errParentCycle,
+		)
+
 		return fmt.Errorf("interface %s: %w", name, errParentCycle)
 	}
 

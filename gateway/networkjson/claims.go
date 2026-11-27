@@ -8,6 +8,7 @@ package networkjson
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -42,6 +43,18 @@ func compileClaims(
 	add := func(claim interfaceintent.Claim) error {
 		key := string(claim.Kind) + "/" + claim.Family + "/" + claim.Key
 		if previous, taken := owners[key]; taken {
+			slog.Error(
+				"networkjson: conflicting resource claims",
+				"resource",
+				key,
+				"previous_writer",
+				previous.Writer,
+				"writer",
+				claim.Writer,
+				"err",
+				errConflictingWriters,
+			)
+
 			return fmt.Errorf(
 				"resource %s %w %s and %s",
 				key,
@@ -54,6 +67,18 @@ func compileClaims(
 		addressKey := claimedAddressKey(claim, names[claim.ConnectionID])
 		if addressKey != "" {
 			if previous, taken := addressOwners[addressKey]; taken {
+				slog.Error(
+					"networkjson: conflicting address claims",
+					"address",
+					addressKey,
+					"previous_writer",
+					previous.Writer,
+					"writer",
+					claim.Writer,
+					"err",
+					errConflictingWriters,
+				)
+
 				return fmt.Errorf(
 					"address %s %w %s and %s",
 					addressKey,
@@ -252,6 +277,14 @@ func claimDHCPResources(
 	if connection.Owner == interfaceintent.OwnerMWAN && name == string(FamilyIPv4) &&
 		(connection.IPv4.DHCPv4 == nil || connection.IPv4.DHCPv4.UseRoutes == nil || *connection.IPv4.DHCPv4.UseRoutes) {
 		if family.RouteMetric == nil {
+			slog.Error(
+				"networkjson: DHCPv4 route requires a metric",
+				"connection",
+				connection.ID,
+				"err",
+				errMissingDHCPv4RouteMetric,
+			)
+
 			return fmt.Errorf("connection %s %w", connection.ID, errMissingDHCPv4RouteMetric)
 		}
 

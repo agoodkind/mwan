@@ -168,7 +168,7 @@ func validateMWANOwner(entry ifaceEntry) error {
 
 	if err := validateMWANFamily(
 		entry.Name,
-		"ipv4",
+		string(FamilyIPv4),
 		intentFamilyV4Wire(entry.IPv4),
 		entry.WAN != nil,
 	); err != nil {
@@ -177,7 +177,7 @@ func validateMWANOwner(entry ifaceEntry) error {
 
 	if err := validateMWANFamily(
 		entry.Name,
-		"ipv6",
+		string(FamilyIPv6),
 		intentFamilyV6Wire(entry.IPv6),
 		entry.WAN != nil,
 	); err != nil {
@@ -233,12 +233,12 @@ func validateMWANFamily(name, family string, wire *familyWire, provider bool) er
 		return nil
 	}
 
-	dhcpv4 := family == "ipv4" && wire.DHCP != nil && *wire.DHCP
-	raMetric := family == "ipv6" && wire.Gateway == "" && wire.RouteMetric != nil
+	dhcpv4 := family == string(FamilyIPv4) && wire.DHCP != nil && *wire.DHCP
+	raMetric := family == string(FamilyIPv6) && wire.Gateway == "" && wire.RouteMetric != nil
 	if wire.Enabled != nil && !*wire.Enabled ||
 		(wire.Translation != nil && !provider) ||
 		wire.RouteMetric != nil && wire.Gateway == "" && !dhcpv4 && !raMetric {
-		if family == "ipv4" {
+		if family == string(FamilyIPv4) {
 			return fmt.Errorf(
 				"interface %s: mwan ipv4 supports local addresses, forwarding, DHCPv4, and an optional gateway or DHCP route metric only",
 				name,
@@ -256,13 +256,16 @@ func validateMWANFamily(name, family string, wire *familyWire, provider bool) er
 }
 
 func validateMWANStaticFamily(name, family string, intent *interfaceintent.Family) error {
-	if intent.Gateway.IsValid() && intent.Gateway.Is4() != (family == "ipv4") {
+	if intent.Gateway.IsValid() && intent.Gateway.Is4() != (family == string(FamilyIPv4)) {
 		return fmt.Errorf("interface %s: %s gateway has wrong address family", name, family)
 	}
 
 	for _, address := range intent.Addresses {
-		if !address.Prefix.IsValid() || address.Prefix.Addr().Is4() != (family == "ipv4") ||
-			address.Prefix.Addr().IsMulticast() || address.Prefix.Addr().IsUnspecified() {
+		if !address.Prefix.IsValid() || address.Prefix.Addr().Is4() != (family == string(
+			FamilyIPv4,
+		)) ||
+			address.Prefix.Addr().IsMulticast() ||
+			address.Prefix.Addr().IsUnspecified() {
 			return fmt.Errorf(
 				"interface %s: %s has invalid local address %s",
 				name,
@@ -290,7 +293,7 @@ func validateMWANConnection(entry ifaceEntry, connection interfaceintent.Connect
 
 		if err := validateMWANStaticFamily(
 			entry.Name,
-			"ipv4",
+			string(FamilyIPv4),
 			&connection.IPv4.Family,
 		); err != nil {
 			return err
@@ -337,7 +340,7 @@ func validateMWANIPv6(name string, wire *familyV6, intent *interfaceintent.IPv6)
 		}
 	}
 
-	return validateMWANStaticFamily(name, "ipv6", &intent.Family)
+	return validateMWANStaticFamily(name, string(FamilyIPv6), &intent.Family)
 }
 
 func validateMWANDHCPv4(name string, family *familyV4) error {
@@ -667,7 +670,7 @@ func buildIntentFamily(
 }
 
 func buildIntentV4(name string, wire familyV4) (*interfaceintent.IPv4, error) {
-	shared, err := buildIntentFamily(name, "ipv4", wire.familyWire)
+	shared, err := buildIntentFamily(name, string(FamilyIPv4), wire.familyWire)
 	if err != nil {
 		return nil, err
 	}
@@ -694,7 +697,7 @@ func buildIntentV4(name string, wire familyV4) (*interfaceintent.IPv4, error) {
 }
 
 func buildIntentV6(name string, wire familyV6) (*interfaceintent.IPv6, error) {
-	shared, err := buildIntentFamily(name, "ipv6", wire.familyWire)
+	shared, err := buildIntentFamily(name, string(FamilyIPv6), wire.familyWire)
 	if err != nil {
 		return nil, err
 	}
