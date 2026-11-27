@@ -6,6 +6,7 @@ package networkjson
 // metric in the main routing table.
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"strconv"
@@ -14,6 +15,11 @@ import (
 	"goodkind.io/mwan/gateway/connectionid"
 	"goodkind.io/mwan/gateway/interfaceintent"
 	"goodkind.io/mwan/gateway/internal/config"
+)
+
+var (
+	errConflictingWriters       = errors.New("has writers")
+	errMissingDHCPv4RouteMetric = errors.New("DHCPv4 route metric is absent")
 )
 
 func compileClaims(
@@ -37,8 +43,9 @@ func compileClaims(
 		key := string(claim.Kind) + "/" + claim.Family + "/" + claim.Key
 		if previous, taken := owners[key]; taken {
 			return fmt.Errorf(
-				"resource %s has writers %s and %s",
+				"resource %s %w %s and %s",
 				key,
+				errConflictingWriters,
 				previous.Writer,
 				claim.Writer,
 			)
@@ -48,8 +55,9 @@ func compileClaims(
 		if addressKey != "" {
 			if previous, taken := addressOwners[addressKey]; taken {
 				return fmt.Errorf(
-					"address %s has writers %s and %s",
+					"address %s %w %s and %s",
 					addressKey,
+					errConflictingWriters,
 					previous.Writer,
 					claim.Writer,
 				)
@@ -125,8 +133,8 @@ func claimConnectionResources(
 		name   string
 		config *interfaceintent.Family
 	}{
-		{name: "ipv4", config: intentFamilyV4(connection.IPv4)},
-		{name: "ipv6", config: intentFamilyV6(connection.IPv6)},
+		{name: string(FamilyIPv4), config: intentFamilyV4(connection.IPv4)},
+		{name: string(FamilyIPv6), config: intentFamilyV6(connection.IPv6)},
 	} {
 		if family.config == nil {
 			continue
@@ -144,11 +152,12 @@ func claimConnectionResources(
 	}
 
 	if connection.IPv6 != nil &&
-		((connection.IPv6.AcceptRA != nil && *connection.IPv6.AcceptRA) || (connection.IPv6.AutoConf != nil && *connection.IPv6.AutoConf)) {
+		((connection.IPv6.AcceptRA != nil && *connection.IPv6.AcceptRA) ||
+			(connection.IPv6.AutoConf != nil && *connection.IPv6.AutoConf)) {
 		if err := add(interfaceintent.Claim{
 			ConnectionID: connection.ID,
 			Kind:         interfaceintent.ResourceRASLAAC,
-			Family:       "ipv6",
+			Family:       string(FamilyIPv6),
 			Key:          connection.Name,
 			Writer:       interfaceintent.WriterKernel,
 		}); err != nil {
@@ -240,10 +249,10 @@ func claimDHCPResources(
 	writer interfaceintent.Writer,
 	add func(interfaceintent.Claim) error,
 ) error {
-	if connection.Owner == interfaceintent.OwnerMWAN && name == "ipv4" &&
+	if connection.Owner == interfaceintent.OwnerMWAN && name == string(FamilyIPv4) &&
 		(connection.IPv4.DHCPv4 == nil || connection.IPv4.DHCPv4.UseRoutes == nil || *connection.IPv4.DHCPv4.UseRoutes) {
 		if family.RouteMetric == nil {
-			return fmt.Errorf("connection %s DHCPv4 route metric is absent", connection.ID)
+			return fmt.Errorf("connection %s %w", connection.ID, errMissingDHCPv4RouteMetric)
 		}
 
 		key := fmt.Sprintf("main/default/%d", *family.RouteMetric)
@@ -259,7 +268,7 @@ func claimDHCPResources(
 	}
 
 	kind := interfaceintent.ResourceDHCPv4
-	if name == "ipv6" {
+	if name == string(FamilyIPv6) {
 		kind = interfaceintent.ResourceDHCPv6
 	}
 
@@ -335,7 +344,7 @@ func claimProviderResources(
 			if err := add(interfaceintent.Claim{
 				ConnectionID: connection.ID,
 				Kind:         interfaceintent.ResourceMappedAddress,
-				Family:       "ipv4",
+				Family:       string(FamilyIPv4),
 				Key:          mapping.External.String(),
 				Writer:       addressWriter,
 			}); err != nil {
@@ -354,7 +363,7 @@ func claimProviderResources(
 		if err := add(interfaceintent.Claim{
 			ConnectionID: connection.ID,
 			Kind:         interfaceintent.ResourceNPTExternalAddress,
-			Family:       "ipv6",
+			Family:       string(FamilyIPv6),
 			Key:          key + "/::1/128",
 			Writer:       nptWriter,
 		}); err != nil {

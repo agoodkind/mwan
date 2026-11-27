@@ -6,11 +6,27 @@ package networkjson
 //	wan.20 (VLAN) -> wan (parent)
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	"goodkind.io/mwan/gateway/connectionid"
 	"goodkind.io/mwan/gateway/interfaceintent"
+)
+
+const (
+	deviceMatchKeyCount = 2
+	parentCycleVisiting = 1
+	parentCycleComplete = 2
+)
+
+var (
+	errUndeclaredInterface       = errors.New("is not declared")
+	errRejectedInterface         = errors.New("was rejected")
+	errMissingRenderedVLANParent = errors.New("needs a rendered networkd link")
+	errDuplicateDeviceMatch      = errors.New("match the same device")
+	errRejectedParent            = errors.New("requires rejected parent")
+	errParentCycle               = errors.New("parent cycle")
 )
 
 func compileConnections(
@@ -28,14 +44,15 @@ func compileConnections(
 	}
 
 	if internal != "" && !declared[internal] {
-		return nil, nil, fmt.Errorf("internal interface %s is not declared", internal)
+		return nil, nil, fmt.Errorf("internal interface %s %w", internal, errUndeclaredInterface)
 	}
 
 	if firewall != nil && firewall.ManagementInterface != "" &&
 		!declared[firewall.ManagementInterface] {
 		return nil, nil, fmt.Errorf(
-			"management interface %s is not declared",
+			"management interface %s %w",
 			firewall.ManagementInterface,
+			errUndeclaredInterface,
 		)
 	}
 
@@ -47,6 +64,7 @@ func compileConnections(
 			}
 
 			rejected = append(rejected, rejectEntry(entry, err))
+
 			continue
 		}
 
@@ -108,15 +126,16 @@ func validateConnectionDependencies(
 
 			if !declared[parent] {
 				return fmt.Errorf(
-					"interface %s: parent %s is not declared",
+					"interface %s: parent %s %w",
 					connection.Name,
 					parent,
+					errUndeclaredInterface,
 				)
 			}
 
 			index, accepted := indexes[parent]
 			if !accepted {
-				return fmt.Errorf("interface %s: parent %s was rejected", connection.Name, parent)
+				return fmt.Errorf("interface %s: parent %s %w", connection.Name, parent, errRejectedInterface)
 			}
 
 			connections[index].Roles |= interfaceintent.RoleParent
@@ -139,9 +158,10 @@ func validateConnectionDependencies(
 		parent := connections[indexes[connection.Link.VLAN.Parent]]
 		if parent.Owner != interfaceintent.OwnerNetworkd || parent.Link == nil {
 			return fmt.Errorf(
-				"interface %s: vlan parent %s needs a rendered networkd link",
+				"interface %s: vlan parent %s %w",
 				connection.Name,
 				parent.Name,
+				errMissingRenderedVLANParent,
 			)
 		}
 	}
@@ -151,12 +171,12 @@ func validateConnectionDependencies(
 
 func validateRequiredRoles(indexes map[string]int, internal string, firewall *firewallWire) error {
 	if _, ok := indexes[internal]; internal != "" && !ok {
-		return fmt.Errorf("internal interface %s was rejected", internal)
+		return fmt.Errorf("internal interface %s %w", internal, errRejectedInterface)
 	}
 
 	if firewall != nil && firewall.ManagementInterface != "" {
 		if _, ok := indexes[firewall.ManagementInterface]; !ok {
-			return fmt.Errorf("management interface %s was rejected", firewall.ManagementInterface)
+			return fmt.Errorf("management interface %s %w", firewall.ManagementInterface, errRejectedInterface)
 		}
 	}
 
@@ -170,7 +190,7 @@ func validateConnectionDevices(connections []interfaceintent.Connection) error {
 			continue
 		}
 
-		keys := make([]string, 0, 2)
+		keys := make([]string, 0, deviceMatchKeyCount)
 		if connection.Link.Match.Driver != "" {
 			keys = append(keys, "driver:"+connection.Link.Match.Driver)
 		}
@@ -182,9 +202,10 @@ func validateConnectionDevices(connections []interfaceintent.Connection) error {
 		for _, key := range keys {
 			if prior, taken := devices[key]; taken {
 				return fmt.Errorf(
-					"interfaces %s and %s match the same device %q",
+					"interfaces %s and %s %w %q",
 					prior,
 					connection.Name,
+					errDuplicateDeviceMatch,
 					key,
 				)
 			}
@@ -218,8 +239,9 @@ func validateActiveDependencies(connections []interfaceintent.Connection) error 
 		for _, parent := range linkDependencies(connection.Link) {
 			if parent != "" && !available[parent] {
 				return fmt.Errorf(
-					"interface %s requires rejected parent %s",
+					"interface %s %w %s",
 					connection.Name,
+					errRejectedParent,
 					parent,
 				)
 			}
@@ -235,15 +257,15 @@ func checkParentCycle(
 	indexes map[string]int,
 	state map[string]uint8,
 ) error {
-	if state[name] == 2 {
+	if state[name] == parentCycleComplete {
 		return nil
 	}
 
-	if state[name] == 1 {
-		return fmt.Errorf("interface %s: parent cycle", name)
+	if state[name] == parentCycleVisiting {
+		return fmt.Errorf("interface %s: %w", name, errParentCycle)
 	}
 
-	state[name] = 1
+	state[name] = parentCycleVisiting
 	connection := connections[indexes[name]]
 	if connection.Link != nil {
 		for _, parent := range linkDependencies(connection.Link) {
@@ -257,7 +279,7 @@ func checkParentCycle(
 		}
 	}
 
-	state[name] = 2
+	state[name] = parentCycleComplete
 
 	return nil
 }
