@@ -1,5 +1,9 @@
 package yangpub
 
+// Gateway installation and daemon operations use this cgo binding to access
+// sysrepo. During a steering model update, the publisher can preserve VXLAN
+// settings that sysrepo stored under the prior schema.
+
 /*
 #cgo pkg-config: sysrepo libyang
 #include <stdlib.h>
@@ -393,13 +397,23 @@ func (p *publisher) edit(
 	}
 	defer C.sr_session_stop(session)
 
+	return applyEdits(ctx, p.log, session, deletePaths, items)
+}
+
+func applyEdits(
+	ctx context.Context,
+	log *slog.Logger,
+	session *C.sr_session_ctx_t,
+	deletePaths []string,
+	items []Item,
+) error {
 	for _, path := range deletePaths {
 		cPath := C.CString(path)
 		rc := C.sr_delete_item(session, cPath, C.sr_edit_options_t(0))
 		C.free(unsafe.Pointer(cPath))
 		if srFailed(rc) {
 			deleteErr := srError("sr_delete_item "+path, rc)
-			p.log.ErrorContext(ctx, "sysrepo delete failed", "path", path, "err", deleteErr)
+			log.ErrorContext(ctx, "sysrepo delete failed", "path", path, "err", deleteErr)
 			return deleteErr
 		}
 	}
@@ -412,14 +426,14 @@ func (p *publisher) edit(
 		C.free(unsafe.Pointer(cValue))
 		if srFailed(rc) {
 			setErr := srError("sr_set_item_str "+item.Path, rc)
-			p.log.ErrorContext(ctx, "sysrepo set failed", "path", item.Path, "err", setErr)
+			log.ErrorContext(ctx, "sysrepo set failed", "path", item.Path, "err", setErr)
 			return setErr
 		}
 	}
 
 	if rc := C.sr_apply_changes(session, C.uint32_t(applyTimeoutMS)); srFailed(rc) {
 		applyErr := srError("sr_apply_changes", rc)
-		p.log.ErrorContext(ctx, "sysrepo apply failed", "err", applyErr)
+		log.ErrorContext(ctx, "sysrepo apply failed", "err", applyErr)
 		return applyErr
 	}
 	return nil
@@ -714,6 +728,12 @@ func (p *publisher) InstallModules(
 	if err != nil {
 		return nil, err
 	}
+	lock, err := lockSchemaInstall(RepositoryPath())
+	if err != nil {
+		return nil, err
+	}
+	defer lock.Close()
+
 	cSearch := C.CString(searchDirs)
 	defer C.free(unsafe.Pointer(cSearch))
 	var changes []ModuleChange
@@ -726,11 +746,7 @@ func (p *publisher) InstallModules(
 		}
 		text, err := os.ReadFile(model.Path)
 		if err != nil {
-			readErr := fmt.Errorf(
-				"yangpub: the publisher could not read module %q: %w",
-				model.Path,
-				err,
-			)
+			readErr := fmt.Errorf("read module %q: %w", model.Path, err)
 			p.log.ErrorContext(
 				ctx,
 				"The module revision read failed.",
@@ -764,8 +780,16 @@ func (p *publisher) InstallModules(
 					Action:        ModuleInstalled,
 				},
 			)
-		case model.Update && revision != "" && installedRev != revision:
-			if err := updateModule(conn, model, cSearch); err != nil {
+		case model.Update && revision != "":
+			if err := p.updateInstalledModel(
+				ctx,
+				conn,
+				model,
+				cSearch,
+				name,
+				installedRev,
+				revision,
+			); err != nil {
 				p.log.ErrorContext(
 					ctx,
 					"sysrepo module update failed",
@@ -777,6 +801,9 @@ func (p *publisher) InstallModules(
 					err,
 				)
 				return changes, err
+			}
+			if installedRev == revision {
+				continue
 			}
 			changes = append(
 				changes,

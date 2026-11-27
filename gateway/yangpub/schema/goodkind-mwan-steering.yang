@@ -55,6 +55,9 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-11-27 {
+    description "Linux tunnels accept a protocol name and a list of options.";
+  }
   revision 2026-11-26 {
     description
       "Accept Open vSwitch match and action expressions, conditions for unhealthy
@@ -921,49 +924,20 @@ module goodkind-mwan-steering {
         }
         leaf protocol {
           mandatory true;
-          type enumeration {
-            enum 6in4 {
-              description
-                "The tunnel transports IPv6 packets inside IPv4 packets.";
-            }
-            enum vxlan {
-              description "The tunnel transports Ethernet frames inside UDP over IPv4.";
-            }
-          }
-          description "This field selects the encapsulation protocol.";
+          type string { length "1..max"; }
+          description "Tunnel protocol for this Linux interface.";
         }
-        must "(protocol = 'vxlan' and vxlan) or (protocol != 'vxlan' and not(vxlan))" {
-          error-message "The vxlan container is required only for protocol vxlan.";
-        }
-        container vxlan {
-          presence "The tunnel uses an explicit VXLAN identifier and UDP envelope.";
-          must "source-port-min < source-port-max" {
-            error-message "The source-port-min must be less than source-port-max.";
+        list options {
+          key "name";
+          description "Protocol options for the Linux tunnel driver.";
+          leaf name {
+            type string { length "1..max"; }
+            description "Tunnel option name.";
           }
-          leaf vni {
-            type uint32 { range "0..16777215"; }
+          leaf value {
+            type string;
             mandatory true;
-            description "The VXLAN network identifier.";
-          }
-          leaf source-port-min {
-            type uint16 { range "1..65535"; }
-            mandatory true;
-            description "The lowest source UDP port the kernel can select.";
-          }
-          leaf source-port-max {
-            type uint16 { range "1..65535"; }
-            mandatory true;
-            description "The highest source UDP port the kernel can select.";
-          }
-          leaf destination-port {
-            type uint16 { range "1..65535"; }
-            mandatory true;
-            description "The remote UDP port.";
-          }
-          leaf tos {
-            type uint8;
-            mandatory true;
-            description "The outer IPv4 type of service byte.";
+            description "Tunnel option value.";
           }
         }
         leaf underlay {

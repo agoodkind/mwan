@@ -9,6 +9,10 @@
 // implementation it has. The module ships one platform and builds with cgo
 // on, and the go-makefile cgo hook provisions the pinned libraries where the
 // gates run, so the gates check these files fully.
+//
+// Gateway installation uses this interface to install YANG modules in
+// sysrepo. Schema updates can migrate stored configuration, such as
+// converting VXLAN leaves to named tunnel option entries.
 package yangpub
 
 import (
@@ -32,8 +36,8 @@ const (
 
 // Item is one path-value pair to publish.
 type Item struct {
-	Path  string
-	Value string
+	Path  string `json:"path"`
+	Value string `json:"value"`
 }
 
 // ProviderFunc computes the items under xpath at the moment a read

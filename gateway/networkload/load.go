@@ -1,5 +1,9 @@
 // Package networkload validates network documents with libyang before
 // semantic decoding.
+//
+// Both dataplanes use this loader to validate WANCONFIG before starting.
+// When the installed YANG schema rejects a legacy VXLAN document, the loader
+// can convert its tunnel options and check the converted document again.
 package networkload
 
 import (
@@ -60,14 +64,27 @@ func (e *SemanticError) Unwrap() error {
 }
 
 // ValidateAndDecode wraps [networkjson.Decode] errors in [SemanticError].
-// Each stage reads the original bytes.
+// Documents in the former VXLAN format can use either schema revision.
 func ValidateAndDecode(data []byte, schema *yangschema.Schema) (*networkjson.Config, error) {
 	if _, err := networkjson.Canonicalize(data); err != nil {
 		return nil, &JSONError{err: err}
 	}
 
 	if err := schema.ValidateConfigJSON(data); err != nil {
-		return nil, &SchemaError{err: err}
+		migrated, changed, migrationErr := networkjson.UnmarshalTunnelOptions(data)
+		if migrationErr != nil {
+			return nil, &SchemaError{err: migrationErr}
+		}
+
+		if !changed {
+			return nil, &SchemaError{err: err}
+		}
+
+		if err := schema.ValidateConfigJSON(migrated); err != nil {
+			return nil, &SchemaError{err: err}
+		}
+
+		data = migrated
 	}
 
 	loaded, err := networkjson.Decode(data)
