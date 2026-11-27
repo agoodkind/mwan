@@ -1,4 +1,8 @@
 // Package commandline creates and executes the mwan command tree.
+//
+// mwan registers long-running services such as ifmgr and one-shot tools
+// such as ovs-rule-status. Each command uses the caller's input, output,
+// and diagnostic streams.
 package commandline
 
 import (
@@ -167,6 +171,7 @@ func newRootCommand(started *bool, boundary func(string)) *cobra.Command {
 		versioncmd.New(runVersion),
 		installcmd.New(runInstallOptions, knownInstallRoles(), rootIsHost),
 		statuscmd.New(runGatewayStatusOptions),
+		newOVSRuleStatus(),
 	)
 	addHelpCommand(root)
 	installHelpRendering(root, started, boundary)

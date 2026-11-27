@@ -1,4 +1,8 @@
 // Package bgpsessions runs the external BGP sessions of the WAN providers.
+//
+// ifmgr uses this module to manage BGP sessions and publish their state on
+// both Linux and OVS gateways. Session settings determine how advertisement
+// checks use the host's IPv6 forwarding readiness.
 package bgpsessions
 
 import (
@@ -33,6 +37,7 @@ type Session struct {
 
 // Config lists the sessions, the journal file of sessions that installed kernel routes, and the configured IPv6 main-table routes.
 type Config struct {
+	OVSDataplane     bool
 	Sessions         []Session
 	StateFile        string
 	ConfiguredRoutes []ConfiguredRoute
@@ -208,7 +213,7 @@ func (m *Module) ForwardingFailureImpact() forwardingready.State {
 
 // New returns a module without sessions for a nil config and rejects a config of another type.
 func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
-	typed := Config{Sessions: nil, StateFile: "", ConfiguredRoutes: nil}
+	var typed Config
 	if cfg != nil {
 		value, ok := cfg.(Config)
 		if !ok {

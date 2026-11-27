@@ -1,4 +1,6 @@
-// Package ifmgrcmd provides the interface manager command.
+// Package ifmgrcmd parses interface manager flags for the selected role.
+// For the WAN role, those flags identify the network document and YANG
+// schema that determine which dataplane the daemon starts.
 package ifmgrcmd
 
 import (
@@ -51,6 +53,18 @@ func New(
 	var options commandopts.Ifmgr
 	commandconfig.AddFlag(command.Flags(), &path)
 	flags := command.Flags()
+	flags.StringVar(
+		&options.NetworkPath,
+		"network",
+		networkjson.DefaultPath,
+		"WANCONFIG JSON document.",
+	)
+	flags.StringVar(
+		&options.SchemaDir,
+		"schema-dir",
+		networkjson.DefaultSchemaDir,
+		"Directory containing YANG models.",
+	)
 	roles := ifmgr.KnownRoles()
 	slices.Sort(roles)
 	flags.StringVar(

@@ -1,5 +1,9 @@
 package moduleconfig
 
+// BGP session configuration combines WAN providers with host IPv6 routes.
+// For a Linux tunnel provider it can put the BGP endpoint in the underlay
+// routing table. An OVS session does not use that policy routing setup.
+
 import (
 	"net/netip"
 
@@ -74,8 +78,10 @@ func buildBGPSessionsConfig(
 	shared WANInputs,
 	section *config.IfMgrBGPSessionsSection,
 	connections []interfaceintent.Connection,
+	ovsDataplane bool,
 ) bgpsessions.Config {
 	cfg := bgpsessions.Config{
+		OVSDataplane:     ovsDataplane,
 		Sessions:         nil,
 		StateFile:        "",
 		ConfiguredRoutes: configuredIPv6Routes(connections),
@@ -98,7 +104,7 @@ func buildBGPSessionsConfig(
 				EndpointDest:  "",
 				EndpointTable: 0,
 			}
-			if wan.Tunnel != nil {
+			if wan.Tunnel != nil && !ovsDataplane {
 				remote := wan.Tunnel.Remote
 				session.EndpointDest = netip.PrefixFrom(remote, remote.BitLen()).String()
 				session.EndpointTable = tables[wan.Tunnel.Underlay]

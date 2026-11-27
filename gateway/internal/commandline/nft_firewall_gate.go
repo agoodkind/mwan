@@ -2,6 +2,10 @@
 
 package commandline
 
+// Firewall checks compile the same nftables policy as the daemon, including
+// the host baseline on OVS gateways. Validation applies rules in a separate
+// Linux network namespace. Inspection reads the caller's rules in place.
+
 import (
 	"context"
 	"errors"
@@ -33,7 +37,7 @@ func checkFirewall(path, schemaDir string, isolated bool, output, diagnostics io
 		return 1
 	}
 
-	desired, err := firewall.Compile(loaded.Firewall)
+	desired, err := loaded.Firewall.Ruleset()
 	if err != nil {
 		fmt.Fprintln(diagnostics, err)
 
@@ -90,7 +94,7 @@ func inspectFirewall(path, schemaDir string, output, diagnostics io.Writer) int 
 		return 1
 	}
 
-	desired, err := firewall.Compile(loaded.Firewall)
+	desired, err := loaded.Firewall.Ruleset()
 	if err != nil {
 		fmt.Fprintln(diagnostics, err)
 
