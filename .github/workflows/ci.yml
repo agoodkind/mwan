@@ -23,8 +23,10 @@ jobs:
         include:
           - arch: amd64
             runner: ubuntu-latest
+            cache_service: systemd
           - arch: arm64
             runner: ubuntu-24.04-arm
+            cache_service: build
     runs-on: ${{ matrix.runner }}
     env:
       COMPOSE_FILE: compose.build.yaml:compose.${{ matrix.arch }}.yaml
@@ -39,7 +41,7 @@ jobs:
         uses: ./.github/actions/gateway-builder
         with:
           arch: ${{ matrix.arch }}
-          service: ${{ matrix.arch == 'amd64' && 'systemd' || 'build' }}
+          service: ${{ matrix.cache_service }}
           export-cache: 'true'
 
   prepare:
