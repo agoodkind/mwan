@@ -82,6 +82,9 @@ services:
 
   check:
     <<: *builder
+    environment:
+      <<: *environment
+      GOFLAGS: -tags=cli
     command: [make, -f, bootstrap.mk, build-check]
 
   release:
@@ -107,7 +110,7 @@ services:
 
   test:
     <<: *builder
-    command: [go, test, -count=1, -vet=off, ./...]
+    command: [go, test, -count=1, -vet=off, -tags, cli, ./...]
 
   check-yang:
     <<: *builder

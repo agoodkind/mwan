@@ -1,4 +1,4 @@
-//go:build !protocol && !systemd
+//go:build cli
 
 package commandline
 
