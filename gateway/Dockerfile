@@ -52,7 +52,21 @@ COPY gateway/pkgconfig.awk /tmp/pkgconfig.awk
 RUN awk -f /tmp/pkgconfig.awk /opt/mwan/cgo/lib/pkgconfig/libyang.pc > /tmp/libyang.pc \
     && mv /tmp/libyang.pc /opt/mwan/cgo/lib/pkgconfig/libyang.pc
 
+FROM golang:1.27.4-trixie AS ovs-parser
+ADD --checksum=sha256:43a1398a2099e7c19e90566b2ddcc4aed087943f8c797578edd8215f33c3c072 https://linux.mellanox.com/public/repo/doca/3.5.0/ubuntu22.04/x86_64/pool/openvswitch-source_3.5.0052-1_all.deb /tmp/ovs.deb
+WORKDIR /usr/src/openvswitch
+COPY gateway/ovs.mk /tmp/ovs.mk
+RUN dpkg-deb -x /tmp/ovs.deb /tmp/ovs-package \
+    && tar -xzf /tmp/ovs-package/usr/src/openvswitch/openvswitch.tar.gz --strip-components=1 \
+    && ./configure --disable-introspect --disable-ssl --disable-shared --enable-static \
+    && make -j4 -f Makefile -f /tmp/ovs.mk mwan-parser \
+    && install -D -m 0644 lib/.libs/libopenvswitch.a /opt/parser/lib/libopenvswitch.a \
+    && strip --strip-debug /opt/parser/lib/libopenvswitch.a \
+    && mkdir -p /opt/parser/include \
+    && find config.h include lib -name '*.h' -exec cp --parents {} /opt/parser/include/ \;
+
 FROM base AS builder
+COPY --from=ovs-parser /opt/parser /opt/parser
 ENV GOWORK=off
 WORKDIR /src/gateway
 RUN --mount=type=cache,target=/go/pkg/mod \
