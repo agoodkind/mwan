@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
+	"strings"
 
 	"goodkind.io/mwan/gateway/internal/config"
 	"goodkind.io/mwan/gateway/internal/ovsconfig"
@@ -17,6 +19,9 @@ var (
 	)
 	errIndirectCondition = errors.New(
 		"an indirect group requires an unconditional bucket. Apply health conditions to referring flows",
+	)
+	errIndirectLeaseAction = errors.New(
+		"an indirect group bucket cannot reference DHCP leases. Put lease-dependent actions on referring flows",
 	)
 	errOVSBackupExport = errors.New(
 		"BGP backup-for requires kernel ISP forwarding readiness",
@@ -194,6 +199,31 @@ func validateOVSConditions(loaded *Config) error {
 
 			if err := checkOVSConnection(loaded, bucket.Connection, bucket.Condition); err != nil {
 				return fmt.Errorf("OpenFlow group %d bucket %d: %w", group.ID, bucket.ID, err)
+			}
+
+			if group.Type == ovsconfig.GroupIndirect && slices.ContainsFunc(
+				bucket.Actions,
+				func(action ovsconfig.Action) bool {
+					return strings.Contains(action.Argument, "${dhcpv4:") ||
+						strings.Contains(action.Argument, "${dhcpv6-pd:")
+				},
+			) {
+				slog.Error(
+					"Invalid OpenFlow bucket action",
+					"group",
+					group.ID,
+					"bucket",
+					bucket.ID,
+					"err",
+					errIndirectLeaseAction,
+				)
+
+				return fmt.Errorf(
+					"OpenFlow group %d bucket %d: %w",
+					group.ID,
+					bucket.ID,
+					errIndirectLeaseAction,
+				)
 			}
 		}
 	}
