@@ -191,6 +191,10 @@ func validateConnectionDependencies(
 		}
 	}
 
+	return validateNetworkdVLANParents(connections, indexes)
+}
+
+func validateNetworkdVLANParents(connections []interfaceintent.Connection, indexes map[string]int) error {
 	for _, connection := range connections {
 		if connection.Link == nil || connection.Link.VLAN == nil ||
 			connection.Owner != interfaceintent.OwnerNetworkd {
