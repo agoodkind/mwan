@@ -1,4 +1,6 @@
-// Package ifmgrcmd provides the interface manager command.
+// Package ifmgrcmd parses interface manager flags for the selected role.
+// For the WAN role, those flags identify the network document and YANG
+// schema that determine which dataplane the daemon starts.
 package ifmgrcmd
 
 import (

@@ -1,5 +1,9 @@
 package moduleconfig
 
+// BGP session configuration combines WAN providers with host IPv6 routes.
+// For a Linux tunnel provider it can put the BGP endpoint in the underlay
+// routing table. An OVS session does not use that policy routing setup.
+
 import (
 	"net/netip"
 

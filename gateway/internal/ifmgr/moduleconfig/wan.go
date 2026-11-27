@@ -1,5 +1,9 @@
 package moduleconfig
 
+// These routines match WAN providers to their connection intent and supply
+// settings to the selected modules. Health and BGP use the shared provider
+// identities on both dataplanes. OVS skips kernel steering and WAN routes.
+
 import (
 	"errors"
 	"fmt"

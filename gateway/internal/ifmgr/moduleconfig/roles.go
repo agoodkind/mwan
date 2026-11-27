@@ -1,4 +1,8 @@
 // Package moduleconfig builds configuration for the modules in an ifmgr role.
+//
+// Dataplane selection determines which modules receive settings. An OVS
+// role keeps host services such as the firewall and health probes while OVS
+// takes responsibility for WAN packet forwarding.
 package moduleconfig
 
 import (

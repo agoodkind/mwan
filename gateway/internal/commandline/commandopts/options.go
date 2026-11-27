@@ -1,5 +1,8 @@
 // Package commandopts defines the option types that operations read after
 // Cobra parses command flags.
+//
+// Interface manager options supply the WANCONFIG file and YANG schema paths.
+// WANCONFIG supplies forwarding settings, including the OVS selection.
 package commandopts
 
 // Ifmgr contains the options for starting the interface manager.

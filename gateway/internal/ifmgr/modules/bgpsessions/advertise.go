@@ -1,5 +1,9 @@
 package bgpsessions
 
+// BGP advertisements normally follow the connection's IPv6 forwarding
+// readiness. On OVS gateways, the session can advertise without a Linux
+// forwarding readiness verdict.
+
 import (
 	"context"
 	"log/slog"

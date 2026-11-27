@@ -1,5 +1,10 @@
 package ifmgr
 
+// Role modules run in reconciliation order. When a WAN gateway selects OVS,
+// the role retains host services and inserts OVS immediately after health.
+//
+//	health verdict -> OVS selects OpenFlow flows and group buckets
+
 import (
 	"fmt"
 	"log/slog"

@@ -1,5 +1,9 @@
 package ovs
 
+// ifmgr reconciles Open vSwitch from the network document. When rules depend
+// on WAN state, the module reads the current health and lease snapshot. The
+// daemon's alert pass reports or clears reconciliation failures.
+
 import (
 	"context"
 	"errors"

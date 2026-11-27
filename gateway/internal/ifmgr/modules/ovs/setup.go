@@ -1,5 +1,9 @@
 package ovs
 
+// ifmgr invokes Setup after the OVS module loads settings and binds any lease
+// values. One deadline covers both the OVSDB bridge reconciliation and the
+// optional OpenFlow update.
+
 import (
 	"context"
 	"time"

@@ -1,4 +1,8 @@
 // Package ovsreport reads forwarding counters for OpenFlow rules.
+//
+// ovs-rule-status uses this package to match ovs-vswitchd counters to
+// configured rules by cookie. A configured rule can still appear in status
+// when health conditions keep it out of the installed flow table.
 package ovsreport
 
 import (

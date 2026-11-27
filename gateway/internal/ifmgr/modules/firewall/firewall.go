@@ -1,4 +1,8 @@
 // Package firewall maintains the gateway-owned nftables tables.
+//
+// ifmgr compiles the desired policy, applies it, and reads it back before
+// publishing firewall readiness. On OVS gateways this policy protects host
+// traffic while OpenFlow handles switched packets.
 package firewall
 
 import (

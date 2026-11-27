@@ -1,4 +1,8 @@
 // Package bgpsessions runs the external BGP sessions of the WAN providers.
+//
+// ifmgr uses this module to manage BGP sessions and publish their state on
+// both Linux and OVS gateways. Session settings determine how advertisement
+// checks use the host's IPv6 forwarding readiness.
 package bgpsessions
 
 import (

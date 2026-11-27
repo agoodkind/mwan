@@ -1,5 +1,9 @@
 package ovs
 
+// Once bridge setup confirms the ports, the OpenFlow installer reads the
+// bridge ID and live port numbers. It verifies that ID on the OpenFlow socket
+// and sends a bundle when the rules or groups need an update.
+
 import (
 	"context"
 	"fmt"

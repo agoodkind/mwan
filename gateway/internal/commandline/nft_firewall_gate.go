@@ -2,6 +2,10 @@
 
 package commandline
 
+// Firewall checks compile the same nftables policy as the daemon, including
+// the host baseline on OVS gateways. Validation applies rules in a separate
+// Linux network namespace. Inspection reads the caller's rules in place.
+
 import (
 	"context"
 	"errors"

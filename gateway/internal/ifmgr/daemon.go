@@ -1,5 +1,9 @@
 package ifmgr
 
+// Interface manager startup selects role modules for link and lease events
+// and forwarding readiness. During reconciliation on an OVS gateway, the
+// daemon runs the health module before the OVS module.
+
 import (
 	"context"
 	"errors"

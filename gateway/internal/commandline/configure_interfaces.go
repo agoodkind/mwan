@@ -1,5 +1,9 @@
 package commandline
 
+// Interface manager startup combines application settings with the WANCONFIG
+// document and starts the selected role. When the document selects OVS,
+// the daemon receives a loader that can read the current switch settings.
+
 import (
 	"context"
 	"crypto/tls"

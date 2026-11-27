@@ -1,5 +1,9 @@
 package commandline
 
+// ovs-rule-status reads the configured bridge's counters from the
+// ovs-vswitchd control socket. It writes one JSON result for an operator
+// or monitoring tool to read.
+
 import (
 	"context"
 	"encoding/json"
