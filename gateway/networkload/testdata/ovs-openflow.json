@@ -1,0 +1,67 @@
+{
+  "ietf-interfaces:interfaces": {
+    "interface": [
+      {"name": "mwan-of-a", "type": "iana-if-type:other"},
+      {"name": "mwan-of-in", "type": "iana-if-type:other"},
+      {"name": "mwan-of-b", "type": "iana-if-type:other"}
+    ],
+    "goodkind-mwan-steering:steering-group": {
+      "routes": {"internal-iface": "mwan-of-in"},
+      "firewall": {
+        "management-interface": "mwan-of-b",
+        "management-service": [{"protocol": "tcp", "port": 22}],
+        "pinned-set-v4-name": "uplink_pinned_v4",
+        "pinned-set-v6-name": "uplink_pinned_v6"
+      }
+    },
+    "goodkind-mwan-steering:dataplane": "ovs",
+    "goodkind-mwan-steering:ovs": {
+      "database-socket": "/run/openvswitch/db.sock",
+      "startup-timeout-millis": 10000,
+      "bridge": "br-mwan-of",
+      "datapath-type": "netdev",
+      "port": [
+        {"name": "mwan-of-in", "type": "system"},
+        {"name": "mwan-of-a", "type": "system"},
+        {"name": "mwan-of-b", "type": "system"}
+      ],
+      "openflow": {
+        "socket": "/run/openvswitch/br-mwan-of.mgmt",
+        "group": [{
+          "id": 17, "type": "select", "selection-method": "dp_hash",
+          "bucket": [{"id": 0, "action": [{"id": 1, "name": "output", "argument": "mwan-of-b"}]}]
+        }, {
+          "id": 18, "type": "select",
+          "bucket": [
+            {"id": 1, "weight": 200, "action": [{"id": 1, "name": "output", "argument": "mwan-of-a"}]},
+            {"id": 2, "weight": 100, "action": [{"id": 1, "name": "output", "argument": "mwan-of-b"}]}
+          ]
+        }],
+        "flow": [
+          {
+            "name": "set-ipv4-source-and-continue",
+            "priority": 100,
+            "match": [{"field": "in_port", "value": "mwan-of-in"}, {"field": "ip"}],
+            "action": [
+              {"id": 1, "name": "set_field", "argument": "203.0.113.45->ip_src"},
+              {"id": 2, "name": "goto_table", "argument": "1"}
+            ]
+          },
+          {
+            "name": "forward-ipv4",
+            "table": 1,
+            "priority": 100,
+            "match": [{"field": "in_port", "value": "mwan-of-in"}, {"field": "ip"}],
+            "action": [{"id": 1, "name": "output", "argument": "mwan-of-a"}]
+          },
+          {
+            "name": "forward-ipv6",
+            "priority": 100,
+            "match": [{"field": "in_port", "value": "mwan-of-in"}, {"field": "ipv6"}],
+            "action": [{"id": 1, "name": "group", "argument": "17"}]
+          }
+        ]
+      }
+    }
+  }
+}

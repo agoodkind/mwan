@@ -1,0 +1,25 @@
+{
+  "ietf-interfaces:interfaces": {
+    "goodkind-mwan-steering:dataplane": "ovs",
+    "goodkind-mwan-steering:ovs": {
+      "database-socket": "/run/openvswitch/db.sock",
+      "startup-timeout-millis": 10000,
+      "bridge": "br-mwan",
+      "datapath-type": "doca",
+      "offload": "doca",
+      "port": [
+        {"name": "p0", "type": "doca"},
+        {"name": "p1", "type": "doca"},
+        {"name": "isp0", "type": "internal"},
+        {
+          "name": "geneve0",
+          "type": "geneve",
+          "options": [
+            {"name": "remote_ip", "value": "2001:db8::2"},
+            {"name": "key", "value": "200"}
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -2,6 +2,11 @@
 
 package networkjson_test
 
+// Network loader tests start with a document that configures two WAN providers and an
+// internal link. Each case changes the document and checks the settings the gateway
+// would use or the error it would report. An OVS case checks that the loader
+// rejects the kernel BGP backup setting in OVS mode.
+
 import (
 	"fmt"
 	"net/netip"
@@ -142,6 +147,31 @@ func writeDocument(t *testing.T, body string) string {
 	}
 
 	return path
+}
+
+func ovsHostDocument(document string) string {
+	return strings.Replace(
+		document,
+		`"interface": [`,
+		`"goodkind-mwan-steering:dataplane": "ovs",
+	    "goodkind-mwan-steering:ovs": {
+	      "database-socket": "/run/openvswitch/db.sock",
+	      "startup-timeout-millis": 1000,
+	      "bridge": "br-wan",
+	      "datapath-type": "system",
+	      "port": [{"name":"enwebpass0","type":"system"}]
+	    }, "interface": [`,
+		1,
+	)
+}
+
+func TestOVSRejectsBGPBackupFor(t *testing.T) {
+	body := ovsHostDocument(string(bgpDocument(t, bgpDirectFixture)))
+	_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err == nil ||
+		!strings.Contains(err.Error(), "backup-for requires kernel ISP forwarding readiness") {
+		t.Fatalf("Load returned %v instead of a BGP backup export error", err)
+	}
 }
 
 // The daemon must still be able to use the other provider after Load rejects an entry.
