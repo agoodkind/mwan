@@ -4,9 +4,11 @@ package commandopts
 
 // Ifmgr contains the options for starting the interface manager.
 type Ifmgr struct {
-	Role   string
-	Debug  bool
-	DryRun bool
+	Role        string
+	NetworkPath string
+	SchemaDir   string
+	Debug       bool
+	DryRun      bool
 }
 
 // Health contains the options for running gateway health checks.

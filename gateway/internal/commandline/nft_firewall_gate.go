@@ -33,7 +33,7 @@ func checkFirewall(path, schemaDir string, isolated bool, output, diagnostics io
 		return 1
 	}
 
-	desired, err := firewall.Compile(loaded.Firewall)
+	desired, err := loaded.Firewall.Ruleset()
 	if err != nil {
 		fmt.Fprintln(diagnostics, err)
 
@@ -90,7 +90,7 @@ func inspectFirewall(path, schemaDir string, output, diagnostics io.Writer) int 
 		return 1
 	}
 
-	desired, err := firewall.Compile(loaded.Firewall)
+	desired, err := loaded.Firewall.Ruleset()
 	if err != nil {
 		fmt.Fprintln(diagnostics, err)
 

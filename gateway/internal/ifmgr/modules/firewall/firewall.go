@@ -30,7 +30,7 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 		return fmt.Errorf("%w: firewall ownership is absent", ifmgr.ErrModuleDisabled)
 	}
 
-	if _, err := firewall.Compile(m.cfg); err != nil {
+	if _, err := m.cfg.Ruleset(); err != nil {
 		return fmt.Errorf("compile firewall policy: %w", err)
 	}
 
@@ -57,7 +57,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	protection := "not-ready"
 	defer func() { m.publishProtection(protection) }()
 
-	desired, err := firewall.Compile(m.cfg)
+	desired, err := m.cfg.Ruleset()
 	if err != nil {
 		m.publish(desired.String(), err)
 		return fmt.Errorf("compile firewall policy: %w", err)

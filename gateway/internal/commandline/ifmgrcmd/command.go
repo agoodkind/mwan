@@ -51,6 +51,18 @@ func New(
 	var options commandopts.Ifmgr
 	commandconfig.AddFlag(command.Flags(), &path)
 	flags := command.Flags()
+	flags.StringVar(
+		&options.NetworkPath,
+		"network",
+		networkjson.DefaultPath,
+		"WANCONFIG JSON document.",
+	)
+	flags.StringVar(
+		&options.SchemaDir,
+		"schema-dir",
+		networkjson.DefaultSchemaDir,
+		"Directory containing YANG models.",
+	)
 	roles := ifmgr.KnownRoles()
 	slices.Sort(roles)
 	flags.StringVar(

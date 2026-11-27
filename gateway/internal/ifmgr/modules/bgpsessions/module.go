@@ -33,6 +33,7 @@ type Session struct {
 
 // Config lists the sessions, the journal file of sessions that installed kernel routes, and the configured IPv6 main-table routes.
 type Config struct {
+	OVSDataplane     bool
 	Sessions         []Session
 	StateFile        string
 	ConfiguredRoutes []ConfiguredRoute
@@ -208,7 +209,7 @@ func (m *Module) ForwardingFailureImpact() forwardingready.State {
 
 // New returns a module without sessions for a nil config and rejects a config of another type.
 func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
-	typed := Config{Sessions: nil, StateFile: "", ConfiguredRoutes: nil}
+	var typed Config
 	if cfg != nil {
 		value, ok := cfg.(Config)
 		if !ok {

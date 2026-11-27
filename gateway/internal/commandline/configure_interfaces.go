@@ -30,6 +30,7 @@ import (
 	"goodkind.io/mwan/gateway/internal/netif"
 	"goodkind.io/mwan/gateway/internal/networkd"
 	"goodkind.io/mwan/gateway/internal/notify"
+	"goodkind.io/mwan/gateway/internal/ovsconfig"
 	"goodkind.io/mwan/gateway/internal/tracing"
 	"goodkind.io/mwan/gateway/internal/wanstate"
 	"goodkind.io/mwan/gateway/networkjson"
@@ -44,6 +45,7 @@ import (
 	_ "goodkind.io/mwan/gateway/internal/ifmgr/modules/health"
 	_ "goodkind.io/mwan/gateway/internal/ifmgr/modules/links"
 	_ "goodkind.io/mwan/gateway/internal/ifmgr/modules/npt"
+	"goodkind.io/mwan/gateway/internal/ifmgr/modules/ovs"
 	_ "goodkind.io/mwan/gateway/internal/ifmgr/modules/resolver"
 	_ "goodkind.io/mwan/gateway/internal/ifmgr/modules/steering"
 	_ "goodkind.io/mwan/gateway/internal/ifmgr/modules/wanroutes"
@@ -78,7 +80,7 @@ func runIfMgrPath(
 	output io.Writer,
 ) error {
 	if options.Role == ifMgrWANRole {
-		if err := bootstrapWANFirewall(ctx, networkjson.DefaultPath); err != nil {
+		if err := bootstrapWANFirewall(ctx, options.NetworkPath); err != nil {
 			slog.Error("ifmgr firewall bootstrap failed", "err", err)
 
 			return fmt.Errorf("ifmgr: %w", err)
@@ -117,6 +119,14 @@ func RunIfMgr(
 		return err
 	}
 
+	if flags.NetworkPath == "" {
+		flags.NetworkPath = networkjson.DefaultPath
+	}
+
+	if flags.SchemaDir == "" {
+		flags.SchemaDir = networkjson.DefaultSchemaDir
+	}
+
 	logger, closer := buildIfMgrLogger(cfg, flags.Debug, output)
 	defer closer.Close()
 	runID := tracing.NewID()
@@ -144,6 +154,7 @@ func RunIfMgr(
 		ctx,
 		cfg,
 		role,
+		flags,
 		logger,
 		runID,
 		startDHCPv4,
@@ -160,18 +171,19 @@ func prepareIfMgrDaemon(
 	ctx context.Context,
 	cfg *config.Config,
 	role string,
+	flags commandopts.Ifmgr,
 	logger *slog.Logger,
 	runID string,
 	startDHCPv4 addresses.DHCPv4Starter,
 	aliasSync *sync.WaitGroup,
 ) (*ifmgr.Daemon, ifmgr.DaemonConfig, []networkjson.Rejection, error) {
 	if role == ifMgrWANRole {
-		if err := bootstrapWANFirewall(ctx, networkjson.DefaultPath); err != nil {
+		if err := bootstrapWANFirewall(ctx, flags.NetworkPath); err != nil {
 			return nil, ifmgr.DaemonConfig{}, nil, err
 		}
 	}
 
-	loaded, err := parseNetworkConfig(ctx, logger, cfg, role)
+	loaded, err := parseNetworkConfig(ctx, logger, cfg, role, flags)
 	if err != nil {
 		logger.Error("ifmgr: network configuration unusable", "err", err)
 
@@ -183,6 +195,12 @@ func prepareIfMgrDaemon(
 		logger.Warn("ifmgr: build daemon config failed", "err", err)
 
 		return nil, ifmgr.DaemonConfig{}, nil, fmt.Errorf("build daemon config: %w", err)
+	}
+
+	if loaded != nil && loaded.OVS != nil {
+		dcfg.ModuleConfigs["ovs"] = ovs.Loader(func() (ovsconfig.Config, error) {
+			return networkload.LoadOVS(flags.NetworkPath, flags.SchemaDir)
+		})
 	}
 
 	if settings, found := dcfg.ModuleConfigs["addresses"].(addresses.Config); found {
@@ -211,7 +229,7 @@ func prepareIfMgrDaemon(
 		return nil, ifmgr.DaemonConfig{}, nil, err
 	}
 
-	if role == ifMgrWANRole && cfg.OPNsense.NPTv6HairpinAlias != "" {
+	if role == ifMgrWANRole && !cfg.IfMgr.OVSDataplane && cfg.OPNsense.NPTv6HairpinAlias != "" {
 		base, ok := http.DefaultTransport.(*http.Transport)
 		if !ok {
 			logger.ErrorContext(
@@ -570,6 +588,7 @@ func parseNetworkConfig(
 	log *slog.Logger,
 	cfg *config.Config,
 	role string,
+	flags commandopts.Ifmgr,
 ) (*networkjson.Config, error) {
 	steers, err := roleSteersProviders(role)
 	if err != nil {
@@ -580,13 +599,13 @@ func parseNetworkConfig(
 		return nil, nil
 	}
 
-	loaded, err := networkload.Load(networkjson.DefaultPath, networkjson.DefaultSchemaDir)
+	loaded, err := networkload.Load(flags.NetworkPath, flags.SchemaDir)
 	if err != nil {
 		log.ErrorContext(
 			ctx,
 			"ifmgr: load network configuration failed",
 			"path",
-			networkjson.DefaultPath,
+			flags.NetworkPath,
 			"role",
 			role,
 			"err",
@@ -601,7 +620,7 @@ func parseNetworkConfig(
 			ctx,
 			"ifmgr: provider entry rejected; steering the remaining providers",
 			"path",
-			networkjson.DefaultPath,
+			flags.NetworkPath,
 			"interface",
 			rejected.Interface,
 			"provider",

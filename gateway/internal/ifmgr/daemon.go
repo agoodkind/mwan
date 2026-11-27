@@ -151,9 +151,9 @@ func NewDaemon(log *slog.Logger, cfg DaemonConfig) (*Daemon, error) {
 		RegisteredNames(),
 	)
 
-	names, err := modulesForRole(cfg.Role)
+	names, err := cfg.moduleNames()
 	if err != nil {
-		dlog.Warn("ifmgr: modulesForRole failed", "err", err)
+		dlog.Warn("ifmgr: cannot select modules", "err", err)
 		return nil, err
 	}
 
@@ -746,7 +746,7 @@ func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
 		mlog.DebugContext(ctx, "ifmgr: Reconcile")
 		if err := m.Reconcile(ctx, mlog); err != nil {
 			mlog.WarnContext(ctx, "ifmgr: module Reconcile failed", "err", err)
-			if m.Name() == "wan.routes" {
+			if m.Name() == wanRoutesModule {
 				routingFailure = err
 			} else {
 				impact := forwardingFailureImpact(m)

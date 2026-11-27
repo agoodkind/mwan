@@ -66,7 +66,7 @@ func (m *Module) OnFamilyReadiness(ctx context.Context, log *slog.Logger) {
 			continue
 		}
 
-		eligible := ipv6Ready(snapshot, entry.cfg.Key())
+		eligible := m.cfg.OVSDataplane || ipv6Ready(snapshot, entry.cfg.Key())
 
 		backupActive := make(map[netip.Prefix]bool, len(entry.cfg.BackupFor))
 		for prefix, connections := range entry.cfg.BackupFor {
@@ -101,8 +101,8 @@ func (m *Module) OnFamilyReadiness(ctx context.Context, log *slog.Logger) {
 		// interface does not return an error. OnFamilyReadiness only logs the
 		// failure.
 		if advertiseErr == nil && !entry.connectBy.IsZero() &&
-			ipv6PathEvaluated(snapshot, entry.cfg.Key()) {
-			if err := m.connectLocked(ctx, log, entry, "the ipv6 path has a verdict"); err != nil {
+			(m.cfg.OVSDataplane || ipv6PathEvaluated(snapshot, entry.cfg.Key())) {
+			if err := m.connectLocked(ctx, log, entry, "BGP export rules are ready"); err != nil {
 				log.DebugContext(
 					ctx,
 					"bgp_sessions: the next reconcile pass retries the peer connection",
