@@ -1,5 +1,9 @@
 package firewall
 
+// Both the daemon and firewall inspection commands use this nftables compiler.
+// OVS gateways compile the host baseline. Linux gateways can also compile
+// forwarding, source NAT, and pinned destination rules.
+
 import (
 	"fmt"
 	"net/netip"
@@ -95,6 +99,15 @@ func CompileBaseline(config BaselineConfig) (Ruleset, error) {
 		Chains: []Chain{input, forward, output},
 		Sets:   nil,
 	}), nil
+}
+
+// Ruleset uses only host firewall rules on an OVS gateway.
+func (config Config) Ruleset() (Ruleset, error) {
+	if config.HostBaseline != nil {
+		return CompileBaseline(*config.HostBaseline)
+	}
+
+	return Compile(config)
 }
 
 // Compile builds all firewall-owned chains and destination sets.

@@ -1,5 +1,9 @@
 package networkjson
 
+// WANCONFIG supplies the inputs for the gateway firewall. When it selects OVS,
+// the host keeps management and local protocol permits, including a permit
+// for packets from a configured 6in4 tunnel peer.
+
 import (
 	"encoding/json"
 	"fmt"
@@ -291,6 +295,22 @@ func buildFirewall(doc *document, loaded *Config) (firewall.Config, error) {
 	)
 	if err != nil {
 		return none, err
+	}
+
+	if loaded.OVS != nil {
+		for _, tunnel := range tunnelLinks(loaded.Connections) {
+			baseline.LocalPermits = append(baseline.LocalPermits, tunnelPermit(tunnel))
+		}
+
+		none.Enabled = true
+		none.HostBaseline = &baseline
+
+		if err := baseline.Validate(); err != nil {
+			slog.Warn("host firewall baseline rejected", "err", err)
+			return none, fmt.Errorf("host firewall baseline: %w", err)
+		}
+
+		return none, nil
 	}
 
 	network, err := netip.ParsePrefix(group.Routes.InternalNetV4)

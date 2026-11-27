@@ -1,17 +1,19 @@
 package networkjson
 
+// Both dataplanes use the same connection intent. Each interface declaration
+// supplies the link and address settings, and the interface owner determines
+// which settings the compiler accepts.
+
 import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net/netip"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"goodkind.io/mwan/gateway/connectionid"
 	"goodkind.io/mwan/gateway/interfaceintent"
-	"goodkind.io/mwan/gateway/internal/config"
 	"goodkind.io/mwan/gateway/internal/networkd"
 )
 
@@ -166,7 +168,7 @@ func validateMWANOwner(entry ifaceEntry) error {
 
 	if err := validateMWANFamily(
 		entry.Name,
-		"ipv4",
+		string(FamilyIPv4),
 		intentFamilyV4Wire(entry.IPv4),
 		entry.WAN != nil,
 	); err != nil {
@@ -175,7 +177,7 @@ func validateMWANOwner(entry ifaceEntry) error {
 
 	if err := validateMWANFamily(
 		entry.Name,
-		"ipv6",
+		string(FamilyIPv6),
 		intentFamilyV6Wire(entry.IPv6),
 		entry.WAN != nil,
 	); err != nil {
@@ -231,12 +233,12 @@ func validateMWANFamily(name, family string, wire *familyWire, provider bool) er
 		return nil
 	}
 
-	dhcpv4 := family == "ipv4" && wire.DHCP != nil && *wire.DHCP
-	raMetric := family == "ipv6" && wire.Gateway == "" && wire.RouteMetric != nil
+	dhcpv4 := family == string(FamilyIPv4) && wire.DHCP != nil && *wire.DHCP
+	raMetric := family == string(FamilyIPv6) && wire.Gateway == "" && wire.RouteMetric != nil
 	if wire.Enabled != nil && !*wire.Enabled ||
 		(wire.Translation != nil && !provider) ||
 		wire.RouteMetric != nil && wire.Gateway == "" && !dhcpv4 && !raMetric {
-		if family == "ipv4" {
+		if family == string(FamilyIPv4) {
 			return fmt.Errorf(
 				"interface %s: mwan ipv4 supports local addresses, forwarding, DHCPv4, and an optional gateway or DHCP route metric only",
 				name,
@@ -254,13 +256,16 @@ func validateMWANFamily(name, family string, wire *familyWire, provider bool) er
 }
 
 func validateMWANStaticFamily(name, family string, intent *interfaceintent.Family) error {
-	if intent.Gateway.IsValid() && intent.Gateway.Is4() != (family == "ipv4") {
+	if intent.Gateway.IsValid() && intent.Gateway.Is4() != (family == string(FamilyIPv4)) {
 		return fmt.Errorf("interface %s: %s gateway has wrong address family", name, family)
 	}
 
 	for _, address := range intent.Addresses {
-		if !address.Prefix.IsValid() || address.Prefix.Addr().Is4() != (family == "ipv4") ||
-			address.Prefix.Addr().IsMulticast() || address.Prefix.Addr().IsUnspecified() {
+		if !address.Prefix.IsValid() || address.Prefix.Addr().Is4() != (family == string(
+			FamilyIPv4,
+		)) ||
+			address.Prefix.Addr().IsMulticast() ||
+			address.Prefix.Addr().IsUnspecified() {
 			return fmt.Errorf(
 				"interface %s: %s has invalid local address %s",
 				name,
@@ -288,7 +293,7 @@ func validateMWANConnection(entry ifaceEntry, connection interfaceintent.Connect
 
 		if err := validateMWANStaticFamily(
 			entry.Name,
-			"ipv4",
+			string(FamilyIPv4),
 			&connection.IPv4.Family,
 		); err != nil {
 			return err
@@ -335,7 +340,7 @@ func validateMWANIPv6(name string, wire *familyV6, intent *interfaceintent.IPv6)
 		}
 	}
 
-	return validateMWANStaticFamily(name, "ipv6", &intent.Family)
+	return validateMWANStaticFamily(name, string(FamilyIPv6), &intent.Family)
 }
 
 func validateMWANDHCPv4(name string, family *familyV4) error {
@@ -665,7 +670,7 @@ func buildIntentFamily(
 }
 
 func buildIntentV4(name string, wire familyV4) (*interfaceintent.IPv4, error) {
-	shared, err := buildIntentFamily(name, "ipv4", wire.familyWire)
+	shared, err := buildIntentFamily(name, string(FamilyIPv4), wire.familyWire)
 	if err != nil {
 		return nil, err
 	}
@@ -692,7 +697,7 @@ func buildIntentV4(name string, wire familyV4) (*interfaceintent.IPv4, error) {
 }
 
 func buildIntentV6(name string, wire familyV6) (*interfaceintent.IPv6, error) {
-	shared, err := buildIntentFamily(name, "ipv6", wire.familyWire)
+	shared, err := buildIntentFamily(name, string(FamilyIPv6), wire.familyWire)
 	if err != nil {
 		return nil, err
 	}
@@ -841,662 +846,4 @@ func staticV4Source(connection interfaceintent.Connection) string {
 	}
 
 	return connection.IPv4.Addresses[0].Prefix.Addr().String()
-}
-
-func compileConnections(
-	entries []ifaceEntry,
-	ids map[string]connectionid.ID,
-	internal string,
-	firewall *firewallWire,
-) ([]interfaceintent.Connection, []Rejection, error) {
-	connections := make([]interfaceintent.Connection, 0, len(entries))
-	var rejected []Rejection
-
-	declared := make(map[string]bool, len(entries))
-	for _, entry := range entries {
-		declared[entry.Name] = true
-	}
-
-	if internal != "" && !declared[internal] {
-		return nil, nil, fmt.Errorf("internal interface %s is not declared", internal)
-	}
-
-	if firewall != nil && firewall.ManagementInterface != "" &&
-		!declared[firewall.ManagementInterface] {
-		return nil, nil, fmt.Errorf(
-			"management interface %s is not declared",
-			firewall.ManagementInterface,
-		)
-	}
-
-	for _, entry := range entries {
-		connection, err := buildConnection(entry, ids[entry.Name])
-		if err != nil {
-			if entry.WAN == nil || entry.Owner == string(interfaceintent.OwnerMWAN) {
-				return nil, nil, err
-			}
-
-			rejected = append(rejected, rejectEntry(entry, err))
-			continue
-		}
-
-		if entry.Name == internal {
-			connection.Roles |= interfaceintent.RoleInternal
-		}
-
-		if firewall != nil && entry.Name == firewall.ManagementInterface {
-			connection.Roles |= interfaceintent.RoleManagement
-		}
-
-		connections = append(connections, connection)
-	}
-
-	if err := validateConnectionDependencies(
-		connections,
-		declared,
-		internal,
-		firewall,
-	); err != nil {
-		return nil, nil, err
-	}
-
-	return connections, rejected, nil
-}
-
-func validateConnectionDependencies(
-	connections []interfaceintent.Connection,
-	declared map[string]bool,
-	internal string,
-	firewall *firewallWire,
-) error {
-	indexes := make(map[string]int, len(connections))
-	for i, connection := range connections {
-		indexes[connection.Name] = i
-	}
-
-	if err := validateConnectionDevices(connections); err != nil {
-		return err
-	}
-
-	if err := validateRequiredRoles(indexes, internal, firewall); err != nil {
-		return err
-	}
-
-	if err := validateTunnels(connections, declared, indexes); err != nil {
-		return err
-	}
-
-	for _, connection := range connections {
-		if connection.Link == nil {
-			continue
-		}
-
-		for _, parent := range []string{vlanParent(connection.Link), connection.Link.BridgeMaster} {
-			if parent == "" {
-				continue
-			}
-
-			if !declared[parent] {
-				return fmt.Errorf(
-					"interface %s: parent %s is not declared",
-					connection.Name,
-					parent,
-				)
-			}
-
-			index, accepted := indexes[parent]
-			if !accepted {
-				return fmt.Errorf("interface %s: parent %s was rejected", connection.Name, parent)
-			}
-
-			connections[index].Roles |= interfaceintent.RoleParent
-		}
-	}
-
-	state := make(map[string]uint8, len(connections))
-	for _, connection := range connections {
-		if err := checkParentCycle(connection.Name, connections, indexes, state); err != nil {
-			return err
-		}
-	}
-
-	for _, connection := range connections {
-		if connection.Link == nil || connection.Link.VLAN == nil ||
-			connection.Owner != interfaceintent.OwnerNetworkd {
-			continue
-		}
-
-		parent := connections[indexes[connection.Link.VLAN.Parent]]
-		if parent.Owner != interfaceintent.OwnerNetworkd || parent.Link == nil {
-			return fmt.Errorf(
-				"interface %s: vlan parent %s needs a rendered networkd link",
-				connection.Name,
-				parent.Name,
-			)
-		}
-	}
-
-	return nil
-}
-
-func validateRequiredRoles(indexes map[string]int, internal string, firewall *firewallWire) error {
-	if _, ok := indexes[internal]; !ok {
-		return fmt.Errorf("internal interface %s was rejected", internal)
-	}
-
-	if firewall != nil && firewall.ManagementInterface != "" {
-		if _, ok := indexes[firewall.ManagementInterface]; !ok {
-			return fmt.Errorf("management interface %s was rejected", firewall.ManagementInterface)
-		}
-	}
-
-	return nil
-}
-
-func validateConnectionDevices(connections []interfaceintent.Connection) error {
-	devices := make(map[string]string, len(connections))
-	for _, connection := range connections {
-		if connection.Link == nil {
-			continue
-		}
-
-		keys := make([]string, 0, 2)
-		if connection.Link.Match.Driver != "" {
-			keys = append(keys, "driver:"+connection.Link.Match.Driver)
-		}
-
-		if connection.Link.Match.HardwareAddress != "" {
-			keys = append(keys, "mac:"+strings.ToLower(connection.Link.Match.HardwareAddress))
-		}
-
-		for _, key := range keys {
-			if prior, taken := devices[key]; taken {
-				return fmt.Errorf(
-					"interfaces %s and %s match the same device %q",
-					prior,
-					connection.Name,
-					key,
-				)
-			}
-
-			devices[key] = connection.Name
-		}
-	}
-
-	return nil
-}
-
-func vlanParent(link *interfaceintent.Link) string {
-	if link.VLAN == nil {
-		return ""
-	}
-
-	return link.VLAN.Parent
-}
-
-func validateActiveDependencies(connections []interfaceintent.Connection) error {
-	available := make(map[string]bool, len(connections))
-	for _, connection := range connections {
-		available[connection.Name] = true
-	}
-
-	for _, connection := range connections {
-		if connection.Link == nil {
-			continue
-		}
-
-		for _, parent := range linkDependencies(connection.Link) {
-			if parent != "" && !available[parent] {
-				return fmt.Errorf(
-					"interface %s requires rejected parent %s",
-					connection.Name,
-					parent,
-				)
-			}
-		}
-	}
-
-	return nil
-}
-
-func checkParentCycle(
-	name string,
-	connections []interfaceintent.Connection,
-	indexes map[string]int,
-	state map[string]uint8,
-) error {
-	if state[name] == 2 {
-		return nil
-	}
-
-	if state[name] == 1 {
-		return fmt.Errorf("interface %s: parent cycle", name)
-	}
-
-	state[name] = 1
-	connection := connections[indexes[name]]
-	if connection.Link != nil {
-		for _, parent := range linkDependencies(connection.Link) {
-			if parent == "" {
-				continue
-			}
-
-			if err := checkParentCycle(parent, connections, indexes, state); err != nil {
-				return err
-			}
-		}
-	}
-
-	state[name] = 2
-
-	return nil
-}
-
-func compileClaims(
-	connections []interfaceintent.Connection,
-	providers map[string]config.IfMgrWANEntry,
-) ([]interfaceintent.Claim, error) {
-	if err := validateConfiguredGatewayClaims(connections); err != nil {
-		return nil, err
-	}
-
-	var claims []interfaceintent.Claim
-	owners := make(map[string]interfaceintent.Claim)
-	addressOwners := make(map[string]interfaceintent.Claim)
-
-	names := make(map[connectionid.ID]string, len(connections))
-	for _, connection := range connections {
-		names[connection.ID] = connection.Name
-	}
-
-	add := func(claim interfaceintent.Claim) error {
-		key := string(claim.Kind) + "/" + claim.Family + "/" + claim.Key
-		if previous, taken := owners[key]; taken {
-			return fmt.Errorf(
-				"resource %s has writers %s and %s",
-				key,
-				previous.Writer,
-				claim.Writer,
-			)
-		}
-
-		addressKey := claimedAddressKey(claim, names[claim.ConnectionID])
-		if addressKey != "" {
-			if previous, taken := addressOwners[addressKey]; taken {
-				return fmt.Errorf(
-					"address %s has writers %s and %s",
-					addressKey,
-					previous.Writer,
-					claim.Writer,
-				)
-			}
-
-			addressOwners[addressKey] = claim
-		}
-
-		owners[key] = claim
-		claims = append(claims, claim)
-
-		return nil
-	}
-
-	for _, connection := range connections {
-		if err := claimConnectionResources(connection, add); err != nil {
-			return nil, err
-		}
-
-		if provider, ok := providers[connection.ID.String()]; ok {
-			if err := claimProviderResources(connection, provider, add); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	return claims, nil
-}
-
-func claimedAddressKey(claim interfaceintent.Claim, name string) string {
-	if claim.Kind == interfaceintent.ResourceStaticAddress {
-		prefix, err := netip.ParsePrefix(strings.TrimPrefix(claim.Key, name+"/"))
-		if err != nil {
-			return ""
-		}
-
-		return claim.Family + "/" + name + "/" + prefix.String()
-	}
-
-	if claim.Kind == interfaceintent.ResourceMappedAddress {
-		return claim.Family + "/" + name + "/" + claim.Key
-	}
-
-	return ""
-}
-
-func claimConnectionResources(
-	connection interfaceintent.Connection,
-	add func(interfaceintent.Claim) error,
-) error {
-	writer := interfaceintent.WriterExternal
-	switch connection.Owner {
-	case interfaceintent.OwnerExternal:
-	case interfaceintent.OwnerNetworkd:
-		writer = interfaceintent.WriterNetworkd
-	case interfaceintent.OwnerMWAN:
-		writer = interfaceintent.WriterMWANLink
-	}
-
-	if connection.Link != nil {
-		if err := add(interfaceintent.Claim{
-			ConnectionID: connection.ID,
-			Kind:         interfaceintent.ResourceLink,
-			Family:       "",
-			Key:          connection.Name,
-			Writer:       writer,
-		}); err != nil {
-			return err
-		}
-	}
-
-	for _, family := range []struct {
-		name   string
-		config *interfaceintent.Family
-	}{
-		{name: "ipv4", config: intentFamilyV4(connection.IPv4)},
-		{name: "ipv6", config: intentFamilyV6(connection.IPv6)},
-	} {
-		if family.config == nil {
-			continue
-		}
-
-		if err := claimFamilyResources(
-			connection,
-			family.name,
-			*family.config,
-			writer,
-			add,
-		); err != nil {
-			return err
-		}
-	}
-
-	if connection.IPv6 != nil &&
-		((connection.IPv6.AcceptRA != nil && *connection.IPv6.AcceptRA) || (connection.IPv6.AutoConf != nil && *connection.IPv6.AutoConf)) {
-		if err := add(interfaceintent.Claim{
-			ConnectionID: connection.ID,
-			Kind:         interfaceintent.ResourceRASLAAC,
-			Family:       "ipv6",
-			Key:          connection.Name,
-			Writer:       interfaceintent.WriterKernel,
-		}); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func claimFamilyResources(
-	connection interfaceintent.Connection,
-	name string,
-	family interfaceintent.Family,
-	writer interfaceintent.Writer,
-	add func(interfaceintent.Claim) error,
-) error {
-	addressWriter := writer
-	routeWriter := writer
-	if connection.Owner == interfaceintent.OwnerMWAN {
-		addressWriter = interfaceintent.WriterMWANAddress
-		routeWriter = interfaceintent.WriterMWANRoute
-	}
-
-	for _, address := range family.Addresses {
-		if err := add(interfaceintent.Claim{
-			ConnectionID: connection.ID,
-			Kind:         interfaceintent.ResourceStaticAddress,
-			Family:       name,
-			Key:          connection.Name + "/" + address.Prefix.String(),
-			Writer:       addressWriter,
-		}); err != nil {
-			return err
-		}
-	}
-
-	if family.Gateway.IsValid() {
-		key := connection.Name + "/" + family.Gateway.String()
-		if connection.Owner == interfaceintent.OwnerMWAN {
-			metric := uint32(0)
-			if family.RouteMetric != nil {
-				metric = *family.RouteMetric
-			}
-
-			metric = mainRouteMetric(name, metric)
-			key = fmt.Sprintf("main/default/%d", metric)
-		}
-
-		if err := add(interfaceintent.Claim{
-			ConnectionID: connection.ID,
-			Kind:         interfaceintent.ResourceMainRoute,
-			Family:       name,
-			Key:          key,
-			Writer:       routeWriter,
-		}); err != nil {
-			return err
-		}
-	}
-
-	for _, route := range family.Routes {
-		destination := route.Destination.String()
-		if route.Destination.Bits() == 0 {
-			destination = "default"
-		}
-
-		key := fmt.Sprintf("main/%s/%d", destination, mainRouteMetric(name, route.Metric))
-		if err := add(interfaceintent.Claim{
-			ConnectionID: connection.ID,
-			Kind:         interfaceintent.ResourceMainRoute,
-			Family:       name,
-			Key:          key,
-			Writer:       routeWriter,
-		}); err != nil {
-			return err
-		}
-	}
-
-	if family.DHCP != nil && *family.DHCP {
-		return claimDHCPResources(connection, name, family, writer, add)
-	}
-
-	return nil
-}
-
-func claimDHCPResources(
-	connection interfaceintent.Connection,
-	name string,
-	family interfaceintent.Family,
-	writer interfaceintent.Writer,
-	add func(interfaceintent.Claim) error,
-) error {
-	if connection.Owner == interfaceintent.OwnerMWAN && name == "ipv4" &&
-		(connection.IPv4.DHCPv4 == nil || connection.IPv4.DHCPv4.UseRoutes == nil || *connection.IPv4.DHCPv4.UseRoutes) {
-		if family.RouteMetric == nil {
-			return fmt.Errorf("connection %s DHCPv4 route metric is absent", connection.ID)
-		}
-
-		key := fmt.Sprintf("main/default/%d", *family.RouteMetric)
-		if err := add(interfaceintent.Claim{
-			ConnectionID: connection.ID,
-			Kind:         interfaceintent.ResourceMainRoute,
-			Family:       name,
-			Key:          key,
-			Writer:       interfaceintent.WriterMWANRoute,
-		}); err != nil {
-			return err
-		}
-	}
-
-	kind := interfaceintent.ResourceDHCPv4
-	if name == "ipv6" {
-		kind = interfaceintent.ResourceDHCPv6
-	}
-
-	clientWriter := writer
-	acquiredWriter := writer
-	if connection.Owner == interfaceintent.OwnerMWAN {
-		clientWriter = interfaceintent.WriterMWANProtocol
-		acquiredWriter = interfaceintent.WriterMWANAddress
-	}
-
-	if err := add(interfaceintent.Claim{
-		ConnectionID: connection.ID,
-		Kind:         kind,
-		Family:       name,
-		Key:          connection.Name,
-		Writer:       clientWriter,
-	}); err != nil {
-		return err
-	}
-
-	return add(interfaceintent.Claim{
-		ConnectionID: connection.ID,
-		Kind:         interfaceintent.ResourceAcquiredAddress,
-		Family:       name,
-		Key:          connection.Name,
-		Writer:       acquiredWriter,
-	})
-}
-
-func claimProviderResources(
-	connection interfaceintent.Connection,
-	provider config.IfMgrWANEntry,
-	add func(interfaceintent.Claim) error,
-) error {
-	addressWriter := interfaceintent.WriterMWANAddress
-	if connection.Owner == interfaceintent.OwnerExternal {
-		addressWriter = interfaceintent.WriterExternal
-	}
-
-	nptWriter := interfaceintent.WriterNPT
-	if connection.Owner == interfaceintent.OwnerMWAN {
-		nptWriter = interfaceintent.WriterMWANAddress
-	}
-
-	if err := add(interfaceintent.Claim{
-		ConnectionID: connection.ID,
-		Kind:         interfaceintent.ResourceProviderRoute,
-		Family:       "ipv4+ipv6",
-		Key:          strconv.Itoa(provider.TableID),
-		Writer:       interfaceintent.WriterWANRoutes,
-	}); err != nil {
-		return err
-	}
-
-	for _, priority := range []int{provider.FwMarkPrio, provider.FromPrio} {
-		if err := add(interfaceintent.Claim{
-			ConnectionID: connection.ID,
-			Kind:         interfaceintent.ResourcePolicyRule,
-			Family:       "ipv4+ipv6",
-			Key:          strconv.Itoa(priority),
-			Writer:       interfaceintent.WriterWANRoutes,
-		}); err != nil {
-			return err
-		}
-	}
-
-	if provider.TranslationV4 != nil {
-		for _, mapping := range provider.TranslationV4.StaticMappings {
-			if !mappingNeedsAddressClaim(connection, mapping) {
-				continue
-			}
-
-			if err := add(interfaceintent.Claim{
-				ConnectionID: connection.ID,
-				Kind:         interfaceintent.ResourceMappedAddress,
-				Family:       "ipv4",
-				Key:          mapping.External.String(),
-				Writer:       addressWriter,
-			}); err != nil {
-				return err
-			}
-		}
-	}
-
-	if provider.TranslationV6 != nil && provider.TranslationV6.NPT != nil {
-		prefix := provider.TranslationV6.NPT.ExternalPrefix
-		key := connection.Name + "/dynamic-prefix"
-		if prefix.IsValid() {
-			key = prefix.String()
-		}
-
-		if err := add(interfaceintent.Claim{
-			ConnectionID: connection.ID,
-			Kind:         interfaceintent.ResourceNPTExternalAddress,
-			Family:       "ipv6",
-			Key:          key + "/::1/128",
-			Writer:       nptWriter,
-		}); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func mappingNeedsAddressClaim(
-	connection interfaceintent.Connection,
-	mapping config.StaticMapping,
-) bool {
-	if mapping.Delivery == interfaceintent.DeliveryRouted {
-		return false
-	}
-
-	if mapping.Delivery == interfaceintent.DeliveryLocal {
-		return !mappingUsesStaticAddress(connection, mapping.External)
-	}
-
-	if connection.IPv4 == nil {
-		return false
-	}
-
-	for _, address := range connection.IPv4.Addresses {
-		if address.Purpose != interfaceintent.PurposeLocal ||
-			address.Prefix.Addr() == mapping.External {
-			continue
-		}
-
-		if address.Prefix.Bits() < 32 && address.Prefix.Masked().Contains(mapping.External) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func mappingUsesStaticAddress(connection interfaceintent.Connection, external netip.Addr) bool {
-	if connection.IPv4 == nil {
-		return false
-	}
-
-	for _, address := range connection.IPv4.Addresses {
-		if address.Purpose == interfaceintent.PurposeLocal && address.Prefix.Addr() == external {
-			return true
-		}
-	}
-
-	return false
-}
-
-func intentFamilyV4(family *interfaceintent.IPv4) *interfaceintent.Family {
-	if family == nil {
-		return nil
-	}
-
-	return &family.Family
-}
-
-func intentFamilyV6(family *interfaceintent.IPv6) *interfaceintent.Family {
-	if family == nil {
-		return nil
-	}
-
-	return &family.Family
 }

@@ -1,8 +1,9 @@
 package networkjson
 
-import (
-	"encoding/json"
-)
+// Both dataplanes enter the JSON decoder here. After parsing the common
+// document, the builder selects Linux or OVS forwarding.
+
+import "encoding/json"
 
 // SyntaxError supports [errors.As] matching in [networkload.Load] for the
 // "decode <path>: <err>" error format.
