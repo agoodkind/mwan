@@ -82,9 +82,6 @@ services:
 
   check:
     <<: *builder
-    environment:
-      <<: *environment
-      GOFLAGS: -tags=cli
     command: [make, -f, bootstrap.mk, build-check]
 
   release:
@@ -110,7 +107,7 @@ services:
 
   test:
     <<: *builder
-    command: [go, test, -count=1, -vet=off, -tags, cli, ./...]
+    command: [go, test, -count=1, -vet=off, ./...]
 
   check-yang:
     <<: *builder
@@ -139,7 +136,7 @@ services:
   firewall:
     <<: *builder
     privileged: true
-    command: [go, test, -v, -count=1, -parallel=6, -tags, firewall, ./internal/commandline]
+    command: [go, test, -v, -count=1, -parallel=6, -tags, firewall, ./integration/firewall]
 
   netns:
     <<: *network-tests
@@ -155,7 +152,7 @@ services:
       CGO_ENABLED: "1"
       MWAN_PROTOCOL_ACCEPTANCE: "1"
       GOFLAGS: -buildvcs=false
-    command: [go, test, -v, -count=1, -parallel=8, -timeout=30m, -tags, protocol, -run, "${PROTOCOL_TEST:-.}", ./internal/commandline]
+    command: [go, test, -v, -count=1, -parallel=8, -timeout=30m, -tags, protocol, -run, "${PROTOCOL_TEST:-.}", ./integration/protocol]
 
   systemd:
     <<: *builder

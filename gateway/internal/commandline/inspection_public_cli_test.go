@@ -1,5 +1,3 @@
-//go:build cli
-
 package commandline_test
 
 import (
