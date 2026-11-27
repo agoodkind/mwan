@@ -898,6 +898,7 @@ func (r *OwnedLinkReconciler) recordForAlias(alias string) (string, virtualRecor
 
 func hasLinkChildren(link netlink.Link, links []netlink.Link) bool {
 	index := link.Attrs().Index
+
 	for _, child := range links {
 		attrs := child.Attrs()
 		if attrs.MasterIndex == index {
