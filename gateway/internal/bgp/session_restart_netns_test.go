@@ -9,6 +9,7 @@ import (
 	"slices"
 	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/vishvananda/netlink"
@@ -160,17 +161,23 @@ func TestSessionConnectsAfterTheRestartDeadlineDeletesTheRetainedRoutes(t *testi
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	if err := restarted.KeepRoutes(t.Context(), time.Now().Add(500*time.Millisecond)); err != nil {
-		t.Fatalf("KeepRoutes: %v", err)
-	}
-	if got := restarted.State().Retained; !slices.Equal(got, []netip.Prefix{retained}) {
-		t.Fatalf("retained prefixes = %v, want %s", got, retained)
-	}
-	eventually(
+	synctest.Test(
 		t,
-		"the restart deadline to delete the retained route",
-		func() bool {
-			return !hasKernelRoute(t, retained, sessionLink)
+		func(t *testing.T) {
+			restartTime := time.Duration(cfg.GracefulRestartSeconds) * time.Second
+			deadline := time.Now().Add(restartTime)
+			if err := restarted.KeepRoutes(t.Context(), deadline); err != nil {
+				t.Fatalf("KeepRoutes: %v", err)
+			}
+			<-time.After(restartTime - time.Nanosecond)
+			synctest.Wait()
+			if got := restarted.State().Retained; !slices.Equal(got, []netip.Prefix{retained}) {
+				t.Fatalf("retained prefixes before the deadline = %v, want %s", got, retained)
+			}
+			assertKernelRoute(t, retained, sessionLink, nextHop, sessionRouteMetric)
+			<-time.After(time.Until(deadline))
+			synctest.Wait()
+			assertNoKernelRoute(t, retained, sessionLink)
 		},
 	)
 	if err := restarted.Start(t.Context()); err != nil {

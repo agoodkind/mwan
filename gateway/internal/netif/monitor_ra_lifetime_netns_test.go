@@ -42,6 +42,7 @@ func TestMonitorObservesRALifetimes(t *testing.T) {
 func runMonitorRALifetimeChild(t *testing.T) {
 	const clientName = "ra-life-client"
 	const routerName = "ra-life-router"
+	const routerAddress = "fe80::1"
 	clientVeth := &netlink.Veth{
 		LinkAttrs: netlink.LinkAttrs{
 			Name:         clientName,
@@ -64,7 +65,7 @@ func runMonitorRALifetimeChild(t *testing.T) {
 		"accept_ra":     "2",
 		"autoconf":      "1",
 		"use_tempaddr":  "0",
-		"addr_gen_mode": "0",
+		"addr_gen_mode": "1",
 		"dad_transmits": "1",
 	} {
 		path := fmt.Sprintf("/proc/sys/net/ipv6/conf/%s/%s", clientName, key)
@@ -78,8 +79,8 @@ func runMonitorRALifetimeChild(t *testing.T) {
 	if err := netlink.LinkSetUp(client); err != nil {
 		t.Fatal(err)
 	}
-	waitRALinkLocal(t, router)
-	waitRALinkLocal(t, client)
+	setRALinkLocal(t, router, routerAddress+"/64")
+	setRALinkLocal(t, client, "fe80::2/64")
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ctx, cancel := context.WithCancel(context.Background())
@@ -96,7 +97,7 @@ func runMonitorRALifetimeChild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn, _, err := ndp.Listen(routerInterface, ndp.LinkLocal)
+	conn, _, err := ndp.Listen(routerInterface, routerAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,8 +110,8 @@ func runMonitorRALifetimeChild(t *testing.T) {
 				Prefix:                         netip.MustParseAddr("2001:db8:523::"),
 				OnLink:                         true,
 				AutonomousAddressConfiguration: true,
-				PreferredLifetime:              4 * time.Second,
-				ValidLifetime:                  10 * time.Second,
+				PreferredLifetime:              3 * time.Second,
+				ValidLifetime:                  5 * time.Second,
 			},
 		},
 	}
@@ -225,6 +226,18 @@ func runMonitorRALifetimeChild(t *testing.T) {
 		if address.CIDR == addressCIDR {
 			t.Fatalf("expired RA address remains in monitor snapshot: %+v", address)
 		}
+	}
+}
+
+func setRALinkLocal(t *testing.T, link netlink.Link, cidr string) {
+	t.Helper()
+	address, err := netlink.ParseAddr(cidr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	address.Flags = unix.IFA_F_NODAD
+	if err := netlink.AddrAdd(link, address); err != nil {
+		t.Fatalf("add link-local address %s to %s: %v", cidr, link.Attrs().Name, err)
 	}
 }
 

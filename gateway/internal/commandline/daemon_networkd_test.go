@@ -2,14 +2,12 @@ package commandline
 
 import (
 	"errors"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"goodkind.io/mwan/gateway/connectionid"
 	"goodkind.io/mwan/gateway/internal/networkd"
@@ -34,48 +32,6 @@ func runCheckNetworkdCommand(t *testing.T, arguments ...string) (int, string) {
 	}
 
 	return exitError.ExitCode(), string(output)
-}
-
-type checkedUnitState struct {
-	Mode     fs.FileMode
-	Modified time.Time
-	Content  string
-}
-
-func checkedUnitDirectory(t *testing.T, directory string) map[string]checkedUnitState {
-	t.Helper()
-	states := map[string]checkedUnitState{}
-	if err := filepath.WalkDir(
-		directory,
-		func(path string, entry fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-
-			info, err := entry.Info()
-			if err != nil {
-				return err
-			}
-
-			state := checkedUnitState{Mode: info.Mode(), Modified: info.ModTime(), Content: ""}
-			if info.Mode().IsRegular() {
-				content, err := os.ReadFile(path)
-				if err != nil {
-					return err
-				}
-
-				state.Content = string(content)
-			}
-
-			states[path] = state
-
-			return nil
-		},
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	return states
 }
 
 func renderedNetworkdFixture(t *testing.T) (string, string) {

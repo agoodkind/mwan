@@ -29,10 +29,34 @@ func (m *Module) watchNFTChanges(ctx context.Context, log *slog.Logger) {
 }
 
 func (m *Module) runNFTMonitor(ctx context.Context, log *slog.Logger) error {
+	events, closeMonitor, err := subscribeNFTEvents(ctx, log)
+	if err != nil {
+		return err
+	}
+	defer closeMonitor()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case event, ok := <-events:
+			if !ok {
+				return errors.New("nftables monitor channel closed")
+			}
+
+			m.handleNFTEvent(ctx, log, event)
+		}
+	}
+}
+
+func subscribeNFTEvents(
+	ctx context.Context,
+	log *slog.Logger,
+) (<-chan *nftables.MonitorEvent, func(), error) {
 	conn, err := nftables.New()
 	if err != nil {
 		log.WarnContext(ctx, "open nftables monitor connection failed", "err", err)
-		return fmt.Errorf("open nftables connection: %w", err)
+		return nil, nil, fmt.Errorf("open nftables connection: %w", err)
 	}
 
 	monitor := nftables.NewMonitor(
@@ -42,28 +66,18 @@ func (m *Module) runNFTMonitor(ctx context.Context, log *slog.Logger) error {
 	events, err := conn.AddMonitor(monitor)
 	if err != nil {
 		log.WarnContext(ctx, "start nftables monitor failed", "err", err)
-		return fmt.Errorf("start nftables monitor: %w", err)
+		return nil, nil, fmt.Errorf("start nftables monitor: %w", err)
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			monitor.Close()
-
-			for discarded := range events {
-				_ = discarded
-			}
-
-			return fmt.Errorf("nftables monitor canceled: %w", ctx.Err())
-		case event, ok := <-events:
-			if !ok {
-				monitor.Close()
-				return errors.New("nftables monitor channel closed")
-			}
-
-			m.handleNFTEvent(ctx, log, event)
+	return events, func() {
+		if err := monitor.Close(); err != nil {
+			log.WarnContext(ctx, "close nftables monitor failed", "err", err)
 		}
-	}
+
+		for discarded := range events {
+			_ = discarded
+		}
+	}, nil
 }
 
 func (m *Module) handleNFTEvent(

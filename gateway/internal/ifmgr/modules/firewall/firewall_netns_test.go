@@ -11,7 +11,9 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/google/nftables"
 	"github.com/vishvananda/netns"
 	"goodkind.io/mwan/gateway/firewall"
 	"goodkind.io/mwan/gateway/internal/ifmgr"
@@ -134,6 +136,11 @@ func TestReconcileRequestsNoRefreshWithoutPinnedProvider(t *testing.T) {
 	if err := selected.Init(ctx, &ifmgr.Env{Log: log, LiveState: store}); err != nil {
 		t.Fatal(err)
 	}
+	events, closeMonitor, err := subscribeNFTEvents(ctx, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeMonitor()
 	if err := selected.Reconcile(ctx, log); err != nil {
 		t.Fatalf("reconcile without a pinned provider failed: %v", err)
 	}
@@ -142,6 +149,49 @@ func TestReconcileRequestsNoRefreshWithoutPinnedProvider(t *testing.T) {
 		t.Fatalf("firewall state without a pinned provider: %+v", state)
 	}
 	runNFTTest(t, "list", "chain", "inet", "filter", "forward")
+	runNFTTest(t, "add", "chain", "inet", "filter", "external")
+	runNFTTest(t, "delete", "chain", "inet", "filter", "external")
+	assertFirewallRepairAfterExternalDeletion(t, log, events)
+}
+
+func assertFirewallRepairAfterExternalDeletion(
+	t *testing.T,
+	log *slog.Logger,
+	events <-chan *nftables.MonitorEvent,
+) {
+	t.Helper()
+	module := &Module{}
+	requests := 0
+	module.InitBase(&ifmgr.Env{
+		Log:              log,
+		RequestReconcile: func(string) { requests++ },
+	})
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case event, ok := <-events:
+			if !ok {
+				t.Fatal("nftables monitor closed before it reported the external deletion")
+			}
+			if event.Error != nil {
+				t.Fatal(event.Error)
+			}
+			module.handleNFTEvent(t.Context(), log, event)
+			chain, isChain := event.Data.(*nftables.Chain)
+			if isChain && chain.Name == "external" &&
+				event.Type == nftables.MonitorEventTypeDelChain {
+				if requests != 1 {
+					t.Fatalf("deleting the external chain requested %d repairs, want 1", requests)
+				}
+				return
+			}
+			if requests != 0 {
+				t.Fatalf("installing firewall policy requested repair for %+v", event)
+			}
+		case <-deadline:
+			t.Fatal("nftables monitor did not report the external deletion")
+		}
+	}
 }
 
 func enterFirewallTestNamespace(t *testing.T) {

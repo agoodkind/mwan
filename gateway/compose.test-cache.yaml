@@ -1,0 +1,13 @@
+x-go-cache: &go-cache
+  volumes:
+    - ${RUNNER_TEMP:?Supply the runner temporary directory}/gateway-go/build:/root/.cache/go-build
+    - ${RUNNER_TEMP:?Supply the runner temporary directory}/gateway-go/download:/go/pkg/mod/cache/download
+
+services:
+  check: *go-cache
+  test: *go-cache
+  provider-drift: *go-cache
+  netns: *go-cache
+  firewall: *go-cache
+  protocol-namespace: *go-cache
+  systemd: *go-cache

@@ -13,6 +13,8 @@ import (
 )
 
 func TestSessionImportAcceptsOnlyDeclaredPrefixes(t *testing.T) {
+	t.Parallel()
+
 	loopback := netip.IPv6Loopback()
 	allowed := netip.MustParsePrefix("2001:db8:100::/48")
 	tooLong := netip.MustParsePrefix("2001:db8:200::/56")
@@ -133,6 +135,8 @@ func TestSessionImportAcceptsOnlyDeclaredPrefixes(t *testing.T) {
 }
 
 func TestSessionRejectsLearnedPrefixThatTheSessionExports(t *testing.T) {
+	t.Parallel()
+
 	loopback := netip.IPv6Loopback()
 	exported := netip.MustParsePrefix("2001:db8:a::/48")
 	other := netip.MustParsePrefix("2001:db8:100::/48")

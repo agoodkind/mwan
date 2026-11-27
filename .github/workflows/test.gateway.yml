@@ -8,7 +8,7 @@ permissions:
 
 env:
   COMPOSE_ENV_FILES: ${{ github.workspace }}/build/wanconfig.env
-  COMPOSE_FILE: compose.build.yaml:compose.amd64.yaml
+  COMPOSE_FILE: compose.build.yaml:compose.amd64.yaml:compose.test-cache.yaml
   WANCONFIG_CACHE_ID: ${{ github.run_id }}
   RELEASE_PLATFORMS: linux/amd64
 
@@ -25,13 +25,22 @@ jobs:
         with:
           fetch-depth: 0
       - &restore-amd64-builder
+        id: builder
         uses: ./.github/actions/gateway-builder
         with:
           arch: amd64
-      - uses: agoodkind/go-makefile/.github/actions/ci@main
+          cache-go: 'true'
+      - name: Run gateway quality checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: docker compose -f compose.build.yaml -f compose.amd64.yaml -f compose.test-cache.yaml -f compose.ci.yaml run --pull never --rm check
+
+      - name: Save Go module downloads and compiled packages
+        if: steps.builder.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
         with:
-          working-directory: gateway
-          go-version-file: gateway/go.mod
+          path: ${{ runner.temp }}/gateway-go
+          key: ${{ steps.builder.outputs.cache-key }}
 
   test:
     name: Test
@@ -40,36 +49,46 @@ jobs:
       - uses: actions/checkout@v7
       - *restore-amd64-builder
       - name: Run gateway tests
-        run: docker compose run --build --rm test
+        run: docker compose run --pull never --rm test
 
   drift:
     name: provider drift
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - *restore-amd64-builder
+      - uses: ./.github/actions/gateway-builder
+        with:
+          arch: amd64
+          service: provider-drift
+          cache-go: 'true'
       - name: Compare mwan install with provider data
-        run: docker compose run --build --rm provider-drift
+        run: docker compose run --pull never --rm provider-drift
 
   yang:
     name: yang gates
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - *restore-amd64-builder
+      - uses: ./.github/actions/gateway-builder
+        with:
+          arch: amd64
       - name: Validate YANG model and its instance documents
-        run: docker compose run --build --rm check-yang
+        run: docker compose run --pull never --rm check-yang
 
   netns:
     name: mwan netns tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - *restore-amd64-builder
+      - uses: ./.github/actions/gateway-builder
+        with:
+          arch: amd64
+          service: netns
+          cache-go: 'true'
       - name: Set runner socket buffer for nftables batch test
         run: sudo sysctl -w net.core.rmem_default=212992
       - name: Run network namespace tests as root
-        run: docker compose run --build --rm netns
+        run: docker compose run --pull never --rm netns
 
   firewall:
     name: mwan firewall tests
@@ -77,15 +96,38 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - *restore-amd64-builder
-      - name: Run firewall and namespace acceptance tests
-        run: |
-          docker compose run --build --rm firewall
-          docker compose run --build --rm protocol-namespace
+      - name: Run firewall acceptance tests
+        run: docker compose run --pull never --rm firewall
+
+  protocol:
+    name: mwan protocol tests
+    runs-on: ubuntu-latest
+    env:
+      WANCONFIG_DOCKER_CPUS: '4'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/gateway-builder
+        with:
+          arch: amd64
+          service: protocol-namespace
+          cache-go: 'true'
+      - name: Run protocol acceptance tests
+        run: docker compose run --pull never --rm protocol-namespace
+
+  systemd:
+    name: mwan systemd tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/gateway-builder
+        with:
+          arch: amd64
+          service: systemd
+          cache-go: 'true'
       - name: Run systemd acceptance tests
-        if: ${{ !cancelled() }}
         run: |
-          docker compose up --build --wait systemd
-          docker compose exec -T systemd go test -count=1 -timeout=20m -tags systemd ./internal/commandline
+          docker compose up --no-build --pull never --wait systemd
+          docker compose exec -T systemd go test -count=1 -timeout=20m -tags systemd ./integration/systemd
       - name: Stop systemd container
         if: always()
         run: docker compose down --remove-orphans

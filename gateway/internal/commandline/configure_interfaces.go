@@ -89,7 +89,7 @@ func runIfMgrPath(
 		commandPath,
 		path,
 		func(cfg *config.Config) error {
-			return runIfMgr(ctx, cfg, options, output, netif.StartDHCPClient)
+			return RunIfMgr(ctx, cfg, options, output, netif.StartDHCPClient)
 		},
 	)
 	if err != nil {
@@ -99,7 +99,13 @@ func runIfMgrPath(
 	return nil
 }
 
-func runIfMgr(
+// RunIfMgr expects the caller to load the configuration for the chosen role.
+//
+// The WAN command installs firewall bootstrap rules before it calls RunIfMgr.
+// It passes the production DHCPv4 starter to acquire and renew leases.
+//
+//	RunIfMgr(ctx, cfg, flags, output, netif.StartDHCPClient)
+func RunIfMgr(
 	parent context.Context,
 	cfg *config.Config,
 	flags commandopts.Ifmgr,

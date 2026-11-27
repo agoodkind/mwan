@@ -86,6 +86,8 @@ func nextHop(path *apiutil.Path) netip.Addr {
 }
 
 func TestSessionAdvertisesExportPrefixes(t *testing.T) {
+	t.Parallel()
+
 	loopback := netip.IPv6Loopback()
 	alwaysPrefix := netip.MustParsePrefix("2001:db8:a::/48")
 	backupPrefix := netip.MustParsePrefix("2001:db8:b::/48")

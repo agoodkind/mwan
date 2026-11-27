@@ -21,3 +21,13 @@ func withPrivateRepositoryForTest(
 		t.Fatal(err)
 	}
 }
+
+func selftestModelsDir(t *testing.T) string {
+	t.Helper()
+	modelsDir := t.TempDir()
+	if _, err := yangpub.WriteSchema(modelsDir); err != nil {
+		t.Fatalf("write the embedded schema: %v", err)
+	}
+
+	return modelsDir
+}
