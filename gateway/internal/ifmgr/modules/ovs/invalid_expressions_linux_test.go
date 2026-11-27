@@ -2,6 +2,10 @@
 
 package ovs
 
+// OpenFlow compilation uses the Linux OVS parser. These cases check that the
+// compiler reports an IPv4 source rewrite as inconsistent without an IP match
+// and rejects malformed expressions in match and action fields.
+
 import (
 	"strings"
 	"testing"

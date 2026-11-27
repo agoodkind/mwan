@@ -1,5 +1,10 @@
 package ovs
 
+// OpenFlow compilation checks whether two configured flows would conflict on the switch.
+// For example, lan and port 1 can identify the same input, and ip and Ethernet
+// type 0x0800 can identify the same protocol. A separate case uses two names
+// that produce the same cookie, an identifier mwan uses to recognize its rules.
+
 import (
 	"errors"
 	"strings"

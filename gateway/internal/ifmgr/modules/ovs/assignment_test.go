@@ -1,5 +1,10 @@
 package ovs
 
+// Lease resolution prepares OpenFlow rules from WAN assignments. With current
+// assignments it can substitute a delegated IPv6 prefix in a match and an IPv4
+// address inside a clone action. Without the assignments it omits the affected
+// flows and buckets while retaining fixed entries.
+
 import (
 	"net/netip"
 	"slices"

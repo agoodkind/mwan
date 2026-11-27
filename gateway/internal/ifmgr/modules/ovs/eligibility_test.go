@@ -1,5 +1,10 @@
 package ovs
 
+// OpenFlow compilation combines configured OpenFlow entries with WAN health
+// and installed switch state. A known verdict selects the matching conditional entries. An
+// unknown verdict keeps an eligible entry if mwan already installed it. Other
+// cases check that inactive entries still undergo validation.
+
 import (
 	"errors"
 	"slices"

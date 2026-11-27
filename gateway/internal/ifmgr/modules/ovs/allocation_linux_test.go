@@ -2,6 +2,11 @@
 
 package ovs
 
+// NPTv6 helper tables must avoid tables that configured or foreign rules use
+// or reference. This fixture reserves tables 250 through 253 and checks that the
+// compiler can reuse table 249, which mwan already owns. It also checks that
+// a nested resubmit on a connection bucket specifies its target table.
+
 import (
 	"errors"
 	"net/netip"
