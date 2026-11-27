@@ -1,0 +1,47 @@
+{
+  "ietf-interfaces:interfaces": {
+    "interface": [{
+      "name": "wan0",
+      "type": "iana-if-type:other",
+      "goodkind-mwan-steering:connection-id": "uplink-a",
+      "goodkind-mwan-steering:link-files": "hand-authored",
+      "goodkind-mwan-steering:wan": {
+        "name": "provider-a",
+        "health": {
+          "enabled": true,
+          "ping-count": 1,
+          "success-threshold": 1,
+          "failure-threshold": 1,
+          "recovery-threshold": 1,
+          "check-interval": 10,
+          "targets-v4": ["192.0.2.1"]
+        }
+      }
+    }],
+    "goodkind-mwan-steering:steering-group": {
+      "health": {"probe-timeout": 1000}
+    },
+    "goodkind-mwan-steering:dataplane": "ovs",
+    "goodkind-mwan-steering:ovs": {
+      "database-socket": "/run/openvswitch/db.sock",
+      "startup-timeout-millis": 5000,
+      "bridge": "br-wan",
+      "datapath-type": "system",
+      "port": [{"name": "wan0", "type": "system"}],
+      "openflow": {
+        "socket": "/run/openvswitch/br-wan.mgmt",
+        "group": [{
+          "id": 1,
+          "type": "select",
+          "bucket": [{"id": 7, "condition": {"healthy-connection": "uplink-a"}, "action": [{"id": 1, "name": "output", "argument": "wan0"}]}]
+        }],
+        "flow": [{
+          "name": "send-to-uplink",
+          "priority": 100,
+          "condition": {"healthy-connection": "uplink-a"},
+          "action": [{"id": 1, "name": "group", "argument": "1"}]
+        }]
+      }
+    }
+  }
+}
