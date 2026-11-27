@@ -1,5 +1,9 @@
 package networkjson
 
+// Both dataplanes use these routines to turn interface declarations into
+// connection intent. Compilation checks prerequisites such as interface
+// ownership and tunnel underlay before the dataplane uses the connections.
+
 import (
 	"encoding/hex"
 	"fmt"

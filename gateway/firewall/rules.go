@@ -1,5 +1,9 @@
 package firewall
 
+// Both the daemon and firewall inspection commands use this nftables compiler.
+// OVS gateways compile the host baseline. Linux gateways can also compile
+// forwarding, source NAT, and pinned destination rules.
+
 import (
 	"fmt"
 	"net/netip"

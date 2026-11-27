@@ -1,5 +1,9 @@
 package firewall
 
+// Gateway firewall settings cover host input and Linux forwarding policy.
+// When OVS owns forwarding, the compiler receives a host baseline for
+// traffic such as management access and WAN protocol packets.
+
 import (
 	"fmt"
 	"log/slog"

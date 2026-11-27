@@ -1,4 +1,6 @@
-// Package ovsconfig defines Open vSwitch settings for network documents.
+// Package ovsconfig models the Open vSwitch settings in WANCONFIG.
+// OVSDB settings define the bridge and its ports. OpenFlow settings define
+// packet matches, actions, and group buckets within that bridge.
 package ovsconfig
 
 import "goodkind.io/mwan/gateway/internal/config"

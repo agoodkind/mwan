@@ -7,6 +7,9 @@
 //
 // Decode and semantic checks compile without cgo.
 // Use [networkload.Load] when native file loading requires libyang validation.
+//
+// WANCONFIG selects Linux or OVS forwarding. Both paths load interface
+// intent before projecting settings for the daemon and management surface.
 package networkjson
 
 import (

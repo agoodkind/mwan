@@ -1,5 +1,9 @@
 package ovsconfig
 
+// mwan derives each OpenFlow cookie from the configured rule name and adds
+// a shared prefix to identify its flows. Rule status uses the complete
+// cookie to match installed flow counters to configured rules.
+
 import (
 	"errors"
 	"fmt"

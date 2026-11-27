@@ -1,5 +1,9 @@
 package networkjson
 
+// Management readers use these keys to identify compiled nftables entries
+// while preserving each chain's rule order. An OVS host plan uses the
+// host baseline from the same compiler as the daemon.
+
 import (
 	"fmt"
 	"log/slog"

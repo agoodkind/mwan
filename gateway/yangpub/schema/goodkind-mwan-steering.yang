@@ -1,3 +1,9 @@
+/*
+ * This module extends ietf-interfaces with gateway configuration and state.
+ * OVS uses its switch, port, and OpenFlow definitions. A flow or group bucket
+ * can use a WAN connection's health as a condition.
+ */
+
 module goodkind-mwan-steering {
   yang-version 1.1;
   namespace "urn:goodkind:mwan-steering";

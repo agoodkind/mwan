@@ -1,5 +1,9 @@
 package networkjson
 
+// This builder combines OVS bridge and OpenFlow settings with the WAN
+// connections that supply BGP sessions, probe verdicts, and prefix mappings.
+// A conditional rule can depend on a probe for a different WAN connection.
+
 import (
 	"errors"
 	"fmt"

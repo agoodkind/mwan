@@ -1,5 +1,9 @@
 package networkjson
 
+// WANCONFIG supplies the inputs for the gateway firewall. When it selects OVS,
+// the host keeps management and local protocol permits, including a permit
+// for packets from a configured 6in4 tunnel peer.
+
 import (
 	"encoding/json"
 	"fmt"

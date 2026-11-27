@@ -1,5 +1,8 @@
 package networkload
 
+// OVS callers use this loader when they require a WANCONFIG document that
+// selects OVS. It shares schema and semantic validation with the daemon.
+
 import (
 	"errors"
 	"fmt"

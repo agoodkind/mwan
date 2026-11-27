@@ -3,6 +3,9 @@
 // from the environment, and checks the dynamic BGP settings. Every other
 // section is validated by the subsystem that reads it, at the point it is
 // used.
+//
+// WANCONFIG supplies the OVS dataplane selection to the interface manager.
+// TOML supplies application settings and does not set that selection.
 package config
 
 import (
