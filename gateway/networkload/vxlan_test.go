@@ -1,7 +1,13 @@
 package networkload_test
 
+// The public loader converts the Linux VXLAN example into typed tunnel settings.
+// These cases check that applying those settings makes an independent copy and
+// that configuration publication restores named options such as vni with
+// value 0. Legacy input and invalid option values exercise the same loader.
+
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -60,7 +66,7 @@ func TestVXLANLoadApplyAndPublish(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	const base = "/ietf-interfaces:interfaces/interface[name='vxlan0']/goodkind-mwan-steering:link/tunnel/vxlan/"
+	const base = "/ietf-interfaces:interfaces/interface[name='vxlan0']/goodkind-mwan-steering:link/tunnel/options[name='"
 	want := map[string]string{
 		"vni":              "0",
 		"source-port-min":  "49152",
@@ -74,7 +80,7 @@ func TestVXLANLoadApplyAndPublish(t *testing.T) {
 			continue
 		}
 
-		leaf := strings.TrimPrefix(item.Path, base)
+		leaf := strings.TrimSuffix(strings.TrimPrefix(item.Path, base), "']/value")
 		if value, present := want[leaf]; !present || item.Value != value {
 			t.Fatalf("unexpected published VXLAN leaf: %+v", item)
 		}
@@ -87,31 +93,63 @@ func TestVXLANLoadApplyAndPublish(t *testing.T) {
 	}
 }
 
-func TestVXLANLoadRequiresContainerFieldsAndRanges(t *testing.T) {
+func TestVXLANLoadRequiresOptionsAndRanges(t *testing.T) {
 	base := readFile(t, vxlanInstancePath)
 	schema := writeSchemaDir(t)
 
 	for _, entry := range []struct{ name, before, after string }{
-		{"missing-vni", `"vni": 0, `, ""},
-		{"missing-source-min", `"source-port-min": 49152, `, ""},
-		{"missing-source-max", `"source-port-max": 49153, `, ""},
+		{"missing-vni", `{"name": "vni", "value": "0"}, `, ""},
+		{"missing-source-min", `{"name": "source-port-min", "value": "49152"}, `, ""},
+		{"missing-source-max", `{"name": "source-port-max", "value": "49153"}, `, ""},
 		{
 			"unsupported-fixed-source",
-			`"source-port-min": 49152, "source-port-max": 49153, `,
-			`"source-port": 49152, `,
+			`{"name": "source-port-min", "value": "49152"}, {"name": "source-port-max", "value": "49153"}, `,
+			`{"name": "source-port", "value": "49152"}, `,
 		},
-		{"missing-destination", `"destination-port": 4789, `, ""},
-		{"missing-tos", `, "tos": 2`, ""},
-		{"vni-overflow", `"vni": 0`, `"vni": 16777216`},
-		{"source-min-zero", `"source-port-min": 49152`, `"source-port-min": 0`},
-		{"source-max-zero", `"source-port-max": 49153`, `"source-port-max": 0`},
-		{"equal-source-limits", `"source-port-max": 49153`, `"source-port-max": 49152`},
-		{"reversed-source-limits", `"source-port-min": 49152`, `"source-port-min": 49154`},
-		{"source-min-overflow", `"source-port-min": 49152`, `"source-port-min": 65536`},
-		{"source-max-overflow", `"source-port-max": 49153`, `"source-port-max": 65536`},
-		{"destination-zero", `"destination-port": 4789`, `"destination-port": 0`},
-		{"destination-overflow", `"destination-port": 4789`, `"destination-port": 65536`},
-		{"tos-overflow", `"tos": 2`, `"tos": 256`},
+		{"missing-destination", `{"name": "destination-port", "value": "4789"}, `, ""},
+		{"missing-tos", `, {"name": "tos", "value": "2"}`, ""},
+		{"vni-overflow", `{"name": "vni", "value": "0"}`, `{"name": "vni", "value": "16777216"}`},
+		{
+			"source-min-zero",
+			`{"name": "source-port-min", "value": "49152"}`,
+			`{"name": "source-port-min", "value": "0"}`,
+		},
+		{
+			"source-max-zero",
+			`{"name": "source-port-max", "value": "49153"}`,
+			`{"name": "source-port-max", "value": "0"}`,
+		},
+		{
+			"equal-source-limits",
+			`{"name": "source-port-max", "value": "49153"}`,
+			`{"name": "source-port-max", "value": "49152"}`,
+		},
+		{
+			"reversed-source-limits",
+			`{"name": "source-port-min", "value": "49152"}`,
+			`{"name": "source-port-min", "value": "49154"}`,
+		},
+		{
+			"source-min-overflow",
+			`{"name": "source-port-min", "value": "49152"}`,
+			`{"name": "source-port-min", "value": "65536"}`,
+		},
+		{
+			"source-max-overflow",
+			`{"name": "source-port-max", "value": "49153"}`,
+			`{"name": "source-port-max", "value": "65536"}`,
+		},
+		{
+			"destination-zero",
+			`{"name": "destination-port", "value": "4789"}`,
+			`{"name": "destination-port", "value": "0"}`,
+		},
+		{
+			"destination-overflow",
+			`{"name": "destination-port", "value": "4789"}`,
+			`{"name": "destination-port", "value": "65536"}`,
+		},
+		{"tos-overflow", `{"name": "tos", "value": "2"}`, `{"name": "tos", "value": "256"}`},
 		{"wrong-protocol", `"protocol": "vxlan"`, `"protocol": "6in4"`},
 	} {
 		t.Run(
@@ -128,26 +166,36 @@ func TestVXLANLoadRequiresContainerFieldsAndRanges(t *testing.T) {
 	t.Run(
 		"maximum-values",
 		func(t *testing.T) {
-			document := replaceOnce(t, base, `"vni": 0`, `"vni": 16777215`)
-			document = replaceOnce(
+			document := replaceOnce(
 				t,
-				document,
-				`"source-port-min": 49152`,
-				`"source-port-min": 65534`,
+				base,
+				`{"name": "vni", "value": "0"}`,
+				`{"name": "vni", "value": "16777215"}`,
 			)
 			document = replaceOnce(
 				t,
 				document,
-				`"source-port-max": 49153`,
-				`"source-port-max": 65535`,
+				`{"name": "source-port-min", "value": "49152"}`,
+				`{"name": "source-port-min", "value": "65534"}`,
 			)
 			document = replaceOnce(
 				t,
 				document,
-				`"destination-port": 4789`,
-				`"destination-port": 65535`,
+				`{"name": "source-port-max", "value": "49153"}`,
+				`{"name": "source-port-max", "value": "65535"}`,
 			)
-			document = replaceOnce(t, document, `"tos": 2`, `"tos": 255`)
+			document = replaceOnce(
+				t,
+				document,
+				`{"name": "destination-port", "value": "4789"}`,
+				`{"name": "destination-port", "value": "65535"}`,
+			)
+			document = replaceOnce(
+				t,
+				document,
+				`{"name": "tos", "value": "2"}`,
+				`{"name": "tos", "value": "255"}`,
+			)
 			if _, err := networkload.Load(writeDocument(t, document), schema); err != nil {
 				t.Fatalf("public loader rejected maximum VXLAN values: %v", err)
 			}
@@ -167,14 +215,14 @@ func TestVXLANLoadRequiresContainerFieldsAndRanges(t *testing.T) {
 				document := replaceOnce(
 					t,
 					base,
-					`"source-port-min": 49152`,
-					fmt.Sprintf(`"source-port-min": %d`, entry.minimum),
+					`{"name": "source-port-min", "value": "49152"}`,
+					fmt.Sprintf(`{"name": "source-port-min", "value": "%d"}`, entry.minimum),
 				)
 				document = replaceOnce(
 					t,
 					document,
-					`"source-port-max": 49153`,
-					fmt.Sprintf(`"source-port-max": %d`, entry.maximum),
+					`{"name": "source-port-max", "value": "49153"}`,
+					fmt.Sprintf(`{"name": "source-port-max", "value": "%d"}`, entry.maximum),
 				)
 				if _, err := networkload.Load(writeDocument(t, document), schema); err != nil {
 					t.Fatalf(
@@ -186,5 +234,32 @@ func TestVXLANLoadRequiresContainerFieldsAndRanges(t *testing.T) {
 				}
 			},
 		)
+	}
+}
+
+func TestLoadLegacyVXLANDocument(t *testing.T) {
+	base := readFile(t, vxlanInstancePath)
+	const options = `"options": [{"name": "vni", "value": "0"}, {"name": "source-port-min", "value": "49152"}, {"name": "source-port-max", "value": "49153"}, {"name": "destination-port", "value": "4789"}, {"name": "tos", "value": "2"}]`
+	const old = `"vxlan": { "vni": 0, "source-port-min": 49152, "source-port-max": 49153, "destination-port": 4789, "tos": 2 }`
+	legacy := replaceOnce(t, base, options, old)
+	schema := writeSchemaDir(t)
+	loaded, err := networkload.Load(writeDocument(t, legacy), schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	current, err := networkload.Load(writeDocument(t, base), schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(loaded.Connections, current.Connections) {
+		t.Fatal("loading the legacy VXLAN block changed the configured Linux connections")
+	}
+
+	mixed := replaceOnce(t, base, options, options+", "+old)
+	if _, err := networkload.Load(writeDocument(t, mixed), schema); err == nil ||
+		!strings.Contains(err.Error(), "remove the legacy vxlan block") {
+		t.Fatalf("loading both tunnel formats returned %v", err)
 	}
 }

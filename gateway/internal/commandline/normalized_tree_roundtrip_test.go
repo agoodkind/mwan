@@ -1,5 +1,10 @@
 package commandline
 
+// This test loads each bundled network document and generates the values that
+// the gateway would publish. Packet checks compare input leaves with the generated
+// items by YANG list key. It allows derived leaves where the input document
+// does not supply a value.
+
 import (
 	"bytes"
 	"encoding/json"
@@ -22,6 +27,7 @@ const networkInstanceGlob = "../../yang/instances/*.json"
 // Use each YANG list's key in the flattened path. Reject lists without a known key.
 var networkListKeys = map[string][]string{
 	"interface":          {"name"},
+	"options":            {"name"},
 	"static-mapping":     {"external"},
 	"address":            {"ip"},
 	"forwarding-address": {"address"},

@@ -1,5 +1,10 @@
 package networkjson_test
 
+// Decoder tests vary a small Linux VXLAN document. Two tunnels may share
+// the same endpoints when they use different VNIs or destination ports.
+// Changing only the source port range still conflicts with the same receiver.
+// Other cases check transport settings and legacy JSON decoding.
+
 import (
 	"fmt"
 	"os"
@@ -164,4 +169,21 @@ func TestDecodeVXLANRequiresTypedSettings(t *testing.T) {
 			},
 		)
 	}
+}
+
+func TestDecodeLegacyVXLANKeepsJSONMemberSemantics(t *testing.T) {
+	document := strings.Replace(vxlanDocument(t), `"vxlan":{`, `"VXLAN":{`, 1)
+	document = strings.Replace(document, `"vni":0`, `"VNI":1,"vni":2`, 1)
+	loaded, err := networkjson.Decode([]byte(document))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, connection := range loaded.Connections {
+		if connection.Name == "vxlan0" && connection.Link.Tunnel.VXLAN.VNI == 2 {
+			return
+		}
+	}
+
+	t.Fatal("the last VNI in the legacy VXLAN object should select VNI 2")
 }
